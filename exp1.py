@@ -49,10 +49,10 @@ else:
 
 # loading models
 model_ols = UNet().to(device)
-model_ols.load_state_dict(torch.load('model/RD/OLS-n{}beta{:.1f}.pth'.format(n, beta)))
+model_ols.load_state_dict(torch.load('../models/RD/OLS-n{}beta{:.1f}.pth'.format(n, beta)))
 model_ols.eval()
 model_ed = EDNet().to(device)
-model_ed.load_state_dict(torch.load('model/RD/ED-n{}beta{:.1f}.pth'.format(n, beta)))
+model_ed.load_state_dict(torch.load('../models/RD/ED-n{}beta{:.1f}.pth'.format(n, beta)))
 model_ed.eval()
 
 

@@ -35,3 +35,4 @@ this script plots the Fig. 1 and Fig. 2 which illustrate the distribution shift
 phenomena for RD and NS
 
 ## plots of the comparison of distribution shift
+ssh jiaxi@10.246.112.152
