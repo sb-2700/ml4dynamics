@@ -17,7 +17,7 @@ beta = args.beta
 Re = args.Re
 n = args.n
 type = args.type
-print('Training {} model with n = {} beta = {:.1f} ...'.format(type, n, beta))
+print('Training {} model with n = {}, beta = {:.1f}, Re = {} ...'.format(type, n, beta, Re))
 
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
