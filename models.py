@@ -134,9 +134,10 @@ class EDNet(nn.Module):
         out3 = self.layer3(out2)
         out4 = self.layer4(out3)
         out5 = self.layer5(out4)
-        out6 = self.layer6(out5)
-        dout6 = self.dlayer6(out6)
-        dout5 = self.dlayer5(dout6)
+        # our current method is just decreasing the # of layer by 1
+        #out6 = self.layer6(out5)
+        #dout6 = self.dlayer6(out6)
+        dout5 = self.dlayer5(out5)
         dout4 = self.dlayer4(dout5)
         dout3 = self.dlayer3(dout4)
         dout2 = self.dlayer2(dout3)
@@ -151,6 +152,7 @@ class UNet(nn.Module):
 
         self.layer1 = nn.Sequential()
         # layer1: 2*64*64    -->    4*32*32
+        #         2*128*32   -->    4*
         self.layer1.add_module('layer1_conv', nn.Conv2d(channel_array[0], channel_array[1], 4, 2, 1, bias=True))
         # layer2: 4*32*32   -->    8*16*16  LeakyReLU + BatchNorm
         self.layer2 = blockUNet(channel_array[1], channel_array[2], 'layer2', transposed=False, bn=True,  relu=False, dropout=dropout )

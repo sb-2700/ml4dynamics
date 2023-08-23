@@ -1,3 +1,6 @@
+###################################################
+#                   finished                      #
+###################################################
 import utils
 import numpy as np
 import numpy.random as r
@@ -15,6 +18,7 @@ print('Generating RD data with beta = {:.1f}...'.format(beta))
 widthx = 6.4
 widthy = 6.4
 dt = 0.01
+T = 2
 step_num = 220
 alpha = 0.01
 gamma = 0.05
@@ -83,7 +87,7 @@ v = traning_v64[:, warm_up:, :]
 labelu = traning_labelu64[:, warm_up:, :]
 labelv = traning_labelv64[:, warm_up:, :]
 label = np.concatenate([np.expand_dims(labelu, axis=2), np.expand_dims(labelv, axis=2)], axis=2)
-np.savez('../data/RD/n64beta{:.1f}.npz'.format(beta), u=u, v=v, label=label)
+np.savez('../data/RD/n64beta{:.1f}.npz'.format(beta), arg=[n, n, dt, T], u=u, v=v, label=label)
 
 
 u = traning_u128[:, warm_up:, :]
@@ -91,4 +95,4 @@ v = traning_v128[:, warm_up:, :]
 labelu = traning_labelu128[:, warm_up:, :]
 labelv = traning_labelv128[:, warm_up:, :]
 label = np.concatenate([np.expand_dims(labelu, axis=2), np.expand_dims(labelv, axis=2)], axis=2)
-np.savez('../data/RD/n128beta{:.1f}.npz'.format(beta), u=u, v=v, label=label)
+np.savez('../data/RD/n128beta{:.1f}.npz'.format(beta), arg=[n, n, dt, T], u=u, v=v, label=label)

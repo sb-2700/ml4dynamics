@@ -4,7 +4,7 @@ import argparse
 import numpy.random as r
 from utils import *
 from simulator import *
-from model import *
+from models import *
 from matplotlib import pyplot as plt
 from matplotlib import cm
 
@@ -26,6 +26,7 @@ r.seed(0)
 
 
 type = 'RD'
+# this step we can simplify to read nx, ny from data file
 if type == 'RD':
     u, v, label = read_data('RD/n{}beta{:.1f}.npz'.format(n, beta))
     dt = 0.01

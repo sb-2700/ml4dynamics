@@ -36,3 +36,14 @@ phenomena for RD and NS
 
 ## plots of the comparison of distribution shift
 ssh jiaxi@10.246.112.152
+
+### finished file (means it can handle both RD & NS)
+utils.py
+simulator.py
+model.py
+generate_RDdata.py 
+generate_NSdata.py 
+generate_data.sh
+training.py
+training.sh
+exp1.py
