@@ -83,7 +83,7 @@ v = traning_v64[:, warm_up:, :]
 labelu = traning_labelu64[:, warm_up:, :]
 labelv = traning_labelv64[:, warm_up:, :]
 label = np.concatenate([np.expand_dims(labelu, axis=2), np.expand_dims(labelv, axis=2)], axis=2)
-np.savez('../data/RD/n64beta{:.1f}.npz'.format(n, beta), u=u, v=v, label=label)
+np.savez('../data/RD/n64beta{:.1f}.npz'.format(beta), u=u, v=v, label=label)
 
 
 u = traning_u128[:, warm_up:, :]
@@ -91,4 +91,4 @@ v = traning_v128[:, warm_up:, :]
 labelu = traning_labelu128[:, warm_up:, :]
 labelv = traning_labelv128[:, warm_up:, :]
 label = np.concatenate([np.expand_dims(labelu, axis=2), np.expand_dims(labelv, axis=2)], axis=2)
-np.savez('../data/RD/n128beta{:.1f}.npz'.format(n, beta), u=u, v=v, label=label)
+np.savez('../data/RD/n128beta{:.1f}.npz'.format(beta), u=u, v=v, label=label)

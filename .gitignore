@@ -1,4 +1,4 @@
 .DS_store
-TR project.code-workspace
+TR.code-workspace
 test.py
 __pycache__/
