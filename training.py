@@ -37,14 +37,15 @@ ny = int(ny)
 traj_num = u.shape[0]
 step_num = u.shape[1]
 test_index = int(np.floor(r.rand() * traj_num))
-sample_num = traj_num * step_num
-ed_epochs = 1
-ols_epochs = 1
-tr_epochs = 1
-write_interval = 5
-lambda_ = torch.tensor(1, requires_grad=False)
+sample_num = (traj_num-1) * step_num
+ed_epochs = 10
+ols_epochs = 2
+tr_epochs = 10
+write_interval = 2
+lambda_ = torch.tensor(1, requires_grad=False).to(device)
 
 
+# add condition, checking whether the model already exists
 if type == 'RD':
     model_ols = UNet().to(device)
 else:
@@ -69,6 +70,7 @@ criterion = nn.MSELoss()
 optimizer_ed = torch.optim.Adam(model_ed.parameters(), lr=learning_rate)
 optimizer_ols = torch.optim.Adam(model_ols.parameters(), lr=learning_rate)
 optimizer_tr = torch.optim.Adam(model_tr.parameters(), lr=learning_rate)
+# maybe try other scheduler
 scheduler_ed = ReduceLROnPlateau(optimizer_ed, mode='min', factor=0.5, patience=10*sample_num, verbose=True)
 scheduler_ols = ReduceLROnPlateau(optimizer_ols, mode='min', factor=0.5, patience=10*sample_num, verbose=True)
 scheduler_tr = ReduceLROnPlateau(optimizer_tr, mode='min', factor=0.5, patience=10*sample_num, verbose=True)
@@ -98,7 +100,7 @@ for epoch in range(ed_epochs):
                 .format(epoch+1, ed_epochs, total_loss))
     
 
-# Train the ols model
+# Train the OLS model
 for epoch in range(ols_epochs):
     total_loss_ols = 0
     for j in range(traj_num):
@@ -108,7 +110,7 @@ for epoch in range(ols_epochs):
             uv[0, 1, :, :] = v[j, i, :].reshape([nx, ny])
             uv = uv.to(device)
             outputs = model_ols(uv)
-            loss_ols = criterion(outputs, label[j, i, :, :].reshape(1, label_dim, nx, ny))
+            loss_ols = criterion(outputs, label[j, i, :, :].reshape(1, label_dim, nx, ny)).to(device)
             if j == test_index:
                 # test trajectory is used for validation
                 total_loss_ols = total_loss_ols + loss_ols.item()
@@ -123,6 +125,7 @@ for epoch in range(ols_epochs):
             .format(epoch+1, ols_epochs, total_loss_ols))
 
 
+# Train the TR model
 for epoch in range(tr_epochs):
     total_loss_tr = 0
     est_loss_tr = 0
@@ -134,13 +137,14 @@ for epoch in range(tr_epochs):
             uv = uv.to(device)
             uv.requires_grad = True
             outputs = model_tr(uv)
-            loss_tr = criterion(outputs, label[j, i, :, :].reshape(1, label_dim, nx, ny))
+            loss_tr = criterion(outputs, label[j, i, :, :].reshape(1, label_dim, nx, ny).to(device))
             est_etr = loss_tr.item()
-            z1         = torch.ones_like(uv)
+            z1         = torch.ones_like(uv).to(device)
             de_outputs = model_ed(uv)
             de_loss = criterion(de_outputs, uv)
             grad_de = torch.autograd.grad(de_loss, uv, create_graph = True)
             sum_ = torch.sum(grad_de[0] * outputs/torch.norm(grad_de[0]))
+            pdb.set_trace()
             loss_tr = loss_tr + lambda_*criterion(sum_, torch.tensor(0.0))
             if j == test_index:
                 # test trajectory is used for validation

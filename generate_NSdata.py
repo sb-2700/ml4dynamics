@@ -50,9 +50,10 @@ for j in range(traj_num):
     p_hist = np.zeros([step_num, nx, ny])
 
 
+    flag = True
     for i in range(step_num):
         t = i*dt
-        u, v = utils.projection_method(u, v, t, dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, eps=eps, dt=dt, Re=Re)
+        u, v, flag = utils.projection_method(u, v, t, dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, eps=eps, dt=dt, Re=Re, flag=flag)
         u_hist[i, :, :] = u[1:-1, 1:-1]
         v_hist[i, :, :] = v[1:-1, :-1]
         p_hist[i, :, :] = p 

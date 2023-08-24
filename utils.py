@@ -6,6 +6,7 @@ import scipy.linalg as scalg
 import scipy.sparse as spa
 import torch.nn as nn
 import copy
+import pdb
 
 
 from scipy.sparse.linalg import spsolve as sps
@@ -287,13 +288,13 @@ def assembly_NSmatrix(nx, ny, dt, dx, dy):
     return    
 
 
-def projection_method(u, v, t, dx=1/32, dy=1/32, nx=128, ny=32, y0=0.325, eps=1e-7, dt=.01, Re=100):
+def projection_method(u, v, t, dx=1/32, dy=1/32, nx=128, ny=32, y0=0.325, eps=1e-7, dt=.01, Re=100, flag=True):
     """projection method to solve the incompressible NS equation
     The convection discretization is given by central difference
     u_ij (u_i+1,j - u_i-1,j)/2dx + \Sigma v_ij (u_i,j+1 - u_i,j-1)/2dx"""
     
     
-    global divu, L, p, flag
+    global divu, L, p
     
     
     #if 'L' in locals():
@@ -338,11 +339,11 @@ def projection_method(u, v, t, dx=1/32, dy=1/32, nx=128, ny=32, y0=0.325, eps=1e
     
     # check the corrected velocity field is divergence free
     divu = (u[1:-1, 1:-1] - u[:-2, 1:-1])/dx + (v[1:-1, 1:] - v[1:-1, :-1])/dy
-    if nalg.norm(divu) > eps:
+    if flag and nalg.norm(divu) > eps:
         print(nalg.norm(divu))
         print(t)
         print("Velocity field is not divergence free!!!")
-        flag = True
+        flag = False
         
         
     # update Dirichlet BC on left, upper, lower boundary
@@ -355,4 +356,4 @@ def projection_method(u, v, t, dx=1/32, dy=1/32, nx=128, ny=32, y0=0.325, eps=1e
     #v[-1, 1:-1] = v[-1, 1:-1] + (p[-1, 1:] - p[-1, :-1])/dy
 
 
-    return u, v
+    return u, v, flag
