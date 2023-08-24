@@ -1,15 +1,8 @@
-#python training.py  --beta 1.0
-#python training.py  --beta 0.8
-#python training.py  --beta 0.6
-#python training.py  --beta 0.4
-#python training.py  --beta 0.2
-python training.py --type NS --n 128 --Re 100
-python training.py --type NS --n 128 --Re 200
-python training.py --type NS --n 128 --Re 300
-python training.py --type NS --n 128 --Re 400
-python training.py --type NS --n 128 --Re 500
-python training.py --type NS --n 256 --Re 100
-python training.py --type NS --n 256 --Re 200
-python training.py --type NS --n 256 --Re 300
-python training.py --type NS --n 256 --Re 400
-python training.py --type NS --n 256 --Re 500
+mkdir log
+rm ../models/NS/*
+rm ../models/RD/*
+python training.py --type NS --n 128 --Re 100 --GPU 0 > log/NS128-100.txt 2>&1 &
+python training.py --type NS --n 128 --Re 200 --GPU 0 > log/NS128-200.txt 2>&1 &
+python training.py --type NS --n 128 --Re 300 --GPU 0 > log/NS128-300.txt 2>&1 &
+python training.py --type NS --n 128 --Re 400 --GPU 1 > log/NS128-400.txt 2>&1 &
+python training.py --type NS --n 128 --Re 500 --GPU 1 > log/NS128-500.txt 2>&1 &

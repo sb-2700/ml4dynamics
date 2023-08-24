@@ -27,6 +27,7 @@ traj_num = 10
 eps = 1e-7
 dt = .01
 T = 10
+patience = 50           # we admit 50 times blow up generations
 step_num = int(T/dt)
 r.seed(0)
 utils.assembly_NSmatrix(nx, ny, dt, dx, dy)
@@ -35,9 +36,10 @@ v_hist_ = np.zeros([traj_num, step_num, nx, ny])
 p_hist_ = np.zeros([traj_num, step_num, nx, ny])
 
 
-for j in range(traj_num):
-
-
+j = 0
+i = 0
+while j < traj_num and i < patience: 
+    i = i+1
     print('generating the {}-th trajectory...'.format(j))
     y0 = r.rand()*0.4 + 0.3
     u = np.zeros([nx+2, ny+2])
@@ -51,18 +53,27 @@ for j in range(traj_num):
 
 
     flag = True
-    for i in range(step_num):
-        t = i*dt
+    for k in range(step_num):
+        t = k*dt
         u, v, flag = utils.projection_method(u, v, t, dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, eps=eps, dt=dt, Re=Re, flag=flag)
+        if flag == False:
+            break
         u_hist[i, :, :] = u[1:-1, 1:-1]
         v_hist[i, :, :] = v[1:-1, :-1]
         p_hist[i, :, :] = p 
-    u_hist_[j] = copy.deepcopy(u_hist)
-    v_hist_[j] = copy.deepcopy(v_hist)
-    p_hist_[j] = copy.deepcopy(p_hist)
 
 
-u = copy.deepcopy(u_hist_)
-v = copy.deepcopy(v_hist_)
-p = copy.deepcopy(p_hist_)
-np.savez('../data/NS/n{}Re{}.npz'.format(nx, Re), arg=[nx, ny, dt, T], u=u, v=v, label=p)
+    if flag:
+    # successful generating traj
+        u_hist_[j] = copy.deepcopy(u_hist)
+        v_hist_[j] = copy.deepcopy(v_hist)
+        p_hist_[j] = copy.deepcopy(p_hist)
+        j = j+1
+
+
+if j == traj_num:
+    u = copy.deepcopy(u_hist_)
+    v = copy.deepcopy(v_hist_)
+    p = copy.deepcopy(p_hist_)
+    label_dim = 1
+    np.savez('../data/NS/{}-{}.npz'.format(nx, Re), arg=[nx, ny, dt, T, label_dim], u=u, v=v, label=p)

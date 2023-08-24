@@ -12,36 +12,37 @@ parser.add_argument('--beta', type=float, default=0.2)
 parser.add_argument('--Re', type=int, default=400)
 parser.add_argument('--n', type=int, default=64)
 parser.add_argument('--type', type=str, default='RD')
+parser.add_argument('--GPU', type=int, default=0)
 args = parser.parse_args()
 beta = args.beta
 Re = args.Re
 n = args.n
 type = args.type
+GPU = args.GPU
+if type == 'RD':
+    class_ = int(beta*10)
+else:
+    class_ = Re
 print('Training {} model with n = {}, beta = {:.1f}, Re = {} ...'.format(type, n, beta, Re))
 
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:{}'.format(GPU) if torch.cuda.is_available() else 'cpu')
 r.seed(0)
 
 
 # need to unify the naming for the data & models
-if type == 'RD':
-    arg, u, v, label = read_data('RD/n{}beta{:.1f}.npz'.format(n, beta))
-    label_dim = 2
-elif type == 'NS':
-    arg, u, v, label = read_data('NS/n{}Re{}.npz'.format(n, Re))
-    label_dim = 1
-nx, ny, dt, T = arg
+arg, u, v, label = read_data('{}/{}-{}.npz'.format(type, n, class_))
+nx, ny, dt, T, label_dim = arg
 nx = int(nx)
 ny = int(ny)
 traj_num = u.shape[0]
 step_num = u.shape[1]
 test_index = int(np.floor(r.rand() * traj_num))
 sample_num = (traj_num-1) * step_num
-ed_epochs = 10
-ols_epochs = 2
-tr_epochs = 10
-write_interval = 2
+ed_epochs = 50
+ols_epochs = 10
+tr_epochs = 50
+write_interval = 5
 lambda_ = torch.tensor(1, requires_grad=False).to(device)
 
 
@@ -162,6 +163,6 @@ for epoch in range(tr_epochs):
                 .format(epoch+1, tr_epochs, total_loss_tr, est_loss_tr))
     
 
-torch.save(model_ols.state_dict(), '../models/{}/OLS-n{}beta{:.1f}.pth'.format(type, n, beta))
-torch.save(model_tr.state_dict(), '../models/{}/TR-n{}beta{:.1f}.pth'.format(type, n, beta))
-torch.save(model_ed.state_dict(), '../models/{}/ED-n{}beta{:.1f}.pth'.format(type, n, beta))
+torch.save(model_ols.state_dict(), '../models/{}/OLS-{}-{}.pth'.format(type, n, class_))
+torch.save(model_tr.state_dict(), '../models/{}/TR-{}-{}.pth'.format(type, n, class_))
+torch.save(model_ed.state_dict(), '../models/{}/ED-{}-{}.pth'.format(type, n, class_))
