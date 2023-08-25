@@ -15,14 +15,11 @@ from scipy.sparse.linalg import spsolve as sps
 def read_data(filename=None):
 
 
-    global u,v,label
-    data = np.load('../data/'+filename)
+    data = np.load(filename)
     u = torch.from_numpy(data['u']).to(torch.float32)
     v = torch.from_numpy(data['v']).to(torch.float32)
     label = torch.from_numpy(data['label']).to(torch.float32)
     arg = data['arg']
-    
-
     return arg, u, v, label
 
 

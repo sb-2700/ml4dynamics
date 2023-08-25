@@ -31,8 +31,8 @@ patience = 50           # we admit 50 times blow up generations
 step_num = int(T/dt)
 r.seed(0)
 utils.assembly_NSmatrix(nx, ny, dt, dx, dy)
-u_hist_ = np.zeros([traj_num, step_num, nx, ny])
-v_hist_ = np.zeros([traj_num, step_num, nx, ny])
+u_hist_ = np.zeros([traj_num, step_num, nx+2, ny+2])
+v_hist_ = np.zeros([traj_num, step_num, nx+2, ny+1])
 p_hist_ = np.zeros([traj_num, step_num, nx, ny])
 
 
@@ -47,8 +47,8 @@ while j < traj_num and i < patience:
     p = np.zeros([nx, ny])      # staggered grid, the size of grid p is undetermined
     divu = np.zeros([nx, ny])   # source term in poisson equation: divergence of the predicted velocity field
     u[0, 1:-1] = np.exp(-50*(np.linspace(dy/2, 1-dy/2, ny) - y0)**2)
-    u_hist = np.zeros([step_num, nx, ny])
-    v_hist = np.zeros([step_num, nx, ny])
+    u_hist = np.zeros([step_num, nx+2, ny+2])
+    v_hist = np.zeros([step_num, nx+2, ny+1])
     p_hist = np.zeros([step_num, nx, ny])
 
 
@@ -58,9 +58,9 @@ while j < traj_num and i < patience:
         u, v, flag = utils.projection_method(u, v, t, dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, eps=eps, dt=dt, Re=Re, flag=flag)
         if flag == False:
             break
-        u_hist[i, :, :] = u[1:-1, 1:-1]
-        v_hist[i, :, :] = v[1:-1, :-1]
-        p_hist[i, :, :] = p 
+        u_hist[k, :, :] = copy.deepcopy(u)
+        v_hist[k, :, :] = copy.deepcopy(v)
+        p_hist[k, :, :] = copy.deepcopy(p) 
 
 
     if flag:
@@ -72,8 +72,9 @@ while j < traj_num and i < patience:
 
 
 if j == traj_num:
-    u = copy.deepcopy(u_hist_)
-    v = copy.deepcopy(v_hist_)
-    p = copy.deepcopy(p_hist_)
     label_dim = 1
-    np.savez('../data/NS/{}-{}.npz'.format(nx, Re), arg=[nx, ny, dt, T, label_dim], u=u, v=v, label=p)
+    np.savez('../data/NS/{}-{}.npz'.format(nx, Re), 
+             arg=[nx, ny, dt, T, label_dim], 
+             u=u_hist_, 
+             v=v_hist_, 
+             label=p_hist_)

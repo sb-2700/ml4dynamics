@@ -11,7 +11,7 @@ from matplotlib import cm
 
 parser = argparse.ArgumentParser(description='manual to this script')
 parser.add_argument('--beta', type=float, default=0.2)
-parser.add_argument('--Re', type=int, default=1)
+parser.add_argument('--Re', type=int, default=400)
 parser.add_argument('--n', type=int, default=64)
 parser.add_argument('--type', type=str, default='RD')
 args = parser.parse_args()
@@ -19,54 +19,60 @@ beta = args.beta
 Re = args.Re
 n = args.n
 type = args.type
+if type == 'RD':
+    class_ = int(beta*10)
+else:
+    class_ = Re
+print('Training {} model with n = {}, beta = {:.1f}, Re = {} ...'.format(type, n, beta, Re))
 
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu')
 r.seed(0)
 
 
-type = 'RD'
-# this step we can simplify to read nx, ny from data file
-if type == 'RD':
-    u, v, label = read_data('RD/n{}beta{:.1f}.npz'.format(n, beta))
-    dt = 0.01
-    traj_num = u.shape[0]
-    step_num = u.shape[1]
-    nx = n
-    ny = n
-elif type == 'NS':
-    u, v, label = read_data('NS/n{}Re{:.1f}.npz'.format(n, beta))
-    dt = 0.01
-    dt = 0.01
-    traj_num = u.shape[0]
-    step_num = u.shape[1]
-    nx = 130
-    ny = 34
-else:
-    print('Unknown fluid type!!!')
-    raise NameError
+arg, u, v, label = read_data('../../data/{}/{}-{}.npz'.format(type, n, class_))
+#arg, u, v, label = read_data('../../data/NS/128-100.npz')
+label = label.to(device)
+nx, ny, dt, T, label_dim = arg
+nx = int(nx)
+ny = int(ny)
+label_dim = int(label_dim)
+traj_num = u.shape[0]
+step_num = u.shape[1]
+# notice here we use the same random seed as training.py, meaning we have the same test traj
+test_index = int(np.floor(r.rand() * traj_num))
     
 
-
-# loading models
-model_ols = UNet().to(device)
-model_ols.load_state_dict(torch.load('../models/RD/OLS-n{}beta{:.1f}.pth'.format(n, beta)))
+model_ols = UNet([2,4,8,16,32,64,1]).to(device)
+model_ols.load_state_dict(torch.load('../../models/{}/OLS-{}-{}.pth'.format(type, n, class_), 
+                                    map_location=torch.device('cpu')))
 model_ols.eval()
 model_ed = EDNet().to(device)
-model_ed.load_state_dict(torch.load('../models/RD/ED-n{}beta{:.1f}.pth'.format(n, beta)))
+model_ed.load_state_dict(torch.load('../../models/{}/ED-{}-{}.pth'.format(type, n, class_),
+                                    map_location=torch.device('cpu')))
 model_ed.eval()
 
-
-test_index = 0
-test_index = int(np.floor(r.rand() * traj_num))     # setting the same seed means we will have the same test traj
-u64_np = copy.deepcopy(u[test_index].numpy()).reshape([step_num, nx, ny])
-v64_np = copy.deepcopy(v[test_index].numpy()).reshape([step_num, nx, ny])
+ 
+u64_np = copy.deepcopy(u[test_index].numpy()).reshape([step_num, nx+2, ny+2])
+v64_np = copy.deepcopy(v[test_index].numpy()).reshape([step_num, nx+2, ny+1])
 
 
 if type == 'RD':
-    simulator_ols = RD_Simulator(model_ols, model_ed, device, u_hist=u64_np, v_hist=v64_np, step_num=step_num,dt=dt)
+    simulator_ols = RD_Simulator(model_ols, 
+                                 model_ed, 
+                                 device, 
+                                 u_hist=u64_np, 
+                                 v_hist=v64_np, 
+                                 step_num=step_num,
+                                 dt=dt)
 else:
-    simulator_ols = NS_Simulator(model_ols, model_ed, device, u_hist=u64_np, v_hist=v64_np, step_num=step_num,dt=dt)
+    simulator_ols = NS_Simulator(model_ols, 
+                                 model_ed, 
+                                 device, 
+                                 u_hist=u64_np, 
+                                 v_hist=v64_np, 
+                                 step_num=step_num,
+                                 dt=dt)
 simulator_ols.simulator()  
 
 
@@ -83,8 +89,7 @@ hspace = 0.01
 wspace = -0.35
 fraction = 0.024
 pad = 0.001
-if type == 'RD':
-    t_array = np.array([0, 20, 40, 60, 80])
+t_array = np.array([0.0, 0.2, 0.4, 0.6, 0.8]*step_num).astype(int)
 ax1 = []
 ax2 = []
 for i in range(fig_num):
@@ -101,7 +106,7 @@ plt.subplots_adjust(wspace=wspace)
 for i in range(fig_num):
     cbar = fig.colorbar(im, ax=[ax1[i], ax2[i]], fraction=fraction, pad=pad, orientation='horizontal')
     cbar.ax.tick_params(labelsize=5)
-plt.savefig('../fig/exp1/{}/1.jpg'.format(type), dpi = 1000, bbox_inches='tight', pad_inches=0)
+plt.savefig('../../fig/exp1/{}/1.jpg'.format(type), dpi = 1000, bbox_inches='tight', pad_inches=0)
 #plt.show()
 plt.clf()
 
@@ -120,5 +125,5 @@ ax1 = ax.twinx()
 ax1.plot(np.log10(simulator_ols.ds_hist[:-1]), label='OLS log(ds)', color='r', linewidth=.5, linestyle='dashed')
 ax1.legend(bbox_to_anchor = (0.1, 0.8), loc = 'upper left', borderaxespad = 0., fontsize=5)
 ax1.set_ylabel('log of dds', fontsize=5)
-plt.savefig('../fig/exp1/{}/2.jpg'.format(type), dpi = 1000, bbox_inches='tight', pad_inches=0)
+plt.savefig('../../fig/exp1/{}/2.jpg'.format(type), dpi = 1000, bbox_inches='tight', pad_inches=0)
 #plt.show()

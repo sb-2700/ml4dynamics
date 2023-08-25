@@ -256,7 +256,7 @@ class NS_Simulator(Simulator):
 
 
         uv = torch.zeros([1, 2, self.nx, self.ny])
-        print(type(u[1:-1,1:-1]))
+        #print(type(u[1:-1,1:-1]))
         uv[0, 0, :, :] = torch.from_numpy(u[1:-1,1:-1])
         uv[0, 1, :, :] = torch.from_numpy(v[1:-1,1:])
         uv = uv.to(self.device)

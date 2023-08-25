@@ -30,19 +30,26 @@ device = torch.device('cuda:{}'.format(GPU) if torch.cuda.is_available() else 'c
 r.seed(0)
 
 
-# need to unify the naming for the data & models
-arg, u, v, label = read_data('{}/{}-{}.npz'.format(type, n, class_))
+arg, u, v, label = read_data('../data/{}/{}-{}.npz'.format(type, n, class_))
+label = label.to(device)
 nx, ny, dt, T, label_dim = arg
 nx = int(nx)
 ny = int(ny)
+label_dim = int(label_dim)
+if type == 'NS':
+    u = u[:, :, 1:-1, 1:-1]
+    v = v[:, :, 1:-1, :-1]
 traj_num = u.shape[0]
 step_num = u.shape[1]
 test_index = int(np.floor(r.rand() * traj_num))
 sample_num = (traj_num-1) * step_num
-ed_epochs = 50
-ols_epochs = 10
-tr_epochs = 50
-write_interval = 5
+ed_epochs = 20
+ols_epochs = 2
+tr_epochs = 20
+learning_rate = 1e-3
+factor = 0.8            # learning rate decay factor
+write_interval = 2
+period = 2              # related to the scheduler
 lambda_ = torch.tensor(1, requires_grad=False).to(device)
 
 
@@ -66,15 +73,14 @@ model_ed = EDNet().to(device)
 
 
 # Loss and optimizer
-learning_rate = 1e-4
 criterion = nn.MSELoss()
 optimizer_ed = torch.optim.Adam(model_ed.parameters(), lr=learning_rate)
 optimizer_ols = torch.optim.Adam(model_ols.parameters(), lr=learning_rate)
 optimizer_tr = torch.optim.Adam(model_tr.parameters(), lr=learning_rate)
 # maybe try other scheduler
-scheduler_ed = ReduceLROnPlateau(optimizer_ed, mode='min', factor=0.5, patience=10*sample_num, verbose=True)
-scheduler_ols = ReduceLROnPlateau(optimizer_ols, mode='min', factor=0.5, patience=10*sample_num, verbose=True)
-scheduler_tr = ReduceLROnPlateau(optimizer_tr, mode='min', factor=0.5, patience=10*sample_num, verbose=True)
+scheduler_ed = ReduceLROnPlateau(optimizer_ed, mode='min', factor=factor, patience=period*sample_num, verbose=True)
+scheduler_ols = ReduceLROnPlateau(optimizer_ols, mode='min', factor=factor, patience=period*sample_num, verbose=True)
+scheduler_tr = ReduceLROnPlateau(optimizer_tr, mode='min', factor=factor, patience=period*sample_num, verbose=True)
 
 
 for epoch in range(ed_epochs):
@@ -111,7 +117,7 @@ for epoch in range(ols_epochs):
             uv[0, 1, :, :] = v[j, i, :].reshape([nx, ny])
             uv = uv.to(device)
             outputs = model_ols(uv)
-            loss_ols = criterion(outputs, label[j, i, :, :].reshape(1, label_dim, nx, ny)).to(device)
+            loss_ols = criterion(outputs, label[j, i, :, :].reshape(1, label_dim, nx, ny))
             if j == test_index:
                 # test trajectory is used for validation
                 total_loss_ols = total_loss_ols + loss_ols.item()
@@ -138,15 +144,15 @@ for epoch in range(tr_epochs):
             uv = uv.to(device)
             uv.requires_grad = True
             outputs = model_tr(uv)
-            loss_tr = criterion(outputs, label[j, i, :, :].reshape(1, label_dim, nx, ny).to(device))
+            loss_tr = criterion(outputs, label[j, i, :, :].reshape(1, label_dim, nx, ny))
             est_etr = loss_tr.item()
             z1         = torch.ones_like(uv).to(device)
             de_outputs = model_ed(uv)
             de_loss = criterion(de_outputs, uv)
             grad_de = torch.autograd.grad(de_loss, uv, create_graph = True)
             sum_ = torch.sum(grad_de[0] * outputs/torch.norm(grad_de[0]))
-            pdb.set_trace()
-            loss_tr = loss_tr + lambda_*criterion(sum_, torch.tensor(0.0))
+            #pdb.set_trace()
+            loss_tr = loss_tr + lambda_*criterion(sum_, torch.tensor(0.0).to(device))
             if j == test_index:
                 # test trajectory is used for validation
                 total_loss_tr = total_loss_tr + loss_tr.item()
