@@ -64,8 +64,12 @@ class Simulator():
             raise NameError
         
         
-        for i in range(self.step_num-1):
-            self.outer_step()
+        for i in range(1, self.step_num):
+            try:
+                self.outer_step()
+            except OverflowError as e:
+                print("Overflow error happened at time step {}".format(i))
+                print(f"{e}, {e.__class__}")
 
 
             uv = torch.zeros([1, 2, self.nx, self.ny], dtype=torch.float32)
@@ -83,9 +87,11 @@ class Simulator():
                 raise NameError
             uv = uv.to(self.device)
             output = self.ed_model(uv)
+            self.u_hist_simu[i] = copy.deepcopy(self.u)
+            self.v_hist_simu[i] = copy.deepcopy(self.v)
             self.ds_hist[i] = self.criterion(uv, output).item()
-            self.error_hist[i] = nalg.norm(self.u - self.u_hist[i], 'fro') + \
-                                 nalg.norm(self.v - self.v_hist[i], 'fro')
+            self.error_hist[i] = nalg.norm(self.u - self.u_hist[i], 'fro')**2 + \
+                                 nalg.norm(self.v - self.v_hist[i], 'fro')**2
             if self.fluid_type == 'NS':
                 self.div_hist[i] = np.sum((self.u[1:-1, 1:-1] - self.u[:-2, 1:-1])/self.dx + (self.v[1:-1, 1:] - self.v[1:-1, :-1])/self.dx)
 
@@ -282,7 +288,7 @@ class NS_Simulator(Simulator):
         self.v = v
 
 
-        omega = 0.01
+        omega = 0.88
         i = int(self.t / self.dt)
         #self.u = self.u_hist[i]
         #self.v = self.v_hist[i]

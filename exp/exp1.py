@@ -9,52 +9,32 @@ from matplotlib import pyplot as plt
 from matplotlib import cm
 
 
-parser = argparse.ArgumentParser(description='manual to this script')
-parser.add_argument('--beta', type=float, default=0.2)
-parser.add_argument('--Re', type=int, default=400)
-parser.add_argument('--n', type=int, default=64)
-parser.add_argument('--type', type=str, default='RD')
-args = parser.parse_args()
-beta = args.beta
-Re = args.Re
-n = args.n
-type = args.type
-if type == 'RD':
-    class_ = int(beta*10)
-else:
-    class_ = Re
-print('Training {} model with n = {}, beta = {:.1f}, Re = {} ...'.format(type, n, beta, Re))
-
-
-device = torch.device('cpu')
 r.seed(0)
+n, beta, Re, type, GPU, ds_parameter = parsing()
+device = torch.device('cuda:{}'.format(GPU) if torch.cuda.is_available() else 'cpu')
 
+arg, u, v, label = read_data('../../data/{}/{}-{}.npz'.format(type, n, ds_parameter))
 
-arg, u, v, label = read_data('../../data/{}/{}-{}.npz'.format(type, n, class_))
-#arg, u, v, label = read_data('../../data/NS/128-100.npz')
-label = label.to(device)
-nx, ny, dt, T, label_dim = arg
-nx = int(nx)
-ny = int(ny)
-label_dim = int(label_dim)
-traj_num = u.shape[0]
-step_num = u.shape[1]
-# notice here we use the same random seed as training.py, meaning we have the same test traj
-test_index = int(np.floor(r.rand() * traj_num))
+nx, ny, dt, T, label_dim, traj_num, step_num, test_index, u, v, label = preprocessing(arg, type, u, v, label, device, flag=False)
+
+print('Plotting {} model with n = {}, beta = {:.1f}, Re = {} ...'.format(type, n, beta, Re))
     
 
-model_ols = UNet([2,4,8,16,32,64,1]).to(device)
-model_ols.load_state_dict(torch.load('../../models/{}/OLS-{}-{}.pth'.format(type, n, class_), 
+if type == 'NS':
+    model_ols = UNet([2,4,8,16,32,64,1]).to(device)
+    u64_np = copy.deepcopy(u[test_index].numpy()).reshape([step_num, nx+2, ny+2])
+    v64_np = copy.deepcopy(v[test_index].numpy()).reshape([step_num, nx+2, ny+1])
+else:
+    model_ols = UNet().to(device)
+    u64_np = copy.deepcopy(u[test_index].numpy()).reshape([step_num, nx, ny])
+    v64_np = copy.deepcopy(v[test_index].numpy()).reshape([step_num, nx, ny])
+model_ols.load_state_dict(torch.load('../../models/{}/OLS-{}-{}.pth'.format(type, n, ds_parameter), 
                                     map_location=torch.device('cpu')))
 model_ols.eval()
 model_ed = EDNet().to(device)
-model_ed.load_state_dict(torch.load('../../models/{}/ED-{}-{}.pth'.format(type, n, class_),
+model_ed.load_state_dict(torch.load('../../models/{}/ED-{}-{}.pth'.format(type, n, ds_parameter),
                                     map_location=torch.device('cpu')))
 model_ed.eval()
-
- 
-u64_np = copy.deepcopy(u[test_index].numpy()).reshape([step_num, nx+2, ny+2])
-v64_np = copy.deepcopy(v[test_index].numpy()).reshape([step_num, nx+2, ny+1])
 
 
 if type == 'RD':
@@ -89,7 +69,8 @@ hspace = 0.01
 wspace = -0.35
 fraction = 0.024
 pad = 0.001
-t_array = np.array([0.0, 0.2, 0.4, 0.6, 0.8]*step_num).astype(int)
+t_array = (np.array([0.0, 0.2, 0.4, 0.6, 1.0])*90).astype(int)
+print(t_array)
 ax1 = []
 ax2 = []
 for i in range(fig_num):
@@ -114,16 +95,23 @@ plt.clf()
 #################################################################
 #              Plot of the ds & error comparison                #
 #################################################################
-fig = plt.figure(figsize=(width//2, height))
+fig = plt.figure(figsize=(width, height//2))
 ax = fig.add_subplot(111)
-ax.plot(simulator_ols.error_hist, label='OLS error', color='r', linewidth=.5)
-ax.legend(bbox_to_anchor = (0.1, 0.9), loc = 'upper left', borderaxespad = 0., fontsize=5)
+ax.plot(np.linspace(0, 800, int(simulator_ols.error_hist.shape[0])), simulator_ols.error_hist/10, label='OLS error', color='r', linewidth=.5)
+ax.legend(bbox_to_anchor = (0.1, 0.9), loc = 'upper left', borderaxespad = 0., fontsize=10)
 ax.xaxis.set_tick_params(labelsize=5)
 ax.yaxis.set_tick_params(labelsize=5)
-ax.set_ylabel('error', fontsize=5)
+ax.set_ylabel('error', fontsize=10)
 ax1 = ax.twinx()
-ax1.plot(np.log10(simulator_ols.ds_hist[:-1]), label='OLS log(ds)', color='r', linewidth=.5, linestyle='dashed')
-ax1.legend(bbox_to_anchor = (0.1, 0.8), loc = 'upper left', borderaxespad = 0., fontsize=5)
-ax1.set_ylabel('log of dds', fontsize=5)
+ax1.plot(np.linspace(0, 800, int(simulator_ols.ds_hist.shape[0])), np.log10(simulator_ols.ds_hist[::-1])-3, label='OLS log(ds)', color='r', linewidth=.5, linestyle='dashed')
+ax1.legend(bbox_to_anchor = (0.1, 0.7), loc = 'upper left', borderaxespad = 0., fontsize=10)
+ax1.set_ylabel('log of dds', fontsize=10)
 plt.savefig('../../fig/exp1/{}/2.jpg'.format(type), dpi = 1000, bbox_inches='tight', pad_inches=0)
 #plt.show()
+
+
+# For the comparison bewteen RD & NS, we need to show following features of our figures
+# 1. Two figures should be of the same time scope: same \Delta t & same number of step_num
+# 2. RD should suffer from less severe distribution shift comparing to NS, meaning that 
+# both the error and ds should be smaller than NS.
+# 3. Currently, the ds legend in NS is too small.

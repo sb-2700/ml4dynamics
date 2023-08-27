@@ -28,12 +28,13 @@ eps = 1e-7
 dt = .01
 T = 10
 patience = 50           # we admit 50 times blow up generations
-step_num = int(T/dt)
+warm_up = 50
+step_num = int(T/dt) + warm_up       # relax_time is used to simulate the fluid to a physical configuration
 r.seed(0)
 utils.assembly_NSmatrix(nx, ny, dt, dx, dy)
-u_hist_ = np.zeros([traj_num, step_num, nx+2, ny+2])
-v_hist_ = np.zeros([traj_num, step_num, nx+2, ny+1])
-p_hist_ = np.zeros([traj_num, step_num, nx, ny])
+u_hist_ = np.zeros([traj_num, step_num-warm_up, nx+2, ny+2])
+v_hist_ = np.zeros([traj_num, step_num-warm_up, nx+2, ny+1])
+p_hist_ = np.zeros([traj_num, step_num-warm_up, nx, ny])
 
 
 j = 0
@@ -55,7 +56,7 @@ while j < traj_num and i < patience:
     flag = True
     for k in range(step_num):
         t = k*dt
-        u, v, flag = utils.projection_method(u, v, t, dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, eps=eps, dt=dt, Re=Re, flag=flag)
+        u, v, p, flag = utils.projection_method(u, v, t, dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, eps=eps, dt=dt, Re=Re, flag=flag)
         if flag == False:
             break
         u_hist[k, :, :] = copy.deepcopy(u)
@@ -65,9 +66,9 @@ while j < traj_num and i < patience:
 
     if flag:
     # successful generating traj
-        u_hist_[j] = copy.deepcopy(u_hist)
-        v_hist_[j] = copy.deepcopy(v_hist)
-        p_hist_[j] = copy.deepcopy(p_hist)
+        u_hist_[j] = copy.deepcopy(u_hist[warm_up:])
+        v_hist_[j] = copy.deepcopy(v_hist[warm_up:])
+        p_hist_[j] = copy.deepcopy(p_hist[warm_up:])
         j = j+1
 
 

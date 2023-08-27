@@ -1,19 +1,17 @@
+import os
+import copy
+import argparse
+import pdb
 import torch
 import numpy as np
 import numpy.linalg as nalg
 import numpy.random as r
 import scipy.linalg as scalg
 import scipy.sparse as spa
-import torch.nn as nn
-import copy
-import pdb
-
 
 from scipy.sparse.linalg import spsolve as sps
 
-
 def read_data(filename=None):
-
 
     data = np.load(filename)
     u = torch.from_numpy(data['u']).to(torch.float32)
@@ -23,53 +21,45 @@ def read_data(filename=None):
     return arg, u, v, label
 
 
-'''
-def read_data(i=0):
-    
-    
-    global u64, v64, label64, n, step_num
-    data_size = 1
-    u64 = np.load('data/u64-200.npy')
-    u64 = torch.from_numpy(u64)
-    u64 = u64.to(torch.float32)
-    u64 = u64[i, :, :]
-    v64 = np.load('data/v64-200.npy')
-    v64 = torch.from_numpy(v64)
-    v64 = v64.to(torch.float32)
-    v64 = v64[i, :, :]
-    labelu64 = np.load('data/labelu64-10.npy')
-    labelu64 = torch.from_numpy(labelu64)
-    labelu64 = labelu64.to(torch.float32)
-    labelu64 = labelu64[i, :, :, :]
-    labelv64 = np.load('data/labelv64-10.npy')
-    labelv64 = torch.from_numpy(labelv64)
-    labelv64 = labelv64.to(torch.float32)
-    labelv64 = labelv64[i, :, :, :]
-    label64 = torch.zeros(step_num, 2, n, n)
-    label64[:,0,:,:] = labelu64
-    label64[:,1,:,:] = labelv64
-    
-    
-    
-    label = torch.zeros(100, 2, n, n)
-    for i in range(u64.shape[0]):
-        label[i, 0, :, :] = (u64[i, :] - u64[i, :]**3 - v64[i, :] + alpha).reshape([n, n])
-        label[i, 1, :, :] = beta * (u64[i, :] - v64[i, :]).reshape([n, n])
-    label = label.to(torch.float32)
-    
-    
-    case_num = 40
-    if data_size == 0:
-        # randomly sample data from the total distribution
-        case_num = 10
-        tmp_x = torch.zeros([step_num, state_dim, case_num])
-        tmp_u = torch.zeros([step_num, case_num])
-        for i in range(case_num):
-            tmp = int(np.floor(r.rand() * traj_num))
-            tmp_x[:, :, i] = x[:, :, tmp].clone()
-            tmp_u[:, i] = u[:, tmp].clone()
-        x = tmp_x.clone()
-        u = tmp_u.clone()'''
+def parsing():
+    parser = argparse.ArgumentParser(description='manual to this script')
+    parser.add_argument('--type', type=str, default='RD')
+    parser.add_argument('--beta', type=float, default=0.2)
+    parser.add_argument('--Re', type=int, default=400)
+    parser.add_argument('--n', type=int, default=64)
+    parser.add_argument('--batch_size', type=int, default=1000)
+    parser.add_argument('--GPU', type=int, default=0)
+    args = parser.parse_args()
+    beta = args.beta
+    Re = args.Re
+    n = args.n
+    type = args.type
+    GPU = args.GPU
+    if type == 'RD':
+        ds_parameter = int(beta*10)
+    else:
+        ds_parameter = Re
+    return n, beta, Re, type, GPU, ds_parameter
+
+
+def preprocessing(arg, type, u, v, label, device, flag=True):
+    # later we can combine this function with the read_data function by
+    # including all the parameters into the .npz file
+    nx, ny, dt, T, label_dim = arg
+    nx = int(nx)
+    ny = int(ny)
+    label_dim = int(label_dim)
+    if flag and type == 'NS':
+        u = u[:, :, 1:-1, 1:-1]
+        v = v[:, :, 1:-1, :-1]
+    elif flag == False:
+        u = u[:, 50:]
+        v = v[:, 50:]
+    traj_num = u.shape[0]
+    step_num = u.shape[1]
+    test_index = int(np.floor(r.rand() * traj_num))
+    label = label.to(device)
+    return nx, ny, dt, T, label_dim, traj_num, step_num, test_index, u, v, label
 
 
 def assembly_RDmatrix(n, dt, dx, beta, gamma):
@@ -291,9 +281,6 @@ def projection_method(u, v, t, dx=1/32, dy=1/32, nx=128, ny=32, y0=0.325, eps=1e
     u_ij (u_i+1,j - u_i-1,j)/2dx + \Sigma v_ij (u_i,j+1 - u_i,j-1)/2dx"""
     
     
-    global divu, L, p
-    
-    
     #if 'L' in locals():
     #    print('L is a local variable')
     #if 'L' in globals():
@@ -353,4 +340,4 @@ def projection_method(u, v, t, dx=1/32, dy=1/32, nx=128, ny=32, y0=0.325, eps=1e
     #v[-1, 1:-1] = v[-1, 1:-1] + (p[-1, 1:] - p[-1, :-1])/dy
 
 
-    return u, v, flag
+    return u, v, p/dt, flag
