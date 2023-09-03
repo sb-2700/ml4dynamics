@@ -65,6 +65,7 @@ class Simulator():
         
         
         for i in range(1, self.step_num):
+            #print(i)
             try:
                 self.outer_step()
             except OverflowError as e:
@@ -288,7 +289,7 @@ class NS_Simulator(Simulator):
         self.v = v
 
 
-        omega = 0.88
+        omega = 0.7
         i = int(self.t / self.dt)
         #self.u = self.u_hist[i]
         #self.v = self.v_hist[i]

@@ -8,6 +8,8 @@ import numpy.linalg as nalg
 import numpy.random as r
 import scipy.linalg as scalg
 import scipy.sparse as spa
+from matplotlib import pyplot as plt
+from matplotlib import cm
 
 from scipy.sparse.linalg import spsolve as sps
 

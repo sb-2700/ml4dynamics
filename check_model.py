@@ -6,39 +6,27 @@ from models import *
 from matplotlib import pyplot as plt
 
 
-parser = argparse.ArgumentParser(description='manual to this script')
-parser.add_argument('--beta', type=float, default=0.2)
-parser.add_argument('--Re', type=int, default=400)
-parser.add_argument('--n', type=int, default=64)
-parser.add_argument('--type', type=str, default='NS')
-parser.add_argument('--GPU', type=int, default=0)
-parser.add_argument('--i', type=int, default=5)
-parser.add_argument('--end', type=int, default=500)
-args = parser.parse_args()
-beta = args.beta
-Re = args.Re
-n = args.n
-type = args.type
-GPU = args.GPU
-if type == 'RD':
-    ds_parameter = int(beta*10)
-else:
-    ds_parameter = Re
-i = args.i
-end = args.end
 r.seed(0)
-device = torch.device('cpu')
+n, beta, Re, type, GPU, ds_parameter = parsing()
+device = torch.device('cuda:{}'.format(GPU) if torch.cuda.is_available() else 'cpu')
+
 arg, u, v, label = read_data('../data/{}/{}-{}.npz'.format(type, n, ds_parameter))
-nx, ny, dt, T, label_dim, traj_num, step_num, test_index, u, v, label = preprocessing(arg, type, u, v, label, device)
-print(u.shape)
-print('Checking NS data and models with n = {}, Re = {} ...'.format(nx, Re))
 
+nx, ny, dt, T, label_dim, traj_num, step_num, test_index, u, v, label = preprocessing(arg, type, u, v, label, device, flag=False)
 
-model_ols = UNet([2,4,8,16,32,64,1]).to(device)
+print('Checking {} model with n = {}, beta = {:.1f}, Re = {} ...'.format(type, n, beta, Re))
+
 model_ed = EDNet().to(device)
-model_ed.load_state_dict(torch.load('../models/{}/ED-{}-{}.pth'.format(type, n, Re),
+model_ed.load_state_dict(torch.load('../models/{}/ED-{}-{}.pth'.format(type, n, ds_parameter),
                                     map_location=torch.device('cpu')))
 model_ed.eval()
+if type == 'NS':
+    model_ols = UNet([2,4,8,16,32,64,1]).to(device)
+else:
+    model_ols = UNet()
+model_ols.load_state_dict(torch.load('../models/{}/TR-{}-{}.pth'.format(type, n, ds_parameter),
+                                    map_location=torch.device('cpu')))
+model_ols.eval()
 criterion = nn.MSELoss()
 
 
@@ -66,6 +54,7 @@ plt.show()'''
 # autoencoder, OLS, and TR models                   #
 #####################################################
 eps = 0.0
+end = 20
 batch_size = 1
 uv = torch.zeros([batch_size, 2, nx, ny])
 #uv[0, 0, :, :] = u[test_index, end].reshape([nx, ny]) + torch.randn(nx, ny) * eps
@@ -76,9 +65,26 @@ uv = uv.to(device)
 outputs1 = model_ed(uv)
 outputs2 = model_ols(uv)
 loss_ed = criterion(outputs1, uv)
-loss_ols = criterion(outputs2, label[test_index, end:end+batch_size].to(device))
+#pdb.set_trace()
+loss_ols = criterion(outputs2, label[test_index, end:end+batch_size].reshape([label_dim, nx, ny]).to(device))
 
 
 print('Autoencoder Loss: {:4f}'.format(loss_ed.item()))
 print('OLS Loss: {:4f}'.format(loss_ols.item()))
 print(torch.norm(torch.randn(n, n) * eps, p='fro'))
+
+
+test_loss = 0
+batch_size = 10
+print(u.shape)
+print(label.shape)
+for j in range(traj_num):
+    for i in range(0, step_num-batch_size, batch_size):
+        uv = torch.zeros([batch_size, 2, nx, ny])
+        uv[:, 0, :, :] = u[j, i:i+batch_size].reshape([batch_size, nx, ny])
+        uv[:, 1, :, :] = v[j, i:i+batch_size].reshape([batch_size, nx, ny])
+        uv = uv.to(device)
+        outputs = model_ols(uv)
+        loss_ols = criterion(outputs, label[j, i:i+batch_size, :, :].reshape(batch_size, label_dim, nx, ny))
+        print('{}-th traj Loss: {:4e}'.format(j, loss_ols.item()))
+#pdb.set_trace()

@@ -24,7 +24,15 @@ need to add arguments to these two functions to specifies the dimension of the d
 currently, n=256, Re=100, 400, 500 the data is unavailable
 
 ### Questions
-Where should I define the data variable `u` first time? Either in the script where we use to data to training, or the utils.py file where we define the read_data function
+Where should I define the data variable `u` first time? Either in the script where we use to data to training, or the utils.py file where we define the read_data function.
+
+Why the test loss is always smaller than the training loss?
+
+Try to plant a module which send u a msg when there is some issue encounter in training, either loss become NaN or some CUDA issues
+
+One of my recently really hard to detect bug is that I forget to load my learned model parameters in the test file, which results in wrong checking result in check.py. How can I avoid this?
+
+Currently, the data structure for RD and NS equations are not consistent, NS is nx * ny, while RD is n * 1
 
 
 ## training
@@ -85,3 +93,5 @@ just come up with an idea that we can put all the exp.py file in our local repo 
 > > + `scp file_name usr@address:pwd`
 > > + `tar -zxcf file_name pwd`
 > > + `git clone repo_address`
+> > 5. Be careful when you want to recheck the numerical results in remote server on local PC. Not only should the models and all the hyperparameters be the same, but also the data should be the same. 
+> > 6. It is a good habit to save the models and maybe prediction several times during the training, e.g. if the total training epoch is 50000, it is recommended to save the model per 5000 epochs.ß

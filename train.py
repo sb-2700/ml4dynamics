@@ -20,7 +20,7 @@ print('Training {} model with n = {}, beta = {:.1f}, Re = {} ...'.format(type, n
 sample_num = (traj_num-1) * step_num
 ed_epochs = 0
 ols_epochs = 0
-tr_epochs = 100
+tr_epochs = 1
 batch_size = 950
 learning_rate = 1e-4
 factor = 0.8            # learning rate decay factor
