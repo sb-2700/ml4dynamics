@@ -54,14 +54,10 @@ def preprocessing(arg, type, u, v, label, device, flag=True):
     if flag and type == 'NS':
         u = u[:, :, 1:-1, 1:-1]
         v = v[:, :, 1:-1, :-1]
-    elif flag == False:
-        u = u[:, 50:]
-        v = v[:, 50:]
     traj_num = u.shape[0]
     step_num = u.shape[1]
-    test_index = int(np.floor(r.rand() * traj_num))
     label = label.to(device)
-    return nx, ny, dt, T, label_dim, traj_num, step_num, test_index, u, v, label
+    return nx, ny, dt, T, label_dim, traj_num, step_num, u, v, label
 
 
 def assembly_RDmatrix(n, dt, dx, beta, gamma):

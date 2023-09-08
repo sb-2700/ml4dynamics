@@ -30,8 +30,6 @@ Why the test loss is always smaller than the training loss?
 
 Try to plant a module which send u a msg when there is some issue encounter in training, either loss become NaN or some CUDA issues
 
-One of my recently really hard to detect bug is that I forget to load my learned model parameters in the test file, which results in wrong checking result in check.py. How can I avoid this?
-
 Currently, the data structure for RD and NS equations are not consistent, NS is nx * ny, while RD is n * 1
 
 
@@ -74,9 +72,7 @@ just come up with an idea that we can put all the exp.py file in our local repo 
 `conda env create -f environment.yml`
 
 
-### Unsolved problems in the numerical experiment
-1. During training of the OLS model, the training loss is 7e-3 and test error 7e-3. However, when we download the model to local and test it over test trajectory, the error is 1e-1 which is significantly large than the error report.
-2. 
+### TODO
 
 
 ### General tips on code writing for MLHS

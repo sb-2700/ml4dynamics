@@ -189,7 +189,7 @@ class RD_Simulator(Simulator):
 
 class NS_Simulator(Simulator):
 
-    def __init__(self, model, ed_model, device, u_hist, v_hist, step_num=100, dt=0.01, Re=400, n=64, n2=32, type=1, nx=128, ny=32, y0=0.325, img_size=32):
+    def __init__(self, model, ed_model, device, u_hist, v_hist, step_num=100, dt=0.01, Re=400, n=64, n2=32, type=1, nx=128, ny=32, y0=0.325, img_size=32, correction=0.95):
         super(NS_Simulator, self).__init__(model, ed_model, device, u_hist, v_hist, step_num, dt, n, n2, type, img_size)
         self.nx = nx
         self.ny = ny
@@ -198,6 +198,7 @@ class NS_Simulator(Simulator):
         self.t = 0
         self.fluid_type = 'NS'
         self.set_matrix()
+        self.correction = correction
 
 
     def assembly_matrix(self, n, dt, dx):
@@ -289,12 +290,11 @@ class NS_Simulator(Simulator):
         self.v = v
 
 
-        omega = 0.7
         i = int(self.t / self.dt)
         #self.u = self.u_hist[i]
         #self.v = self.v_hist[i]
-        self.u = omega * self.u_hist[i] + (1-omega) * u
-        self.v = omega * self.v_hist[i] + (1-omega) * v
+        self.u = self.correction * self.u_hist[i] + (1-self.correction) * u
+        self.v = self.correction * self.v_hist[i] + (1-self.correction) * v
 
     """
     def outer_step(self):

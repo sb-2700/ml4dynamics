@@ -6,28 +6,29 @@ import numpy as np
 import numpy.random as r
 import copy
 import argparse
+import pdb
 
-
+# parse the simulation arguments
 parser = argparse.ArgumentParser(description='manual to this script')
 parser.add_argument('--beta', type=float, default=0.2)
 args = parser.parse_args()
 beta = args.beta
 print('Generating RD data with beta = {:.1f}...'.format(beta))
 
-
-widthx = 6.4
-widthy = 6.4
+# set simulation parameters
+widthx = 1.0
+widthy = 1.0
 dt = 0.01
-T = 2
-step_num = 200
+step_num = 1000
+T = step_num * dt
 alpha = 0.01
 gamma = 0.05
-warm_up = 5
-step_num = warm_up + step_num
+warm_up = 200
+writeInterval = 1
 tol = 1e-7
 r.seed(0)
 
-
+# simulating training trajectories
 case_num = 10
 traning_u64 = np.zeros([case_num, step_num, 64*64])
 traning_v64 = np.zeros([case_num, step_num, 64*64])
@@ -42,8 +43,8 @@ for i in range(case_num):
     # simulation in 128x128 grid
     n = 128
     dx = widthx/n
-    u_hist = np.zeros([step_num, n*n])
-    v_hist = np.zeros([step_num, n*n])
+    u_hist = np.zeros([step_num+warm_up, n*n])
+    v_hist = np.zeros([step_num+warm_up, n*n])
     utils.assembly_RDmatrix(n, dt, dx, beta, gamma)
     u_init = r.randn(n*n)
     v_init = r.randn(n*n)
@@ -51,9 +52,9 @@ for i in range(case_num):
 
     u = copy.deepcopy(u_init)
     v = copy.deepcopy(v_init)
-    u_hist, v_hist = utils.RD_semi(u, v, alpha=alpha, beta=beta, gamma=gamma, step_num=step_num, plot=False)
-    traning_u128[i, :, :] = copy.deepcopy(u_hist)
-    traning_v128[i, :, :] = copy.deepcopy(v_hist)
+    u_hist, v_hist = utils.RD_semi(u, v, alpha=alpha, beta=beta, gamma=gamma, step_num=step_num+warm_up, plot=False)
+    traning_u128[i, :, :] = copy.deepcopy(u_hist[warm_up:])
+    traning_v128[i, :, :] = copy.deepcopy(v_hist[warm_up:])
     traning_labelu128[i, :, :] = traning_u128[i, :, :] - traning_u128[i, :, :]**3 - traning_v128[i, :, :] - alpha
     traning_labelv128[i, :, :] = beta * (traning_u128[i, :, :] - traning_v128[i, :, :])
 
@@ -71,30 +72,30 @@ for i in range(case_num):
     n = 64
     dx = widthx/n
     utils.assembly_RDmatrix(n, dt, dx, beta, gamma)
-    u_hist = np.zeros([step_num, n*n])
-    v_hist = np.zeros([step_num, n*n])
+    u_hist = np.zeros([step_num+warm_up, n*n])
+    v_hist = np.zeros([step_num+warm_up, n*n])
     u = u.reshape(n*n)
     v = v.reshape(n*n)
-    u_hist, v_hist = utils.RD_semi(u, v, alpha=alpha, beta=beta, gamma=gamma, step_num=step_num, plot=False)
-    traning_u64[i, :, :] = copy.deepcopy(u_hist)
-    traning_v64[i, :, :] = copy.deepcopy(v_hist)
+    u_hist, v_hist = utils.RD_semi(u, v, alpha=alpha, beta=beta, gamma=gamma, step_num=step_num+warm_up, plot=False)
+    traning_u64[i, :, :] = copy.deepcopy(u_hist[warm_up:])
+    traning_v64[i, :, :] = copy.deepcopy(v_hist[warm_up:])
     traning_labelu64[i, :, :] = traning_u64[i, :, :] - traning_u64[i, :, :]**3 - traning_v64[i, :, :] - alpha
     traning_labelv64[i, :, :] = beta * (traning_u64[i, :, :] - traning_v64[i, :, :])          
 
-
-u = traning_u64[:, warm_up:, :]
-v = traning_v64[:, warm_up:, :]
-labelu = traning_labelu64[:, warm_up:, :]
-labelv = traning_labelv64[:, warm_up:, :]
+# save 64 x 64 data
+u = traning_u64.reshape([case_num, step_num, n, n])
+v = traning_v64.reshape([case_num, step_num, n, n])
+labelu = traning_labelu64.reshape([case_num, step_num, n, n])
+labelv = traning_labelv64.reshape([case_num, step_num, n, n])
 label = np.concatenate([np.expand_dims(labelu, axis=2), np.expand_dims(labelv, axis=2)], axis=2)
 label_dim = 2
 np.savez('../data/RD/64-{}.npz'.format(int(beta*10)), arg=[n, n, dt, T, label_dim], u=u, v=v, label=label)
 
-
-u = traning_u128[:, warm_up:, :]
-v = traning_v128[:, warm_up:, :]
-labelu = traning_labelu128[:, warm_up:, :]
-labelv = traning_labelv128[:, warm_up:, :]
-label = np.concatenate([np.expand_dims(labelu, axis=2), np.expand_dims(labelv, axis=2)], axis=2)
+# save 128 x 128 data
 n = 128
+u = traning_u128.reshape([case_num, step_num, n, n])
+v = traning_v128.reshape([case_num, step_num, n, n])
+labelu = traning_labelu128.reshape([case_num, step_num, n, n])
+labelv = traning_labelv128.reshape([case_num, step_num, n, n])
+label = np.concatenate([np.expand_dims(labelu, axis=2), np.expand_dims(labelv, axis=2)], axis=2)
 np.savez('../data/RD/128-{}.npz'.format(int(beta*10)), arg=[n, n, dt, T, label_dim], u=u, v=v, label=label)

@@ -1,7 +1,5 @@
 ###################################################
 #                   finished                      #
-# I am not sure if save data as 128x32 will       #
-# influce the result?                             #
 ###################################################
 import utils
 import numpy as np
@@ -23,18 +21,19 @@ dim = 2                     # dimension of the problem
 ny = nx//4
 dx = 1/ny
 dy = 1/ny
-traj_num = 10
+traj_num = 1
 eps = 1e-7
 dt = .01
-T = 10
-patience = 50           # we admit 50 times blow up generations
-warm_up = 50
-step_num = int(T/dt) + warm_up       # relax_time is used to simulate the fluid to a physical configuration
+step_num = 10000
+T = step_num * dt
+patience = 50                           # we admit 50 times blow up generations
+warm_up = 500
+writeInterval = 10
 r.seed(0)
 utils.assembly_NSmatrix(nx, ny, dt, dx, dy)
-u_hist_ = np.zeros([traj_num, step_num-warm_up, nx+2, ny+2])
-v_hist_ = np.zeros([traj_num, step_num-warm_up, nx+2, ny+1])
-p_hist_ = np.zeros([traj_num, step_num-warm_up, nx, ny])
+u_hist_ = np.zeros([traj_num, step_num//writeInterval, nx+2, ny+2])
+v_hist_ = np.zeros([traj_num, step_num//writeInterval, nx+2, ny+1])
+p_hist_ = np.zeros([traj_num, step_num//writeInterval, nx, ny])
 
 
 j = 0
@@ -48,27 +47,28 @@ while j < traj_num and i < patience:
     p = np.zeros([nx, ny])      # staggered grid, the size of grid p is undetermined
     divu = np.zeros([nx, ny])   # source term in poisson equation: divergence of the predicted velocity field
     u[0, 1:-1] = np.exp(-50*(np.linspace(dy/2, 1-dy/2, ny) - y0)**2)
-    u_hist = np.zeros([step_num, nx+2, ny+2])
-    v_hist = np.zeros([step_num, nx+2, ny+1])
-    p_hist = np.zeros([step_num, nx, ny])
+    u_hist = np.zeros([(step_num+warm_up)//writeInterval, nx+2, ny+2])
+    v_hist = np.zeros([(step_num+warm_up)//writeInterval, nx+2, ny+1])
+    p_hist = np.zeros([(step_num+warm_up)//writeInterval, nx, ny])
 
 
     flag = True
-    for k in range(step_num):
+    for k in range(step_num+warm_up):
         t = k*dt
         u, v, p, flag = utils.projection_method(u, v, t, dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, eps=eps, dt=dt, Re=Re, flag=flag)
         if flag == False:
             break
-        u_hist[k, :, :] = copy.deepcopy(u)
-        v_hist[k, :, :] = copy.deepcopy(v)
-        p_hist[k, :, :] = copy.deepcopy(p) 
+        if k%writeInterval == 0:
+            u_hist[k//writeInterval, :, :] = copy.deepcopy(u)
+            v_hist[k//writeInterval, :, :] = copy.deepcopy(v)
+            p_hist[k//writeInterval, :, :] = copy.deepcopy(p) 
 
 
     if flag:
     # successful generating traj
-        u_hist_[j] = copy.deepcopy(u_hist[warm_up:])
-        v_hist_[j] = copy.deepcopy(v_hist[warm_up:])
-        p_hist_[j] = copy.deepcopy(p_hist[warm_up:])
+        u_hist_[j] = copy.deepcopy(u_hist[warm_up//writeInterval:])
+        v_hist_[j] = copy.deepcopy(v_hist[warm_up//writeInterval:])
+        p_hist_[j] = copy.deepcopy(p_hist[warm_up//writeInterval:])
         j = j+1
 
 

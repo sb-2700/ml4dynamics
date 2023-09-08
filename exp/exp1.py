@@ -3,52 +3,11 @@
 from utils import *
 from simulator import *
 from models import *
+from test import test_simulator
 
 r.seed(0)
-n, beta, Re, type, GPU, ds_parameter = parsing()
-device = torch.device('cuda:{}'.format(GPU) if torch.cuda.is_available() else 'cpu')
-
-arg, u, v, label = read_data('../../data/{}/{}-{}.npz'.format(type, n, ds_parameter))
-
-nx, ny, dt, T, label_dim, traj_num, step_num, test_index, u, v, label = preprocessing(arg, type, u, v, label, device, flag=False)
-
-print('Plotting {} model with n = {}, beta = {:.1f}, Re = {} ...'.format(type, n, beta, Re))
-    
-if type == 'NS':
-    model_ols = UNet([2,4,8,16,32,64,1]).to(device)
-    u64_np = copy.deepcopy(u[test_index].numpy()).reshape([step_num, nx+2, ny+2])
-    v64_np = copy.deepcopy(v[test_index].numpy()).reshape([step_num, nx+2, ny+1])
-else:
-    model_ols = UNet().to(device)
-    u64_np = copy.deepcopy(u[test_index].numpy()).reshape([step_num, nx, ny])
-    v64_np = copy.deepcopy(v[test_index].numpy()).reshape([step_num, nx, ny])
-model_ols.load_state_dict(torch.load('../../models/{}/OLS-{}-{}.pth'.format(type, n, ds_parameter), 
-                                    map_location=torch.device('cpu')))
-model_ols.eval()
-model_ed = EDNet().to(device)
-model_ed.load_state_dict(torch.load('../../models/{}/ED-{}-{}.pth'.format(type, n, ds_parameter),
-                                    map_location=torch.device('cpu')))
-model_ed.eval()
-
-
-if type == 'RD':
-    simulator_ols = RD_Simulator(model_ols, 
-                                 model_ed, 
-                                 device, 
-                                 u_hist=u64_np, 
-                                 v_hist=v64_np, 
-                                 step_num=step_num,
-                                 dt=dt)
-else:
-    simulator_ols = NS_Simulator(model_ols, 
-                                 model_ed, 
-                                 device, 
-                                 u_hist=u64_np, 
-                                 v_hist=v64_np, 
-                                 step_num=step_num,
-                                 dt=dt)
-simulator_ols.simulator()  
-
+test_index = int(np.floor(r.rand() * 10))
+simulator_ols, type = test_simulator()
 
 plt.rcParams['savefig.dpi'] = 500
 plt.rcParams['figure.dpi']  = 500 
@@ -64,7 +23,7 @@ hspace = 0.01
 wspace = -0.40
 fraction = 0.024
 pad = 0.001
-time_scale = 700
+time_scale = 140
 t_array = (np.array([0.0, 0.2, 0.4, 0.6, 1.0])*time_scale).astype(int)
 print(t_array)
 ax1 = []
