@@ -17,7 +17,7 @@ nx, ny, dt, T, label_dim, traj_num, step_num, u, v, label = preprocessing(arg, t
 
 print('Checking {} model with n = {}, beta = {:.1f}, Re = {} ...'.format(type, n, beta, Re))
 
-pdb.set_trace()
+#pdb.set_trace()
 
 test_index = int(np.floor(r.rand() * 10))
 
@@ -26,7 +26,7 @@ model_ed.load_state_dict(torch.load('../models/{}/ED-{}-{}.pth'.format(type, n, 
                                     map_location=torch.device('cpu')))
 model_ed.eval()
 if type == 'NS':
-    model_ols = UNet([2,4,8,16,32,64,1]).to(device)
+    model_ols = UNet([2,4,8,16,32,32,1]).to(device)
 else:
     model_ols = UNet()
 model_ols.load_state_dict(torch.load('../models/{}/OLS-{}-{}.pth'.format(type, n, ds_parameter),
@@ -80,20 +80,9 @@ print('Autoencoder Loss: {:4f}'.format(loss_ed.item()))
 print('OLS Loss: {:4f}'.format(loss_ols.item()))
 print(torch.norm(torch.randn(n, n) * eps, p='fro'))
 
-
-batch_size = 10
-for j in range(traj_num):
-    for i in range(0, step_num-batch_size, batch_size):
-        uv = torch.zeros([batch_size, 2, nx, ny])
-        uv[:, 0, :, :] = u[j, i:i+batch_size].reshape([batch_size, nx, ny])
-        uv[:, 1, :, :] = v[j, i:i+batch_size].reshape([batch_size, nx, ny])
-        uv = uv.to(device)
-        
-
-
-batch_size = 10
-for j in range(traj_num):
-    for i in range(0, step_num-batch_size, batch_size):
+batch_size = 1
+for j in range(0, 1):
+    for i in range(0, 200, batch_size):
         uv = torch.zeros([batch_size, 2, nx, ny])
         uv[:, 0, :, :] = u[j, i:i+batch_size].reshape([batch_size, nx, ny])
         uv[:, 1, :, :] = v[j, i:i+batch_size].reshape([batch_size, nx, ny])

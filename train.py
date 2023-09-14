@@ -61,7 +61,7 @@ scheduler_ed = ReduceLROnPlateau(optimizer_ed, mode='min', factor=factor, patien
 scheduler_ols = ReduceLROnPlateau(optimizer_ols, mode='min', factor=factor, patience=period*sample_num, verbose=False)
 scheduler_tr = ReduceLROnPlateau(optimizer_tr, mode='min', factor=factor, patience=period*sample_num, verbose=False)
 
-T1 = time.clock()
+T1 = time.perf_counter()
 for epoch in range(ed_epochs):
     train_loss = 0
     test_loss = 0
@@ -94,7 +94,7 @@ for epoch in range(ed_epochs):
     if (epoch+1) % saveInterval == 0: 
         torch.save(model_ed.state_dict(), '../models/{}/ED-{}-{}.pth'.format(simutype, n, ds_parameter))
 
-T2 = time.clock()
+T2 = time.perf_counter()
 print('Training time for ED model: {:4e}'.format(T2 - T1))
 
 # Train the OLS model
@@ -130,7 +130,7 @@ for epoch in range(ols_epochs):
     if (epoch+1) % saveInterval == 0: 
         torch.save(model_ols.state_dict(), '../models/{}/OLS-{}-{}.pth'.format(simutype, n, ds_parameter))
 
-T3 = time.clock()
+T3 = time.perf_counter()
 print('Training time for TR model: {:4e}'.format(T3 - T2))
 
 # Train the TR model
@@ -178,5 +178,5 @@ for epoch in range(tr_epochs):
     if (epoch+1) % saveInterval == 0: 
         torch.save(model_tr.state_dict(), '../models/{}/TR-{}-{}.pth'.format(simutype, n, ds_parameter))
 
-T4 = time.clock()
+T4 = time.perf_counter()
 print('Training time for TR model: {:4e}'.format(T4 - T3))

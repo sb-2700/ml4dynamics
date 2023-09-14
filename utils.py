@@ -69,7 +69,7 @@ def assembly_RDmatrix(n, dt, dx, beta, gamma):
     """
     
     
-    global A0, A1, A2, A3, D_
+    global A0, A1, A2, A3, L_minus, L_plus, D_
     L = np.eye(n) * (-2)
     for i in range(1, n-1):
         L[i, i-1] = 1
@@ -79,7 +79,11 @@ def assembly_RDmatrix(n, dt, dx, beta, gamma):
     L[-1, 0] = 1
     L[-1, -2] = 1
     L = L/(dx**2)
+    L_minus = np.eye(n) - L * gamma * dt/2
+    L_plus = np.eye(n) + L * gamma * dt/2
     L = spa.csc_matrix(L)
+    L_minus = spa.csc_matrix(L_minus)
+    L_plus = spa.csc_matrix(L_plus)
     L2 = spa.kron(L, np.eye(n)) + spa.kron(np.eye(n), L)
     A0 = spa.eye(n*n) + L2 * gamma * dt 
     A1 = spa.eye(n*n) - L2 * gamma * dt             
@@ -94,26 +98,21 @@ def assembly_RDmatrix(n, dt, dx, beta, gamma):
     D_[n*n:, :n*n] = -dt*beta*spa.eye(n*n)/2                           # dF_v/du
 
 
-def RD_exp():
+def RD_exp(u, v, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=True):
     """explicit forward Euler solver for FitzHugh-Nagumo RD equation"""
     
-    
-    global u, v, L, u_hist, v_hist, step_num, alpha, beta
     dt = 1/step_num
+    n = 128
     t_array = np.array([5, 10, 20, 40, 80])
-    
-    
-    #plt.subplot(231)
-    #plt.imshow(u.reshape(n, n), cmap = cm.jet)
-    
+    u_hist = np.zeros([step_num, u.size])
+    v_hist = np.zeros([step_num, v.size])
     
     for i in range(step_num):
         for j in range(5):
-            #if i == t_array[j] * step_num / 100:
-            #    plt.subplot(2, 3, j+2)
-            #    plt.imshow(u.reshape(n, n), cmap = cm.jet)
-            #    plt.colorbar()
-            #tmpu = A0 @ u + dt * (u - v + u**3 + alpha)
+            if i == t_array[j] * step_num / 100:
+                plt.subplot(2, 3, j+2)
+                plt.imshow(u.reshape(n, n), cmap = cm.jet)
+                plt.colorbar()
             tmpu = A0 @ u + dt * (u - v - u**3 + alpha)
             tmpv = A0 @ v + beta * dt * (u - v)
             u = tmpu
@@ -122,34 +121,20 @@ def RD_exp():
             v_hist[i, :] = v
         
      
-    #plt.colorbar()
-    #plt.show()
-    return u, v
+    plt.colorbar()
+    plt.show()
+    return u_hist, v_hist
     
     
 def RD_semi(u, v, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=True):
     """semi-implicit solver for FitzHugh-Nagumo RD equation"""
     
-    
     global L, u_hist, v_hist
     dt = 1/step_num
-    t_array = np.array([5, 10, 20, 40, 80])
     u_hist = np.zeros([step_num, u.size])
     v_hist = np.zeros([step_num, v.size])
     
-    
-    #if plot:
-    #    plt.subplot(231)
-    #    plt.imshow(u.reshape(n, n), cmap = cm.jet)
-    
-    
     for i in range(step_num):
-        #for j in range(5):
-            #if i == t_array[j] * step_num / 100:
-            #    if plot:
-            #        plt.subplot(2, 3, j+2)
-            #        plt.imshow(u.reshape(n, n), cmap = cm.jet)
-            #        plt.colorbar()
         rhsu = u + dt * (u - v + u**3 + alpha)
         rhsv = v + beta * dt * (u - v)
         u = sps(A1, rhsu)
@@ -160,11 +145,6 @@ def RD_semi(u, v, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=
         elif (i+1)%10 == 0:
             u_hist[(i-0)//10, :] = u
             v_hist[(i-0)//10, :] = v
-            
-    
-    #if plot:
-        #plt.colorbar()
-    #    plt.show()
     return u_hist, v_hist
     
 
@@ -229,6 +209,34 @@ def RD_cn():
             
     #plt.show()
     return u, v
+
+
+def RD_adi(u, v, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=True):
+    """ADI solver for FitzHugh-Nagumo RD equation"""
+    
+    global L, u_hist, v_hist
+    dt = 1/step_num
+    u_hist = np.zeros([step_num, u.shape[0], u.shape[1]])
+    v_hist = np.zeros([step_num, u.shape[0], u.shape[1]])
+
+    for i in range(step_num):
+        rhsu = L_plus @ u @ L_plus + dt * (u - v + u**3 + alpha)
+        rhsv = L_plus @ v @ L_plus + beta * dt * (u - v)
+        u = sps(L_minus, rhsu)
+        u = sps(L_minus, u.T)
+        u = u.T
+        v = sps(L_minus, rhsv)
+        v = sps(L_minus, v.T)
+        v = v.T
+
+        if write:
+            u_hist[i] = u
+            v_hist[i] = v
+        elif (i+1)%10 == 0:
+            u_hist[(i-0)//10, :] = u
+            v_hist[(i-0)//10, :] = v
+
+    return u_hist, v_hist
 
 
 def assembly_NSmatrix(nx, ny, dt, dx, dy):

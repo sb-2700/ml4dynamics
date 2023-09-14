@@ -198,7 +198,8 @@ class NS_Simulator(Simulator):
         self.t = 0
         self.fluid_type = 'NS'
         self.set_matrix()
-        self.correction = correction
+        #self.correction = correction
+        self.correction = 1
 
 
     def assembly_matrix(self, n, dt, dx):
