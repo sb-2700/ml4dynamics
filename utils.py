@@ -102,17 +102,12 @@ def RD_exp(u, v, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=T
     """explicit forward Euler solver for FitzHugh-Nagumo RD equation"""
     
     dt = 1/step_num
-    n = 128
     t_array = np.array([5, 10, 20, 40, 80])
     u_hist = np.zeros([step_num, u.size])
     v_hist = np.zeros([step_num, v.size])
     
     for i in range(step_num):
         for j in range(5):
-            if i == t_array[j] * step_num / 100:
-                plt.subplot(2, 3, j+2)
-                plt.imshow(u.reshape(n, n), cmap = cm.jet)
-                plt.colorbar()
             tmpu = A0 @ u + dt * (u - v - u**3 + alpha)
             tmpv = A0 @ v + beta * dt * (u - v)
             u = tmpu
@@ -120,9 +115,6 @@ def RD_exp(u, v, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=T
             u_hist[i, :] = u
             v_hist[i, :] = v
         
-     
-    plt.colorbar()
-    plt.show()
     return u_hist, v_hist
     
     

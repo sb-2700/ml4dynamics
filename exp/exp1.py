@@ -43,7 +43,8 @@ plt.subplots_adjust(wspace=wspace)
 for i in range(fig_num):
     cbar = fig.colorbar(im[i], ax=[ax1[i], ax2[i]], fraction=fraction, pad=pad, orientation='horizontal')
     cbar.ax.tick_params(labelsize=5)
-plt.savefig('../../fig/exp1/{}/1.svg'.format(type), dpi = 1000, bbox_inches='tight', pad_inches=0, format='svg')
+#plt.savefig('../../fig/exp1/{}/1.svg'.format(type), dpi = 1000, bbox_inches='tight', pad_inches=0, format='svg')
+plt.savefig('../../fig/exp1/{}/1.pdf'.format(type), dpi = 1000, bbox_inches='tight', pad_inches=0)
 #plt.show()
 plt.clf()
 
@@ -62,7 +63,8 @@ ax1.set_ylabel(r'$\log(F(\widehat u(t)))$', fontsize=10)
 ax.xaxis.set_tick_params(labelsize=labelsize)
 ax1.yaxis.set_tick_params(labelsize=labelsize)
 ax.set_ylabel(r'$\left\| u(t) - \widehat u(t) \right\|_{2}^2$', fontsize=10)
-plt.savefig('../../fig/exp1/{}/2.svg'.format(type), dpi = 1000, bbox_inches='tight', pad_inches=0, format='svg')
+#plt.savefig('../../fig/exp1/{}/2.svg'.format(type), dpi = 1000, bbox_inches='tight', pad_inches=0, format='svg')
+plt.savefig('../../fig/exp1/{}/2.pdf'.format(type), dpi = 1000, bbox_inches='tight', pad_inches=0)
 plt.show()
 
 
