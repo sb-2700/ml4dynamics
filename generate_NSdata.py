@@ -21,14 +21,14 @@ dim = 2                     # dimension of the problem
 ny = nx//4
 dx = 1/ny
 dy = 1/ny
-traj_num = 1
+traj_num = 10
 eps = 1e-7
 dt = .01
-step_num = 10000
+step_num = 2000
 T = step_num * dt
 patience = 50                           # we admit 50 times blow up generations
 warm_up = 500
-writeInterval = 10
+writeInterval = 2
 r.seed(0)
 utils.assembly_NSmatrix(nx, ny, dt, dx, dy)
 u_hist_ = np.zeros([traj_num, step_num//writeInterval, nx+2, ny+2])
@@ -74,8 +74,10 @@ while j < traj_num and i < patience:
 
 if j == traj_num:
     label_dim = 1
+    U = np.zeros([traj_num, step_num//writeInterval, 2, nx+2, ny+2])
+    U[:,:,0] = u_hist_
+    U[:,:,1,:,1:] = v_hist_
     np.savez('../data/NS/{}-{}.npz'.format(nx, Re), 
-             arg=[nx, ny, dt, T, label_dim], 
-             u=u_hist_, 
-             v=v_hist_, 
+             arg=[nx, ny, dt*writeInterval, T, label_dim], 
+             U = U,
              label=p_hist_)

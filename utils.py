@@ -16,12 +16,10 @@ from scipy.sparse.linalg import spsolve as sps
 def read_data(filename=None):
 
     data = np.load(filename)
-    u = torch.from_numpy(data['u']).to(torch.float32)
-    v = torch.from_numpy(data['v']).to(torch.float32)
+    U = torch.from_numpy(data['U']).to(torch.float32)
     label = torch.from_numpy(data['label']).to(torch.float32)
     arg = data['arg']
-    return arg, u, v, label
-
+    return arg, U, label
 
 def parsing():
     parser = argparse.ArgumentParser(description='manual to this script')
@@ -44,20 +42,19 @@ def parsing():
     return n, beta, Re, type, GPU, ds_parameter
 
 
-def preprocessing(arg, type, u, v, label, device, flag=True):
+def preprocessing(arg, simutype, U, label, device, flag=True):
     # later we can combine this function with the read_data function by
     # including all the parameters into the .npz file
     nx, ny, dt, T, label_dim = arg
     nx = int(nx)
     ny = int(ny)
     label_dim = int(label_dim)
-    if flag and type == 'NS':
-        u = u[:, :, 1:-1, 1:-1]
-        v = v[:, :, 1:-1, :-1]
-    traj_num = u.shape[0]
-    step_num = u.shape[1]
+    if flag and simutype == 'NS':
+        U = U[:, :, :, 1:-1, 1:-1]
+    traj_num = U.shape[0]
+    step_num = U.shape[1]
     label = label.to(device)
-    return nx, ny, dt, T, label_dim, traj_num, step_num, u, v, label
+    return nx, ny, dt, T, label_dim, traj_num, step_num, U, label
 
 
 def assembly_RDmatrix(n, dt, dx, beta, gamma):
@@ -98,11 +95,9 @@ def assembly_RDmatrix(n, dt, dx, beta, gamma):
     D_[n*n:, :n*n] = -dt*beta*spa.eye(n*n)/2                           # dF_v/du
 
 
-def RD_exp(u, v, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=True):
+def RD_exp(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=True):
     """explicit forward Euler solver for FitzHugh-Nagumo RD equation"""
     
-    dt = 1/step_num
-    t_array = np.array([5, 10, 20, 40, 80])
     u_hist = np.zeros([step_num, u.size])
     v_hist = np.zeros([step_num, v.size])
     
@@ -116,13 +111,11 @@ def RD_exp(u, v, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=T
             v_hist[i, :] = v
         
     return u_hist, v_hist
-    
-    
-def RD_semi(u, v, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=True):
+       
+def RD_semi(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=True):
     """semi-implicit solver for FitzHugh-Nagumo RD equation"""
     
     global L, u_hist, v_hist
-    dt = 1/step_num
     u_hist = np.zeros([step_num, u.size])
     v_hist = np.zeros([step_num, v.size])
     
@@ -139,10 +132,37 @@ def RD_semi(u, v, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=
             v_hist[(i-0)//10, :] = v
     return u_hist, v_hist
     
+def RD_adi(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, writeInterval=1, plot=True, write=True):
+    """ADI solver for FitzHugh-Nagumo RD equation"""
+    
+    global L, u_hist, v_hist
+    upper_bound = 1e5
+    flag = True
+    u_hist = np.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
+    v_hist = np.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
+
+    for i in range(step_num):
+        if nalg.norm(u) > upper_bound:
+            print('unacceptable field!')
+            flag = False
+            break
+        rhsu = L_plus @ u @ L_plus + dt * (u - v + u**3 + alpha)
+        rhsv = L_plus @ v @ L_plus + beta * dt * (u - v)
+        u = sps(L_minus, rhsu)
+        u = sps(L_minus, u.T)
+        u = u.T
+        v = sps(L_minus, rhsv)
+        v = sps(L_minus, v.T)
+        v = v.T
+
+        if (i+1)%writeInterval == 0:
+            u_hist[(i-0)//writeInterval, :] = u
+            v_hist[(i-0)//writeInterval, :] = v
+
+    return u_hist, v_hist, flag
 
 def RD_cn():
     """full implicit solver with Crank-Nielson discretization"""
-    
     
     global u, v, L, D_, step_num, alpha, beta, gamma, tol
     dt = 1/step_num
@@ -201,35 +221,6 @@ def RD_cn():
             
     #plt.show()
     return u, v
-
-
-def RD_adi(u, v, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=True):
-    """ADI solver for FitzHugh-Nagumo RD equation"""
-    
-    global L, u_hist, v_hist
-    dt = 1/step_num
-    u_hist = np.zeros([step_num, u.shape[0], u.shape[1]])
-    v_hist = np.zeros([step_num, u.shape[0], u.shape[1]])
-
-    for i in range(step_num):
-        rhsu = L_plus @ u @ L_plus + dt * (u - v + u**3 + alpha)
-        rhsv = L_plus @ v @ L_plus + beta * dt * (u - v)
-        u = sps(L_minus, rhsu)
-        u = sps(L_minus, u.T)
-        u = u.T
-        v = sps(L_minus, rhsv)
-        v = sps(L_minus, v.T)
-        v = v.T
-
-        if write:
-            u_hist[i] = u
-            v_hist[i] = v
-        elif (i+1)%10 == 0:
-            u_hist[(i-0)//10, :] = u
-            v_hist[(i-0)//10, :] = v
-
-    return u_hist, v_hist
-
 
 def assembly_NSmatrix(nx, ny, dt, dx, dy):
     """assemble matrices used in the calculation
