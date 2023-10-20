@@ -1,27 +1,25 @@
 import numpy as np
 import numpy.linalg as nalg
+import numpy.random as r
 import scipy.sparse as spa
 import torch
 import copy
 import torch.nn as nn
 from abc import ABCMeta, abstractmethod
-
+from scipy.sparse.linalg import spsolve as sps
 
 class Simulator():
     __metaclass__ = ABCMeta
 
-    def __init__(self, model, ed_model, device, u_hist, v_hist, step_num=1000, dt=0.001, n=64, n2=32, type=1, img_size=64):
-        # this n and n2 is originally for coarse-fine grid
+    def __init__(self, model, ed_model, device, u_hist, v_hist, step_num=1000, dt=0.001, n=64):
         self.step_num = step_num
         self.dt = dt
         self.n = n
         self.dx = 6.4/n
-        self.n2 = n2
-        self.dx2 = 6.4/n2
         self.model = model
         self.ed_model = ed_model
         self.device = device
-        self.type = type
+        self.type = 1
         if u_hist.shape[0] != self.step_num:
             print("Error in set_config: Inconsistent step number!")
         if u_hist.shape[1] != self.n:
@@ -36,7 +34,6 @@ class Simulator():
         self.error_hist = np.zeros(step_num)
         self.div_hist = np.zeros(step_num)
         self.criterion = nn.MSELoss()               # add this parameter to the parameter lists
-        self.img_size = img_size
         self.fluid_type = 'None'
 
 
@@ -44,17 +41,15 @@ class Simulator():
     def outer_step(self):
         print("abstract method!")
 
-
     @abstractmethod
     def inner_step(self):
         print("abstract method!")
 
-
     def simulator(self, rewrite=False):
         """simulating the dynamics using the given control"""
         
-        
         loss_hist = []
+        self.t = 0
         if self.fluid_type == 'RD':
             t_array = np.array([10, 20, 40, 80, 160])
         elif self.fluid_type == 'NS':
@@ -91,18 +86,21 @@ class Simulator():
             self.u_hist_simu[i] = copy.deepcopy(self.u)
             self.v_hist_simu[i] = copy.deepcopy(self.v)
             self.ds_hist[i] = self.criterion(uv, output).item()
-            self.error_hist[i] = nalg.norm(self.u - self.u_hist[i], 'fro')**2 + \
-                                 nalg.norm(self.v - self.v_hist[i], 'fro')**2
+            self.error_hist[i] = (nalg.norm(self.u - self.u_hist[i], 'fro')**2 + 
+                                 nalg.norm(self.v - self.v_hist[i], 'fro')**2)/(nalg.norm(self.u_hist[i], 'fro')**2 + 
+                                 nalg.norm(self.v_hist[i], 'fro')**2)
             if self.fluid_type == 'NS':
+                self.error_hist[i] = (nalg.norm(self.u[1:-1,1:-1] - self.u_hist[i,1:-1,1:-1], 'fro')**2 + 
+                                 nalg.norm(self.v[1:-1,:-1] - self.v_hist[i,1:-1,:-1], 'fro')**2)/(nalg.norm(self.u_hist[i,1:-1,1:-1], 'fro')**2 + 
+                                 nalg.norm(self.v_hist[i,1:-1,:-1], 'fro')**2)
                 self.div_hist[i] = np.sum((self.u[1:-1, 1:-1] - self.u[:-2, 1:-1])/self.dx + (self.v[1:-1, 1:] - self.v[1:-1, :-1])/self.dx)
 
 
 class RD_Simulator(Simulator):
 
 
-    def __init__(self, model, ed_model, device, u_hist, v_hist, step_num=100, dt=0.01, n=64, n2=32, type=1, alpha=0.01, beta=0.25, gamma=0.05, img_size=64):
-        super(RD_Simulator, self).__init__(model, ed_model, device, u_hist, v_hist, step_num, dt, n, n2, type, img_size)
-
+    def __init__(self, model, ed_model, device, u_hist, v_hist, step_num=100, dt=0.01, n=64, alpha=0.01, beta=0.25, gamma=0.05):
+        super(RD_Simulator, self).__init__(model, ed_model, device, u_hist, v_hist, step_num, dt, n)
 
         self.alpha = alpha
         self.beta = beta
@@ -110,14 +108,23 @@ class RD_Simulator(Simulator):
         self.nx = n
         self.ny = n
         self.fluid_type = 'RD'
-        self.set_matrix()
+        self.assembly_matrix()
 
-
-    def assembly_matrix(self, n, dt, dx):
-        """assemble matrices used in the calculation"""
+    def assembly_matrix(self):
+        """assemble matrices used in the calculation
+        A1 = I - gamma dt \Delta, used in implicit discretization of diffusion term, size n2*n2
+        A2 = I - gamma dt/2 \Delta, used in CN discretization of diffusion term, size n2*n2
+        A3 = I + gamma dt/2 \Delta, used in CN discretization of diffusion term, size n2*n2
+        D, size 4n2*n2, Jacobi of the Newton solver in CN discretization
+        """
         
-        
+        n = self.nx
+        dt = self.dt
+        dx = self.dx
+        beta = self.beta
+        gamma = self.gamma
         L = np.eye(n) * (-2)
+        d = 2                                       # ratio between the diffusion coeff for u & v
         for i in range(1, n-1):
             L[i, i-1] = 1
             L[i, i+1] = 1
@@ -126,18 +133,15 @@ class RD_Simulator(Simulator):
         L[-1, 0] = 1
         L[-1, -2] = 1
         L = L/(dx**2)
+        L_uminus = np.eye(n) - L * gamma * dt/2
+        L_uplus = np.eye(n) + L * gamma * dt/2
+        L_vminus = np.eye(n) - L * gamma * dt/2 * d
+        L_vplus = np.eye(n) + L * gamma * dt/2 * d
         L = spa.csc_matrix(L)
-        L2 = spa.kron(L, np.eye(n)) + spa.kron(np.eye(n), L)
-        A0 = spa.eye(n*n) + L2 * self.gamma * dt 
-        return A0
-
-
-    def set_matrix(self):
-        self.A0 = self.assembly_matrix(self.n, self.dt, self.dx)
-        self.A1 = self.assembly_matrix(self.n2, self.dt, self.dx2)
-        return 0
-
-
+        self.L_uminus = spa.csc_matrix(L_uminus)
+        self.L_uplus = spa.csc_matrix(L_uplus)
+        self.L_vminus = spa.csc_matrix(L_vminus)
+        self.L_vplus = spa.csc_matrix(L_vplus)
     
     def outer_step(self):
         # here we have to be careful with the deep copy and shallow copy
@@ -148,8 +152,8 @@ class RD_Simulator(Simulator):
             uv[0, 1, :, :] = torch.from_numpy(self.v)
             uv = uv.to(self.device)
             output = self.model(uv).detach().numpy()
-            self.u = (self.A0 @ self.u.reshape([self.n*self.n, 1])).reshape([self.n, self.n]) + self.dt * output[0, 0, :, :]
-            self.v = (self.A0 @ self.v.reshape([self.n*self.n, 1])).reshape([self.n, self.n]) + self.dt * output[0, 1, :, :]
+            self.u = self.L_uplus @ self.u @ self.L_uplus + self.dt * output[0, 0, :, :]
+            self.v = self.L_vplus @ self.v @ self.L_vplus + self.dt * output[0, 1, :, :]
 
         elif self.type == 2:
             # outer loop for second outer-inner loop structure: coarse v.s. fine grid
@@ -186,11 +190,10 @@ class RD_Simulator(Simulator):
             self.u = self.u + output[0, 0]*self.dt
             self.u = self.u + output[0, 1]*self.dt
 
-
 class NS_Simulator(Simulator):
 
-    def __init__(self, model, ed_model, device, u_hist, v_hist, step_num=100, dt=0.01, Re=400, n=64, n2=32, type=1, nx=128, ny=32, y0=0.325, img_size=32, correction=0.95):
-        super(NS_Simulator, self).__init__(model, ed_model, device, u_hist, v_hist, step_num, dt, n, n2, type, img_size)
+    def __init__(self, model, ed_model, device, u_hist, v_hist, step_num=100, dt=0.01, Re=400, n=64, nx=128, ny=32, y0=0.325, correction=0.05):
+        super(NS_Simulator, self).__init__(model, ed_model, device, u_hist, v_hist, step_num, dt, n)
         self.nx = nx
         self.ny = ny
         self.y0 = y0
@@ -199,33 +202,43 @@ class NS_Simulator(Simulator):
         self.fluid_type = 'NS'
         self.set_matrix()
         #self.correction = correction
-        self.correction = 1
+        self.correction = 0.1
 
 
-    def assembly_matrix(self, n, dt, dx):
-        """assemble matrices used in the calculation"""
-        
-        
-        L = np.eye(n) * (-2)
-        for i in range(1, n-1):
-            L[i, i-1] = 1
-            L[i, i+1] = 1
-        L[0, 1] = 1
-        L[0, -1] = 1
-        L[-1, 0] = 1
-        L[-1, -2] = 1
-        L = L/(dx**2)
-        L = spa.csc_matrix(L)
-        L2 = spa.kron(L, np.eye(n)) + spa.kron(np.eye(n), L)
-        #A0 = spa.eye(n*n) + L2 * self.gamma * dt 
-        return L2
-
+    def assembly_matrix(self):
+    
+        LNx = np.eye(self.nx) * (-2)
+        LNy = np.eye(self.ny) * (-2)
+        for i in range(1, self.nx-1):
+            LNx[i, i-1] = 1
+            LNx[i, i+1] = 1
+        for i in range(1, self.ny-1):
+            LNy[i, i-1] = 1
+            LNy[i, i+1] = 1
+        LNx[0, 1] = 1
+        LNx[0, 0] = -1
+        LNx[-1, -1] = -1
+        LNx[-1, -2] = 1
+        LNy[0, 1] = 1
+        LNy[0, 0] = -1
+        LNy[-1, -1] = -1
+        LNy[-1, -2] = 1
+        LNx = spa.csc_matrix(LNx*self.ny**2)
+        LNy = spa.csc_matrix(LNy*self.ny**2)
+        # BE CAREFUL, SINCE THE LAPLACIAN MATRIX IN X Y DIRECTION IS NOT THE SAME
+        #L2N = spa.kron(LNy, spa.eye(nx)) + spa.kron(spa.eye(ny), LNx)
+        L2N = spa.kron(LNx, spa.eye(self.ny)) + spa.kron(spa.eye(self.nx), LNy)
+        L = copy.deepcopy(L2N)
+        #for i in range(ny):
+        #    L[(i+1)*nx - 1, (i+1)*nx - 1] = L[(i+1)*nx - 1, (i+1)*nx - 1] - 2
+        for i in range(self.ny):
+            L[-1-i, -1-i] = L[-1-i, -1-i] - 2*self.ny**2
+            
+        return L
 
     def set_matrix(self):
-        self.A0 = self.assembly_matrix(self.n, self.dt, self.dx)
-        self.A1 = self.assembly_matrix(self.n2, self.dt, self.dx2)
+        self.L = self.assembly_matrix()
         return 0
-
 
     def outer_step(self):
         # outer loop for first outer-inner loop structure: linear v.s. nonlinear
@@ -265,11 +278,14 @@ class NS_Simulator(Simulator):
 
 
         uv = torch.zeros([1, 2, self.nx, self.ny])
-        #print(type(u[1:-1,1:-1]))
         uv[0, 0, :, :] = torch.from_numpy(u[1:-1,1:-1])
         uv[0, 1, :, :] = torch.from_numpy(v[1:-1,1:])
         uv = uv.to(self.device)
-        p = self.model(uv).detach().numpy().reshape(self.nx,self.ny)
+        if ~self.ablation_study:
+            p = self.model(uv).detach().numpy().reshape(self.nx,self.ny) * self.dt
+        else:
+            divu = (u[1:-1, 1:-1] - u[:-2, 1:-1])/dx + (v[1:-1, 1:] - v[1:-1, :-1])/dy
+            p = sps(self.L, divu.reshape(self.nx*self.ny)).reshape([self.nx, self.ny]) + self.dt*r.randn(self.nx, self.ny)*1e-5
         
 
         u[1:-2, 1:-1] = u[1:-2, 1:-1] - (p[1:,:] - p[:-1,:])/dx
@@ -292,8 +308,6 @@ class NS_Simulator(Simulator):
 
 
         i = int(self.t / self.dt)
-        #self.u = self.u_hist[i]
-        #self.v = self.v_hist[i]
         self.u = self.correction * self.u_hist[i] + (1-self.correction) * u
         self.v = self.correction * self.v_hist[i] + (1-self.correction) * v
 

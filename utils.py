@@ -24,22 +24,22 @@ def read_data(filename=None):
 def parsing():
     parser = argparse.ArgumentParser(description='manual to this script')
     parser.add_argument('--type', type=str, default='RD')
-    parser.add_argument('--beta', type=float, default=0.2)
+    parser.add_argument('--gamma', type=float, default=0.05)
     parser.add_argument('--Re', type=int, default=400)
     parser.add_argument('--n', type=int, default=64)
     parser.add_argument('--batch_size', type=int, default=1000)
     parser.add_argument('--GPU', type=int, default=0)
     args = parser.parse_args()
-    beta = args.beta
+    gamma = args.gamma
     Re = args.Re
     n = args.n
     type = args.type
     GPU = args.GPU
     if type == 'RD':
-        ds_parameter = int(beta*10)
+        ds_parameter = int(gamma*20)
     else:
         ds_parameter = Re
-    return n, beta, Re, type, GPU, ds_parameter
+    return n, gamma, Re, type, GPU, ds_parameter
 
 
 def preprocessing(arg, simutype, U, label, device, flag=True):
@@ -57,7 +57,7 @@ def preprocessing(arg, simutype, U, label, device, flag=True):
     return nx, ny, dt, T, label_dim, traj_num, step_num, U, label
 
 
-def assembly_RDmatrix(n, dt, dx, beta, gamma):
+def assembly_RDmatrix(n, dt, dx, beta=1.0, gamma=0.05):
     """assemble matrices used in the calculation
     A1 = I - gamma dt \Delta, used in implicit discretization of diffusion term, size n2*n2
     A2 = I - gamma dt/2 \Delta, used in CN discretization of diffusion term, size n2*n2
@@ -65,9 +65,9 @@ def assembly_RDmatrix(n, dt, dx, beta, gamma):
     D, size 4n2*n2, Jacobi of the Newton solver in CN discretization
     """
     
-    
-    global A0, A1, A2, A3, L_minus, L_plus, D_
+    global L_uminus, L_uplus, L_vminus, L_vplus, A_uplus, A_uminus, A_vplus, A_vminus
     L = np.eye(n) * (-2)
+    d = 2                                       # ratio between the diffusion coeff for u & v
     for i in range(1, n-1):
         L[i, i-1] = 1
         L[i, i+1] = 1
@@ -76,27 +76,32 @@ def assembly_RDmatrix(n, dt, dx, beta, gamma):
     L[-1, 0] = 1
     L[-1, -2] = 1
     L = L/(dx**2)
-    L_minus = np.eye(n) - L * gamma * dt/2
-    L_plus = np.eye(n) + L * gamma * dt/2
+    L_uminus = np.eye(n) - L * gamma * dt/2
+    L_uplus = np.eye(n) + L * gamma * dt/2
+    L_vminus = np.eye(n) - L * gamma * dt/2 * d
+    L_vplus = np.eye(n) + L * gamma * dt/2 * d
     L = spa.csc_matrix(L)
-    L_minus = spa.csc_matrix(L_minus)
-    L_plus = spa.csc_matrix(L_plus)
-    L2 = spa.kron(L, np.eye(n)) + spa.kron(np.eye(n), L)
-    A0 = spa.eye(n*n) + L2 * gamma * dt 
-    A1 = spa.eye(n*n) - L2 * gamma * dt             
-    A2 = spa.eye(n*n) - L2 * gamma * dt/2            
-    A3 = spa.eye(n*n) + L2 * gamma * dt/2         
+    L_uminus = spa.csc_matrix(L_uminus)
+    L_uplus = spa.csc_matrix(L_uplus)
+    L_vminus = spa.csc_matrix(L_vminus)
+    L_vplus = spa.csc_matrix(L_vplus)
+    L2 = spa.kron(L, np.eye(n)) + spa.kron(np.eye(n), L) 
+    A_uplus = spa.eye(n*n) + L2 * gamma * dt/2           
+    A_uminus = spa.eye(n*n) - L2 * gamma * dt/2
+    A_vplus = spa.eye(n*n) + L2 * gamma * dt/2 * d           
+    A_vminus = spa.eye(n*n) - L2 * gamma * dt/2 * d                    
     
-    
-    D_ = spa.lil_matrix((2*n*n, 2*n*n))
+    '''D_ = spa.lil_matrix((2*n*n, 2*n*n))
     D_[:n*n, :n*n] = A2                                                # dF_u/du
     D_[n*n:, n*n:] = A2 + dt*beta*spa.eye(n*n)/2                       # dF_v/dv
     D_[:n*n, n*n:] = dt*spa.eye(n*n)/2                                 # dF_u/dv
-    D_[n*n:, :n*n] = -dt*beta*spa.eye(n*n)/2                           # dF_v/du
+    D_[n*n:, :n*n] = -dt*beta*spa.eye(n*n)/2                           # dF_v/du'''
 
-
-def RD_exp(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=True):
-    """explicit forward Euler solver for FitzHugh-Nagumo RD equation"""
+def RD_exp(u, v, dt, alpha=.01, beta=1.0, gamma=.05, step_num=200, plot=True, write=True):
+    """
+    explicit forward Euler solver for FitzHugh-Nagumo RD equation
+    Modification has to be made for it to simulate PDE with different diffusion coefficient for two components
+    """
     
     u_hist = np.zeros([step_num, u.size])
     v_hist = np.zeros([step_num, v.size])
@@ -112,18 +117,18 @@ def RD_exp(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, wri
         
     return u_hist, v_hist
        
-def RD_semi(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, write=True):
+def RD_semi(u, v, dt, alpha=.01, beta=1.0, gamma=.05, step_num=200, plot=True, write=True):
     """semi-implicit solver for FitzHugh-Nagumo RD equation"""
     
-    global L, u_hist, v_hist
+    global A_uplus, A_uminus, A_vplus, A_vminus
     u_hist = np.zeros([step_num, u.size])
     v_hist = np.zeros([step_num, v.size])
     
     for i in range(step_num):
-        rhsu = u + dt * (u - v + u**3 + alpha)
-        rhsv = v + beta * dt * (u - v)
-        u = sps(A1, rhsu)
-        v = sps(A1, rhsv)
+        rhsu = A_uplus @ u + dt * (u - v - u**3 + alpha)
+        rhsv = A_vplus @ v + beta * dt * (u - v)
+        u = sps(A_uminus, rhsu)
+        v = sps(A_vminus, rhsv)
         if write:
             u_hist[i, :] = u
             v_hist[i, :] = v
@@ -132,10 +137,10 @@ def RD_semi(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, plot=True, wr
             v_hist[(i-0)//10, :] = v
     return u_hist, v_hist
     
-def RD_adi(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, writeInterval=1, plot=True, write=True):
+def RD_adi(u, v, dt, alpha=.01, beta=1.0, gamma=.05, step_num=200, writeInterval=1, plot=True, write=True):
     """ADI solver for FitzHugh-Nagumo RD equation"""
     
-    global L, u_hist, v_hist
+    global L_uminus, L_uplus, L_vminus, L_vplus
     upper_bound = 1e5
     flag = True
     u_hist = np.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
@@ -146,13 +151,13 @@ def RD_adi(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, writeInterval=
             print('unacceptable field!')
             flag = False
             break
-        rhsu = L_plus @ u @ L_plus + dt * (u - v + u**3 + alpha)
-        rhsv = L_plus @ v @ L_plus + beta * dt * (u - v)
-        u = sps(L_minus, rhsu)
-        u = sps(L_minus, u.T)
+        rhsu = L_uplus @ u @ L_uplus + dt * (u - v - u**3 + alpha)
+        rhsv = L_vplus @ v @ L_vplus + beta * dt * (u - v)
+        u = sps(L_uminus, rhsu)
+        u = sps(L_uminus, u.T)
         u = u.T
-        v = sps(L_minus, rhsv)
-        v = sps(L_minus, v.T)
+        v = sps(L_vminus, rhsv)
+        v = sps(L_vminus, v.T)
         v = v.T
 
         if (i+1)%writeInterval == 0:
@@ -161,10 +166,10 @@ def RD_adi(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, writeInterval=
 
     return u_hist, v_hist, flag
 
-def RD_cn():
+def RD_cn(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, tol=1e-8, writeInterval=1, plot=True, write=True):
     """full implicit solver with Crank-Nielson discretization"""
     
-    global u, v, L, D_, step_num, alpha, beta, gamma, tol
+    global L, D_
     dt = 1/step_num
     t_array = np.array([5, 10, 20, 40, 80])
     #t_array = np.array([1, 2, 3, 4, 80])
@@ -260,7 +265,6 @@ def assembly_NSmatrix(nx, ny, dt, dx, dy):
     for i in range(ny):
         L[-1-i, -1-i] = L[-1-i, -1-i] - 2/(dx**2)
         
-        
     return    
 
 
@@ -269,11 +273,6 @@ def projection_method(u, v, t, dx=1/32, dy=1/32, nx=128, ny=32, y0=0.325, eps=1e
     The convection discretization is given by central difference
     u_ij (u_i+1,j - u_i-1,j)/2dx + \Sigma v_ij (u_i,j+1 - u_i,j-1)/2dx"""
     
-    
-    #if 'L' in locals():
-    #    print('L is a local variable')
-    #if 'L' in globals():
-    #    print('L is a global variable')
     # central difference for first derivative
     u_x = (u[2:,1:-1]-u[:-2,1:-1])/dx/2
     u_y = (u[1:-1,2:]-u[1:-1,:-2])/dy/2

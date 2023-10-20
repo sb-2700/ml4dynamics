@@ -27,7 +27,7 @@ batch_size = step_num
 learning_rate = 1e-4
 factor = 0.8            # learning rate decay factor
 noise_scale = 1e-3      # parameter for adverserial OLS
-printInterval = 10
+printInterval = 100
 saveInterval = 100
 period = 2              # related to the scheduler
 lambda_ = torch.tensor(1000, requires_grad=False).to(device)
@@ -40,10 +40,10 @@ if simutype == 'RD':
     model_aols = UNet().to(device)
     model_tr = UNet().to(device)
 else:
-    model_ols = UNet([2,4,8,16,32,64,1]).to(device)
-    model_mols = UNet([2,4,8,16,32,64,1]).to(device)
-    model_aols = UNet([2,4,8,16,32,64,1]).to(device)
-    model_tr = UNet([2,4,8,16,32,64,1]).to(device)
+    model_ols = UNet([2,4,8,32,64,128,1]).to(device)
+    model_mols = UNet([2,4,8,32,64,128,1]).to(device)
+    model_aols = UNet([2,4,8,32,64,128,1]).to(device)
+    model_tr = UNet([2,4,8,32,64,128,1]).to(device)
 if os.path.isfile('../models/{}/OLS-{}-{}.pth'.format(simutype, n, ds_parameter)):
     model_ols.load_state_dict(torch.load('../models/{}/OLS-{}-{}.pth'.format(simutype, n, ds_parameter), map_location=torch.device('cpu')))
     model_ols.eval()
@@ -57,7 +57,7 @@ if os.path.isfile('../models/{}/TR-{}-{}.pth'.format(simutype, n, ds_parameter))
     model_tr.load_state_dict(torch.load('../models/{}/TR-{}-{}.pth'.format(simutype, n, ds_parameter), map_location=torch.device('cpu')))
     model_tr.eval()
 # if u switch this EDNet to UNet, the error will become very small
-model_ed = EDNet().to(device)
+model_ed = EDNet(channel_array=[2,4,8,16,32,64]).to(device)
 if os.path.isfile('../models/{}/ED-{}-{}.pth'.format(simutype, n, ds_parameter)):
     model_ed.load_state_dict(torch.load('../models/{}/ED-{}-{}.pth'.format(simutype, n, ds_parameter), map_location=torch.device('cpu')))
     model_ed.eval()
@@ -108,7 +108,7 @@ for epoch in range(ed_epochs):
 
 T2 = time.perf_counter()
 print('Training time for ED model: {:4e}'.format(T2 - T1))
-del model_ed, optimizer_ed, scheduler_ed, loss_ed
+del optimizer_ed, scheduler_ed, loss_ed
 
 # Train the OLS model
 for epoch in range(ols_epochs):
@@ -218,7 +218,7 @@ for epoch in range(tr_epochs):
     test_loss = 0
     est_loss = 0
     for j in range(traj_num):
-        for i in range(0, step_num-batch_size, batch_size):
+        for i in range(0, step_num, batch_size):
             uv = U[j, i:i+batch_size].reshape([batch_size, 2, nx, ny]).to(device)
             uv.requires_grad = True
             outputs = model_tr(uv)
