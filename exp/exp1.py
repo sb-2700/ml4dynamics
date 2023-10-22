@@ -162,8 +162,8 @@ def main():
         cbar.ax.tick_params(labelsize=5)
     plt.savefig('../../fig/exp1/{}/1.svg'.format(simu_type), dpi = 1000, bbox_inches='tight', pad_inches=0, format='svg')
     plt.savefig('../../fig/exp1/{}/1.pdf'.format(simu_type), dpi = 1000, bbox_inches='tight', pad_inches=0)
-    #plt.show()
-    plt.clf()
+    plt.show()
+    #plt.clf()
 
 
     #################################################################
@@ -184,7 +184,7 @@ def main():
     ds_hist_mean = np.mean(ds_hist, axis=0)
     error_hist_std = np.std(error_hist, axis=0)
     ds_hist_std = np.std(ds_hist, axis=0)'''
-    fig = plt.figure(figsize=(width, height/2))
+    '''fig = plt.figure(figsize=(width, height/2))
     ax = fig.add_subplot(111)
     #ax.plot(np.linspace(0, 800, time_scale), simulator_ols.error_hist[:time_scale]*10, label=r'$\left\| u(t) - \widehat u(t) \right\|_{2}^2$', color='r', linewidth=.5)
     ax.plot(simulator_ols.error_hist[1:time_scale], label=r'OLS', color='r', linewidth=.5)
@@ -202,7 +202,7 @@ def main():
     ax.set_ylabel(r'$\| u(t) - \widehat u(t) \|_{2}^2/\| u(t) \|_{2}^2$', fontsize=10)
     plt.savefig('../../fig/exp1/{}/2.svg'.format(simu_type), dpi = 1000, bbox_inches='tight', pad_inches=0, format='svg')
     plt.savefig('../../fig/exp1/{}/2.pdf'.format(simu_type), dpi = 1000, bbox_inches='tight', pad_inches=0)
-    plt.show()
+    plt.show()'''
 
     # For the comparison bewteen RD & NS, we need to show following features of our figures
     # 1. Two figures should be of the same time scope: same \Delta t & same number of step_num

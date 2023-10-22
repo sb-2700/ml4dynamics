@@ -22,8 +22,8 @@ class Simulator():
         self.type = 1
         if u_hist.shape[0] != self.step_num:
             print("Error in set_config: Inconsistent step number!")
-        if u_hist.shape[1] != self.n:
-            print("Error in set_config: Inconsistent grid size!")
+        #if u_hist.shape[1] != self.n:
+        #    print("Error in set_config: Inconsistent grid size!")
         self.u_hist = u_hist
         self.v_hist = v_hist
         self.u_hist_simu = copy.deepcopy(u_hist)

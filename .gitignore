@@ -1,6 +1,5 @@
 .DS_store
 TR.code-workspace
-test.py
 __pycache__/
 POD.ipynb
 POD.py

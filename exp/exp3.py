@@ -5,9 +5,9 @@ from models import *
 
 def main():
     r.seed(0)
-    n, beta, Re, type, GPU, ds_parameter = parsing()
-    device = torch.device('cuda:{}'.format(GPU) if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cpu')
     type = 'NS'
+    n = 128
 
     if type == 'RD':
         ds_parameter = [1,2,3,4,5]
@@ -71,6 +71,7 @@ def main():
                                         v_hist=v64_np, 
                                         step_num=step_num,
                                         dt=dt)
+        simulator_ols.ablation_study = False
         simulator_ols.simulator()  
 
         for j in range(4):

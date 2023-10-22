@@ -21,7 +21,7 @@ def main():
                 rt[i,j] = rt[i,j] + simulator.error_hist[500]
             rt[i, j] = rt[i, j]/test_number
 
-    with open("../../fig/exp5/TableRD.tbl", "w") as f:
+    '''with open("../../fig/exp5/TableRD.tbl", "w") as f:
         for i in range(len(model_type)):
             f.write("{} & {:.2e} & {:.2e} & {:.2e} & {:.2e} & {:.2e} \\\\\n".format(model_type[i], rt[i,0], rt[i,1], rt[i,2], rt[i,3], rt[i,4]))
         f.write("Diff & {:.1f}\% & {:.1f}\% & {:.1f}\% & {:.1f}\% & {:.1f}\% \\\\\n".format(100-rt[3,0]*100/rt[0,0], 
@@ -29,7 +29,15 @@ def main():
                                                                                     100-rt[3,2]*100/rt[0,2], 
                                                                                     100-rt[3,3]*100/rt[0,3], 
                                                                                     100-rt[3,4]*100/rt[0,4]))
-        f.write("\\hline\n")
+        f.write("\\hline\n")'''
+    for i in range(len(model_type)):
+        print("{} & {:.2e} & {:.2e} & {:.2e} & {:.2e} & {:.2e} \\\\\n".format(model_type[i], rt[i,0], rt[i,1], rt[i,2], rt[i,3], rt[i,4]))
+    print("Diff & {:.1f}\% & {:.1f}\% & {:.1f}\% & {:.1f}\% & {:.1f}\% \\\\\n".format(100-rt[3,0]*100/rt[0,0], 
+                                                                                    100-rt[3,1]*100/rt[0,1], 
+                                                                                    100-rt[3,2]*100/rt[0,2], 
+                                                                                    100-rt[3,3]*100/rt[0,3], 
+                                                                                    100-rt[3,4]*100/rt[0,4]))
+    print("\\hline\n")
 
 if __name__ == "__main__":
     main()

@@ -9,7 +9,7 @@ def main():
     simulator_list_ols = []
     simulator_list_tr = []
     simu_type = 'RD'
-    n = 64
+    n = 128
 
     for i in range(10):
         simulator_list_ols.append(test_simulator(n=n, test_index=i, simu_type='RD', model_type='OLS')[0])
@@ -25,7 +25,7 @@ def main():
     #               Plot of the simulation result                   #
     # we only plot the result of the test history                   #
     #################################################################
-    '''test_index = 0
+    test_index = 0
     simulator_ols = simulator_list_ols[test_index]
     simulator_tr = simulator_list_tr[test_index]
 
@@ -47,7 +47,6 @@ def main():
     pad = 0.001
     time_scale = 500
     t_array = (np.array([0.0, 0.2, 0.4, 0.6, 1.0])*time_scale).astype(int)
-    print(t_array)
     ax1 = []
     ax2 = []
     ax3 = []
@@ -80,12 +79,12 @@ def main():
     plt.savefig('../../fig/exp4/{}/1.pdf'.format(simu_type), dpi = 1000, bbox_inches='tight', pad_inches=0)
     plt.savefig('../../fig/exp4/{}/1.svg'.format(simu_type), dpi = 1000, bbox_inches='tight', pad_inches=0, format='svg')
     plt.show()
-    plt.clf()'''
+    #plt.clf()
 
     #################################################################
     #              Plot of the ds & error comparison                #
     #################################################################
-    avg_err_hist_ols = 0
+    '''avg_err_hist_ols = 0
     avg_err_hist_tr = 0
     avg_ds_hist_ols = 0
     avg_ds_hist_tr = 0
@@ -141,7 +140,7 @@ def main():
     ax1.yaxis.set_tick_params(labelsize=labelsize)
     ax.set_ylabel(r'$\left\| u(t) - \widehat u(t) \right\|_{F}^2$', fontsize=10)
     plt.savefig('../../fig/exp4/{}/2.svg'.format(simu_type), dpi = 1000, bbox_inches='tight', pad_inches=0, format='svg')
-    plt.show()
+    plt.show()'''
 
 if __name__ == '__main__':
     main()

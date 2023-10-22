@@ -117,7 +117,7 @@ def main():
     plt.xlabel(r'$\lambda$', fontsize=fontsize)
     plt.ylabel(r'$\log\| u(T) - \widehat u(T) \|_{2}$', fontsize=fontsize)
     plt.tick_params(labelsize=labelsize)
-    plt.legend()
+    plt.legend(loc='upper left', bbox_to_anchor=(0.7, 0.7))
     plt.savefig('../../fig/exp2/linear.pdf')
     plt.show()
     '''plt.scatter(U_OLS[0, :], U_OLS[1, :], label='OLS')
