@@ -2,3 +2,7 @@
 TR.code-workspace
 test.py
 __pycache__/
+POD.ipynb
+POD.py
+exp/Table1.tbl
+log.md
