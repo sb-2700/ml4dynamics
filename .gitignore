@@ -1,7 +1,16 @@
 .DS_store
+
+bin/
+
+lib/
+
+include/
+
 TR.code-workspace
 __pycache__/
 POD.ipynb
 POD.py
 exp/Table1.tbl
 log.md
+
+pyvenv.cfg
