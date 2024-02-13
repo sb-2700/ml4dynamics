@@ -8,7 +8,7 @@ import copy
 import argparse
 import ml_collections
 
-def generate_NS_data():
+def generate_NS_data(config: ml_collections.ConfigDict):
     parser = argparse.ArgumentParser(description='manual to this script')
     parser.add_argument('--Re', type=int, default=100)
     parser.add_argument('--nx', type=int, default=128)
