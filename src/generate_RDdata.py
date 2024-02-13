@@ -10,7 +10,7 @@ import pdb
 import ml_collections
 
 
-def generate_RD_data():
+def generate_RD_data(config: ml_collections.ConfigDict):
     # parse the simulation arguments
     parser = argparse.ArgumentParser(description='manual to this script')
     parser.add_argument('--gamma', type=float, default=0.05)
