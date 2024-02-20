@@ -2,6 +2,7 @@
 #                   finished                      #
 ###################################################
 import utils
+import hydra
 import numpy as np
 import numpy.random as r
 import copy
@@ -9,17 +10,12 @@ import argparse
 import ml_collections
 
 def generate_NS_data(config: ml_collections.ConfigDict):
-    parser = argparse.ArgumentParser(description='manual to this script')
-    parser.add_argument('--Re', type=int, default=100)
-    parser.add_argument('--nx', type=int, default=128)
-    args = parser.parse_args()
-    Re = args.Re
-    nx = args.nx
     print('Generating NS data with n = {}, Re = {} ...'.format(nx, Re))
 
 
+    nx = config.nx
+    ny = config.ny
     dim = 2                     # dimension of the problem
-    ny = nx//4
     dx = 1/ny
     dy = 1/ny
     traj_num = 10
@@ -82,3 +78,19 @@ def generate_NS_data(config: ml_collections.ConfigDict):
                 arg=[nx, ny, dt*writeInterval, T, label_dim], 
                 U = U,
                 label=p_hist_)
+        
+@hydra.main(config_path="configs/", config_name="ns_incomp.yaml")
+def main(config: ml_collections.ConfigDict):
+    """
+    This is a starter function of the simulation
+
+    Args:
+        config: This function uses hydra configuration for all parameters.
+    """
+    
+    from src import sim_ns_incomp_2d
+    sim_ns_incomp_2d.ns_sim(config=config, **config)
+
+
+if __name__ == "__main__":
+    main()
