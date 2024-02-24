@@ -1,8 +1,13 @@
 # This is the script for the figure \cref{NS-cmp}, we only use the `else` block 
 # to do the plot
-from utils import *
-from simulator import *
-from models import *
+from pathlib import Path
+import sys
+ROOT_PATH = str(Path(__file__).parent.parent)
+sys.path.append(ROOT_PATH)
+
+from src.utils import *
+from src.simulator import *
+from src.models import *
 from test import test_simulator
 
 def main():

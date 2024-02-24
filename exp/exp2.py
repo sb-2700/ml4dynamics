@@ -1,7 +1,14 @@
 # This script plot \cref{linear}
-from utils import *
-from simulator import *
-from models import *
+from pathlib import Path
+import sys
+ROOT_PATH = str(Path(__file__).parent.parent)
+sys.path.append(ROOT_PATH)
+
+import numpy as np
+import numpy.linalg as nalg
+import numpy.random as r
+import copy
+import matplotlib.pyplot as plt
 
 def main():
     dim = 2
@@ -118,7 +125,7 @@ def main():
     plt.ylabel(r'$\log\| u(T) - \widehat u(T) \|_{2}$', fontsize=fontsize)
     plt.tick_params(labelsize=labelsize)
     plt.legend(loc='upper left', bbox_to_anchor=(0.7, 0.7))
-    plt.savefig('../../fig/exp2/linear.pdf')
+    plt.savefig(ROOT_PATH+'/results/fig/exp2.pdf')
     plt.show()
     '''plt.scatter(U_OLS[0, :], U_OLS[1, :], label='OLS')
     plt.scatter(U_TR[0, :], U_TR[1, :], label='TR')

@@ -1,7 +1,12 @@
 # This script plot \cref{RD-beta-ds}
-from utils import *
-from simulator import *
-from models import *
+from pathlib import Path
+import sys
+ROOT_PATH = str(Path(__file__).parent.parent)
+sys.path.append(ROOT_PATH)
+
+from src.utils import *
+from src.simulator import *
+from src.models import *
 
 def main():
     r.seed(0)
