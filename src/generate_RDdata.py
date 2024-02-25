@@ -2,7 +2,7 @@
 #                   finished                      #
 ###################################################
 import utils
-import numpy as np
+import jax.numpy as jnp
 import numpy.random as r
 import copy
 import argparse
@@ -34,14 +34,14 @@ def generate_RD_data(config: ml_collections.ConfigDict):
 
     # simulating training trajectories
     case_num = 1
-    traning_u64 = np.zeros([case_num, step_num//writeInterval, 64, 64])
-    traning_v64 = np.zeros([case_num, step_num//writeInterval, 64, 64])
-    traning_labelu64 = np.zeros([case_num, step_num//writeInterval, 64, 64])
-    traning_labelv64 = np.zeros([case_num, step_num//writeInterval, 64, 64])
-    traning_u128 = np.zeros([case_num, step_num//writeInterval, 128, 128])
-    traning_v128 = np.zeros([case_num, step_num//writeInterval, 128, 128])
-    traning_labelu128 = np.zeros([case_num, step_num//writeInterval, 128, 128])
-    traning_labelv128 = np.zeros([case_num, step_num//writeInterval, 128, 128])
+    traning_u64 = jnp.zeros([case_num, step_num//writeInterval, 64, 64])
+    traning_v64 = jnp.zeros([case_num, step_num//writeInterval, 64, 64])
+    traning_labelu64 = jnp.zeros([case_num, step_num//writeInterval, 64, 64])
+    traning_labelv64 = jnp.zeros([case_num, step_num//writeInterval, 64, 64])
+    traning_u128 = jnp.zeros([case_num, step_num//writeInterval, 128, 128])
+    traning_v128 = jnp.zeros([case_num, step_num//writeInterval, 128, 128])
+    traning_labelu128 = jnp.zeros([case_num, step_num//writeInterval, 128, 128])
+    traning_labelv128 = jnp.zeros([case_num, step_num//writeInterval, 128, 128])
     j = 0
     i = 0
     while i < case_num and j < patience:
@@ -49,8 +49,8 @@ def generate_RD_data(config: ml_collections.ConfigDict):
         # simulation in 128x128 grid
         n = 128
         dx = widthx/n
-        u_hist = np.zeros([(step_num+warm_up)//writeInterval, n, n])
-        v_hist = np.zeros([(step_num+warm_up)//writeInterval, n, n])
+        u_hist = jnp.zeros([(step_num+warm_up)//writeInterval, n, n])
+        v_hist = jnp.zeros([(step_num+warm_up)//writeInterval, n, n])
         utils.assembly_RDmatrix(n, dt, dx, beta, gamma)
         u_init = r.randn(n, n)
         v_init = r.randn(n, n)
@@ -79,8 +79,8 @@ def generate_RD_data(config: ml_collections.ConfigDict):
         n = 64
         dx = widthx/n
         utils.assembly_RDmatrix(n, dt, dx, beta, gamma)
-        u_hist = np.zeros([(step_num+warm_up)//writeInterval, n, n])
-        v_hist = np.zeros([(step_num+warm_up)//writeInterval, n, n])
+        u_hist = jnp.zeros([(step_num+warm_up)//writeInterval, n, n])
+        v_hist = jnp.zeros([(step_num+warm_up)//writeInterval, n, n])
         u_hist, v_hist, flag = utils.RD_adi(u, v, dt, alpha=alpha, beta=beta, gamma=gamma, step_num=step_num+warm_up, writeInterval=writeInterval, plot=False)
         if flag == False:
             j = j+1
@@ -93,13 +93,13 @@ def generate_RD_data(config: ml_collections.ConfigDict):
 
     if i == case_num:
         # save 64 x 64 data
-        U = np.concatenate([np.expand_dims(traning_u64, axis=2), np.expand_dims(traning_v64, axis=2)], axis=2)
-        label = np.concatenate([np.expand_dims(traning_labelu64, axis=2), np.expand_dims(traning_labelv64, axis=2)], axis=2)
+        U = jnp.concatenate([jnp.expand_dims(traning_u64, axis=2), jnp.expand_dims(traning_v64, axis=2)], axis=2)
+        label = jnp.concatenate([jnp.expand_dims(traning_labelu64, axis=2), jnp.expand_dims(traning_labelv64, axis=2)], axis=2)
         label_dim = 2
-        np.savez('../data/RD/64-{}.npz'.format(int(gamma*20)), arg=[n, n, dt*writeInterval, T, label_dim], U=U, label=label)
+        jnp.savez('../data/RD/64-{}.npz'.format(int(gamma*20)), arg=[n, n, dt*writeInterval, T, label_dim], U=U, label=label)
 
         # save 128 x 128 data
         n = 128
-        U = np.concatenate([np.expand_dims(traning_u128, axis=2), np.expand_dims(traning_v128, axis=2)], axis=2)
-        label = np.concatenate([np.expand_dims(traning_labelu128, axis=2), np.expand_dims(traning_labelv128, axis=2)], axis=2)
-        np.savez('../data/RD/128-{}.npz'.format(int(gamma*20)), arg=[n, n, dt*writeInterval, T, label_dim], U=U, label=label)
+        U = jnp.concatenate([jnp.expand_dims(traning_u128, axis=2), jnp.expand_dims(traning_v128, axis=2)], axis=2)
+        label = jnp.concatenate([jnp.expand_dims(traning_labelu128, axis=2), jnp.expand_dims(traning_labelv128, axis=2)], axis=2)
+        jnp.savez('../data/RD/128-{}.npz'.format(int(gamma*20)), arg=[n, n, dt*writeInterval, T, label_dim], U=U, label=label)

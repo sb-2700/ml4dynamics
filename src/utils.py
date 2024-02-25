@@ -6,8 +6,7 @@ import torch
 import numpy as np
 import numpy.linalg as nalg
 import numpy.random as r
-import scipy.linalg as scalg
-import scipy.sparse as spa
+import jax.scipy.sparse.linalg as jsla
 from matplotlib import pyplot as plt
 from matplotlib import cm
 
