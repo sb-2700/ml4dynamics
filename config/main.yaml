@@ -11,6 +11,14 @@ defaults:
 sim_name: 'ns_sim_2d'
 label: null
 
+# Reaction-diffusion parameters
+alpha: 0.01
+beta: 1.0
+gamma: 0.05
+width-x: 6.4
+width-y: 6.4
+
+
 # Solver Parameters 
 domain_size: [1, 1]
 nx: 128

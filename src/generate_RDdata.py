@@ -1,6 +1,11 @@
 ###################################################
 #                   finished                      #
 ###################################################
+from pathlib import Path
+import sys
+ROOT_PATH = str(Path(__file__).parent.parent)
+sys.path.append(ROOT_PATH)
+
 import utils
 import jax.numpy as jnp
 import numpy.random as r
@@ -11,11 +16,6 @@ import ml_collections
 
 
 def generate_RD_data(config: ml_collections.ConfigDict):
-    # parse the simulation arguments
-    parser = argparse.ArgumentParser(description='manual to this script')
-    parser.add_argument('--gamma', type=float, default=0.05)
-    args = parser.parse_args()
-    gamma = args.gamma
     print('Generating RD data with gamma = {:.1f}...'.format(gamma))
 
     # set simulation parameters
@@ -58,7 +58,15 @@ def generate_RD_data(config: ml_collections.ConfigDict):
 
         u = copy.deepcopy(u_init)
         v = copy.deepcopy(v_init)
-        u_hist, v_hist, flag = utils.RD_adi(u, v, dt, alpha=alpha, beta=beta, gamma=gamma, step_num=step_num+warm_up, writeInterval=writeInterval, plot=False)
+        u_hist, v_hist, flag = utils.RD_adi(u, 
+                                            v, 
+                                            dt, 
+                                            alpha=alpha, 
+                                            beta=beta, 
+                                            gamma=gamma, 
+                                            step_num=step_num+warm_up, 
+                                            writeInterval=writeInterval, 
+                                            plot=False)
         if flag == False:
             j = j+1
             continue

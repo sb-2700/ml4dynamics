@@ -136,7 +136,7 @@ def RD_semi(u, v, dt, alpha=.01, beta=1.0, gamma=.05, step_num=200, plot=True, w
             v_hist[(i-0)//10, :] = v
     return u_hist, v_hist
     
-def RD_adi(u, v, dt, alpha=.01, beta=1.0, gamma=.05, step_num=200, writeInterval=1, plot=True, write=True):
+def RD_adi(u, v, dt, source=0, alpha=.01, beta=1.0, gamma=.05, step_num=200, writeInterval=1, plot=True, write=True):
     """ADI solver for FitzHugh-Nagumo RD equation"""
     
     global L_uminus, L_uplus, L_vminus, L_vplus
@@ -150,6 +150,8 @@ def RD_adi(u, v, dt, alpha=.01, beta=1.0, gamma=.05, step_num=200, writeInterval
             print('unacceptable field!')
             flag = False
             break
+        if source != 0:
+            rhs = source
         rhsu = L_uplus @ u @ L_uplus + dt * (u - v - u**3 + alpha)
         rhsv = L_vplus @ v @ L_vplus + beta * dt * (u - v)
         u = sps(L_uminus, rhsu)
