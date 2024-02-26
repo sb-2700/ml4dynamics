@@ -2,7 +2,7 @@ import os
 import copy
 import argparse
 import pdb
-import torch
+#import torch
 import numpy as np
 import numpy.linalg as nalg
 import numpy.random as r
@@ -10,7 +10,7 @@ import jax.scipy.sparse.linalg as jsla
 from matplotlib import pyplot as plt
 from matplotlib import cm
 
-from scipy.sparse.linalg import spsolve as sps
+#from scipy.sparse.linalg import spsolve as sps
 
 def read_data(filename=None):
 
@@ -201,7 +201,15 @@ def RD_cn(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, tol=1e-8, write
         while nalg.norm(res) > tol:
             D_[:n*n, :n*n] = D_[:n*n, :n*n] + dt/2*(spa.diags(3*(u_next**2)) - spa.eye(n*n))
             D = D_.tocsr()
-            duv = sps(D, res)
+            #duv = sps(D, res)
+            # GMRES with initial guess pressure in last time step
+            duv = jsla.gmres(A=D, 
+                            b=res.reshape(n*n),
+                            x0=duv).reshape([n, n])
+            # BiSTABCG with initial guess pressure in last time step
+            duv = jsla.bicgstab(A=D, 
+                            b=res.reshape(n*n),
+                            x0=duv).reshape([n, n])
             u_next = u_next - duv[:n*n]
             v_next = v_next - duv[n*n:]
             res = F(u_next, v_next, u, v)
@@ -300,8 +308,14 @@ def projection_method(u, v, t, dx=1/32, dy=1/32, nx=128, ny=32, y0=0.325, eps=1e
     
     # correction step: calculating the residue of Poisson equation as the divergence of new velocity field
     divu = (u[1:-1, 1:-1] - u[:-2, 1:-1])/dx + (v[1:-1, 1:] - v[1:-1, :-1])/dy
-    p = sps(L, divu.reshape(nx*ny)).reshape([nx, ny])
-    
+    # GMRES with initial guess pressure in last time step
+    p = jsla.gmres(A=L, 
+                   b=divu.reshape(nx*ny),
+                   x0=p).reshape([nx, ny])
+    # BiSTABCG with initial guess pressure in last time step
+    p = jsla.bicgstab(A=L, 
+                    b=divu.reshape(nx*ny),
+                    x0=p).reshape([nx, ny])
     
     u[1:-2, 1:-1] = u[1:-2, 1:-1] - (p[1:,:] - p[:-1,:])/dx
     v[1:-1, 1:-1] = v[1:-1, 1:-1] - (p[:,1:] - p[:,:-1])/dy
