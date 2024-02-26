@@ -16,11 +16,14 @@ import ml_collections
 
 
 def generate_RD_data(config: ml_collections.ConfigDict):
+    # parse the simulation arguments
+    parser = argparse.ArgumentParser(description='manual to this script')
+    parser.add_argument('--gamma', type=float, default=0.05)
+    args = parser.parse_args()
+    gamma = args.gamma
     print('Generating RD data with gamma = {:.1f}...'.format(gamma))
 
     # set simulation parameters
-    widthx = 6.4
-    widthy = 6.4
     dt = 0.01
     step_num = 2000
     T = step_num * dt
