@@ -8,10 +8,20 @@ defaults:
   - model: model1
   - _self_
 
-sim_name: 'ns_sim_2d'
+sim_name: 'rd_sim_2d'
 label: null
 
+################################################
+# Environment Setting Hyper-parameters.  #
+################################################
+seed: 123
+verbose: true
+jax_enable_x64: true
+xla_preallocate: false
+
+
 # Reaction-diffusion parameters
+warm_up: 200
 alpha: 0.01
 beta: 1.0
 gamma: 0.05
@@ -23,6 +33,7 @@ width-y: 6.4
 domain_size: [1, 1]
 nx: 128
 ny: 32
+dt: 0.01
 
 #['scalar_grid', extrapolation_x:(type or bound), extrapolation_y:(type or bound)]
 particle_extrapolation: 'BOUNDARY'

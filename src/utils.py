@@ -6,6 +6,7 @@ import pdb
 import numpy as np
 import numpy.linalg as nalg
 import numpy.random as r
+import jax.numpy as jnp
 import jax.scipy.sparse.linalg as jsla
 from matplotlib import pyplot as plt
 from matplotlib import cm
@@ -56,39 +57,40 @@ def preprocessing(arg, simutype, U, label, device, flag=True):
     return nx, ny, dt, T, label_dim, traj_num, step_num, U, label
 
 
-def assembly_RDmatrix(n, dt, dx, beta=1.0, gamma=0.05):
+def assembly_RDmatrix(n, dt, dx, beta=1.0, gamma=0.05, d=2):
     """assemble matrices used in the calculation
     A1 = I - gamma dt \Delta, used in implicit discretization of diffusion term, size n2*n2
     A2 = I - gamma dt/2 \Delta, used in CN discretization of diffusion term, size n2*n2
     A3 = I + gamma dt/2 \Delta, used in CN discretization of diffusion term, size n2*n2
     D, size 4n2*n2, Jacobi of the Newton solver in CN discretization
+    :d: ratio between the diffusion coeff for u & v
     """
     
     global L_uminus, L_uplus, L_vminus, L_vplus, A_uplus, A_uminus, A_vplus, A_vminus
-    L = np.eye(n) * (-2)
-    d = 2                                       # ratio between the diffusion coeff for u & v
+    L = jnp.eye(n) * (-2)
+    
     for i in range(1, n-1):
-        L[i, i-1] = 1
-        L[i, i+1] = 1
-    L[0, 1] = 1
-    L[0, -1] = 1
-    L[-1, 0] = 1
-    L[-1, -2] = 1
+        L = L.at[i, i-1].set(1)
+        L = L.at[i, i+1].set(1)
+    L = L.at[0, 1].set(1)
+    L = L.at[0, -1].set(1)
+    L = L.at[-1, 0].set(1)
+    L = L.at[-1, -2].set(1)
     L = L/(dx**2)
-    L_uminus = np.eye(n) - L * gamma * dt/2
-    L_uplus = np.eye(n) + L * gamma * dt/2
-    L_vminus = np.eye(n) - L * gamma * dt/2 * d
-    L_vplus = np.eye(n) + L * gamma * dt/2 * d
-    L = spa.csc_matrix(L)
-    L_uminus = spa.csc_matrix(L_uminus)
-    L_uplus = spa.csc_matrix(L_uplus)
-    L_vminus = spa.csc_matrix(L_vminus)
-    L_vplus = spa.csc_matrix(L_vplus)
-    L2 = spa.kron(L, np.eye(n)) + spa.kron(np.eye(n), L) 
-    A_uplus = spa.eye(n*n) + L2 * gamma * dt/2           
-    A_uminus = spa.eye(n*n) - L2 * gamma * dt/2
-    A_vplus = spa.eye(n*n) + L2 * gamma * dt/2 * d           
-    A_vminus = spa.eye(n*n) - L2 * gamma * dt/2 * d                    
+    L_uminus = jnp.eye(n) - L * gamma * dt/2
+    L_uplus = jnp.eye(n) + L * gamma * dt/2
+    L_vminus = jnp.eye(n) - L * gamma * dt/2 * d
+    L_vplus = jnp.eye(n) + L * gamma * dt/2 * d
+    # L = spa.csc_matrix(L)
+    # L_uminus = spa.csc_matrix(L_uminus)
+    # L_uplus = spa.csc_matrix(L_uplus)
+    # L_vminus = spa.csc_matrix(L_vminus)
+    # L_vplus = spa.csc_matrix(L_vplus)
+    # L2 = spa.kron(L, np.eye(n)) + spa.kron(np.eye(n), L) 
+    # A_uplus = spa.eye(n*n) + L2 * gamma * dt/2           
+    # A_uminus = spa.eye(n*n) - L2 * gamma * dt/2
+    # A_vplus = spa.eye(n*n) + L2 * gamma * dt/2 * d           
+    # A_vminus = spa.eye(n*n) - L2 * gamma * dt/2 * d                    
     
     '''D_ = spa.lil_matrix((2*n*n, 2*n*n))
     D_[:n*n, :n*n] = A2                                                # dF_u/du
@@ -144,21 +146,23 @@ def RD_adi(u, v, dt, source=0, alpha=.01, beta=1.0, gamma=.05, step_num=200, wri
     flag = True
     u_hist = np.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
     v_hist = np.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
+    if jnp.linalg.norm(source) != 0:
+        rhsu_ = source[0]
+        rhsv_ = source[1]
 
     for i in range(step_num):
         if nalg.norm(u) > upper_bound:
             print('unacceptable field!')
             flag = False
             break
-        if source != 0:
-            rhs = source
-        rhsu = L_uplus @ u @ L_uplus + dt * (u - v - u**3 + alpha)
-        rhsv = L_vplus @ v @ L_vplus + beta * dt * (u - v)
-        u = sps(L_uminus, rhsu)
-        u = sps(L_uminus, u.T)
+        rhsu = rhsu_ * dt + L_uplus @ u @ L_uplus + dt * (u - v - u**3 + alpha)
+        rhsv = rhsv_ * dt + L_vplus @ v @ L_vplus + beta * dt * (u - v)
+        # L_uminus, L_vminus are both symmetric matrix, so we can solve by conjugate gradient
+        u, _ = jsla.cg(L_uminus, rhsu)
+        u, _ = jsla.cg(L_uminus, u.T)
         u = u.T
-        v = sps(L_vminus, rhsv)
-        v = sps(L_vminus, v.T)
+        v, _ = jsla.cg(L_vminus, rhsv)
+        v, _ = jsla.cg(L_vminus, v.T)
         v = v.T
 
         if (i+1)%writeInterval == 0:

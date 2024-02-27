@@ -8,24 +8,78 @@ import sys
 sys.path.append('..')
 import pytest
 # We need to use functional programming so we can call the function we want
-from src.generate_NSdata import generate_NS_data
-from src.generate_RDdata import generate_RD_data
+import jax.numpy as jnp
+from jax import random
 
+from src import utils
+
+# @pytest.mark.parametrize(
+#     ("hw", "param_count"),
+#     [
+#         ((128, 128), 34_491_599),
+#         # It's fully convolutional => same parameter number.
+#         ((256, 256), 34_491_599),
+#     ],
+#   )
+
+
+def test_turing_pattern():
+    """Test whether the set of parameter will generate Turing pattern for RD equation
+    """
+    assert True
 
 def test_reaction_diffusion_equation_solver():
-    """We perform a mesh-refinement study to check the accuracy of our solver
+    """We check the numerical solution with the following analytic solution
     test case for RD equation:
-        u(x, y, t) = sin(x)
-        v(x, y, t) = sin(y)
+        u(x, y, t) = sin(2\pi x/L)
+        v(x, y, t) = sin(2\pi y/L)
         D = [[1, 0], [0, 1]]
         alpha = 0.01
         beta = 1.0
-        s_u(x, y, t) = sin^3(y) + sin(y) - 0.01
-        s_v(x, y, t) = 2sin(y) - sin(x)
+        s_u(x, y, t) = ((2\pi/L)^2-1)*u + v**3 + v - 0.01
+        s_v(x, y, t) = (2\pi/L)^2*v + v - u
     
     test case for NS equation:
 
     """
 
-    generate_RD_data()
-    assert True
+    n = 32
+    widthx = 6.4
+    step_num = 10
+    warm_up = 0
+    writeInterval = 1
+    dx = widthx/n
+    alpha = 0.01
+    beta = 1.0
+    gamma = 1.0
+    dt = 0.01
+    tol = 1e-7
+    omega = 2*jnp.pi/widthx
+
+    utils.assembly_RDmatrix(n, 
+                            dt, 
+                            dx, 
+                            beta=beta, 
+                            gamma=gamma,
+                            d=1.0
+                            )
+
+    mesh_1d = jnp.linspace(0, widthx, n+1)
+    u = jnp.sin(mesh_1d[:-1]*omega).reshape(n, 1) + jnp.zeros((1, n))
+    v = jnp.sin(mesh_1d[:-1]*omega).reshape(1, n) + jnp.zeros((n, 1))
+    source = jnp.zeros((2, n, n))
+    source = source.at[0].set((omega**2-1)*u + v**3 + v - alpha)
+    source = source.at[1].set(omega**2*v + v - u)
+
+    u_hist, v_hist, flag = utils.RD_adi(u, 
+                                        v, 
+                                        dt, 
+                                        source=source,
+                                        alpha=alpha, 
+                                        beta=beta, 
+                                        gamma=gamma, 
+                                        step_num=step_num+warm_up, 
+                                        writeInterval=writeInterval, 
+                                        plot=False)
+    
+    assert jnp.sum((u_hist[-1]-u_hist[0])**2 + (v_hist[-1]-v_hist[0])**2) < tol

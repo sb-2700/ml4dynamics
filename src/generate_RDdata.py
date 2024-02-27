@@ -14,26 +14,24 @@ import argparse
 import pdb
 import ml_collections
 
-
 def generate_RD_data(config: ml_collections.ConfigDict):
-    # parse the simulation arguments
-    parser = argparse.ArgumentParser(description='manual to this script')
-    parser.add_argument('--gamma', type=float, default=0.05)
-    args = parser.parse_args()
-    gamma = args.gamma
-    print('Generating RD data with gamma = {:.1f}...'.format(gamma))
+    print('Generating RD data with gamma = {:.1f}...'.format(config.gamma))
 
     # set simulation parameters
-    dt = 0.01
+    # warm start, we perform several steps so that the flow comes to a physical state
+    warm_up = config.warm_up
+    widthx = config.widthx
+    widthy = config.widthy
+    gamma = config.gamma
+    dt = config.dt
+    alpha = config.alpha
+    beta = config.beta
     step_num = 2000
     T = step_num * dt
-    alpha = 0.01
-    beta = 1.0
-    warm_up = 200
     patience = 5                           # we admit 50 times blow up generations
     writeInterval = 2
     tol = 1e-7
-    r.seed(0)
+    r.seed(config.seed)
 
     # simulating training trajectories
     case_num = 1
