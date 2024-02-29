@@ -3,7 +3,7 @@ import copy
 import argparse
 import pdb
 #import torch
-import numpy as np
+#import numpy as np
 import numpy.linalg as nalg
 import numpy.random as r
 import jax.numpy as jnp
@@ -56,6 +56,11 @@ def preprocessing(arg, simutype, U, label, device, flag=True):
     label = label.to(device)
     return nx, ny, dt, T, label_dim, traj_num, step_num, U, label
 
+############################################################################################################
+#                   Numerical solver of the reaction-diffusion equation: 
+# For linear term, we use different discretization scheme, e.g. explicit, implicit, Crank-Nielson, ADI etc.
+# For nonlinear term, we use the explicit scheme (need to implement Ashford)
+############################################################################################################
 
 def assembly_RDmatrix(n, dt, dx, beta=1.0, gamma=0.05, d=2):
     """assemble matrices used in the calculation
@@ -66,7 +71,8 @@ def assembly_RDmatrix(n, dt, dx, beta=1.0, gamma=0.05, d=2):
     :d: ratio between the diffusion coeff for u & v
     """
     
-    global L_uminus, L_uplus, L_vminus, L_vplus, A_uplus, A_uminus, A_vplus, A_vminus
+    global L_uminus, L_uplus, L_vminus, L_vplus, A_uplus, A_uminus, A_vplus, A_vminus, \
+              A0_u, A0_v, L, L2
     L = jnp.eye(n) * (-2)
     
     for i in range(1, n-1):
@@ -81,6 +87,13 @@ def assembly_RDmatrix(n, dt, dx, beta=1.0, gamma=0.05, d=2):
     L_uplus = jnp.eye(n) + L * gamma * dt/2
     L_vminus = jnp.eye(n) - L * gamma * dt/2 * d
     L_vplus = jnp.eye(n) + L * gamma * dt/2 * d
+    L2 = jnp.kron(L, jnp.eye(n)) + jnp.kron(jnp.eye(n), L) 
+    A0_u = jnp.eye(n*n) + L2 * gamma * dt
+    A0_v = jnp.eye(n*n) + L2 * gamma * dt * d
+    A_uplus = jnp.eye(n*n) + L2 * gamma * dt/2           
+    A_uminus = jnp.eye(n*n) - L2 * gamma * dt/2
+    A_vplus = jnp.eye(n*n) + L2 * gamma * dt/2 * d           
+    A_vminus = jnp.eye(n*n) - L2 * gamma * dt/2 * d 
     # L = spa.csc_matrix(L)
     # L_uminus = spa.csc_matrix(L_uminus)
     # L_uplus = spa.csc_matrix(L_uplus)
@@ -98,63 +111,88 @@ def assembly_RDmatrix(n, dt, dx, beta=1.0, gamma=0.05, d=2):
     D_[:n*n, n*n:] = dt*spa.eye(n*n)/2                                 # dF_u/dv
     D_[n*n:, :n*n] = -dt*beta*spa.eye(n*n)/2                           # dF_v/du'''
 
-def RD_exp(u, v, dt, alpha=.01, beta=1.0, gamma=.05, step_num=200, plot=True, write=True):
+def RD_exp(u, 
+            v, 
+            dt, 
+            source=0, 
+            alpha=.01, 
+            beta=1.0,  
+            step_num=200, 
+            writeInterval=1):
     """
     explicit forward Euler solver for FitzHugh-Nagumo RD equation
     Modification has to be made for it to simulate PDE with different diffusion coefficient for two components
     """
     
-    u_hist = np.zeros([step_num, u.size])
-    v_hist = np.zeros([step_num, v.size])
+    global L_uminus, L_uplus, L_vminus, L_vplus
+    nx = u.shape[0]
+    ny = u.shape[1]
+    u_hist = jnp.zeros([step_num//writeInterval, nx, ny])
+    v_hist = jnp.zeros([step_num//writeInterval, nx, ny])
+    if jnp.linalg.norm(source) != 0:
+        rhsu_ = source[0].reshape(nx*ny)
+        rhsv_ = source[1].reshape(nx*ny)
+    u = u.reshape(nx*ny)
+    v = v.reshape(nx*ny)
     
     for i in range(step_num):
-        for j in range(5):
-            tmpu = A0 @ u + dt * (u - v - u**3 + alpha)
-            tmpv = A0 @ v + beta * dt * (u - v)
-            u = tmpu
-            v = tmpv
-            u_hist[i, :] = u
-            v_hist[i, :] = v
+        tmpu = A0_u @ u + dt * (u - v - u**3 + alpha) + rhsu_ * dt
+        tmpv = A0_v @ v + beta * dt * (u - v) + rhsv_ * dt
+        u = tmpu
+        v = tmpv
+
+        if (i+1)%writeInterval == 0:
+            u_hist = u_hist.at[(i-0)//writeInterval].set(u.reshape(nx, ny))
+            v_hist = v_hist.at[(i-0)//writeInterval].set(v.reshape(nx, ny))
         
     return u_hist, v_hist
        
-def RD_semi(u, v, dt, alpha=.01, beta=1.0, gamma=.05, step_num=200, plot=True, write=True):
+def RD_semi(u, 
+            v, 
+            dt, 
+            source=0, 
+            alpha=.01, 
+            beta=1.0,  
+            step_num=200, 
+            writeInterval=1):
     """semi-implicit solver for FitzHugh-Nagumo RD equation"""
     
-    global A_uplus, A_uminus, A_vplus, A_vminus
-    u_hist = np.zeros([step_num, u.size])
-    v_hist = np.zeros([step_num, v.size])
+    global L_uminus, L_uplus, L_vminus, L_vplus
+    u_hist = jnp.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
+    v_hist = jnp.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
+    if jnp.linalg.norm(source) != 0:
+        rhsu_ = source[0]
+        rhsv_ = source[1]
     
     for i in range(step_num):
         rhsu = A_uplus @ u + dt * (u - v - u**3 + alpha)
         rhsv = A_vplus @ v + beta * dt * (u - v)
         u = sps(A_uminus, rhsu)
         v = sps(A_vminus, rhsv)
-        if write:
-            u_hist[i, :] = u
-            v_hist[i, :] = v
-        elif (i+1)%10 == 0:
-            u_hist[(i-0)//10, :] = u
-            v_hist[(i-0)//10, :] = v
+        
+        if (i+1)%writeInterval == 0:
+            u_hist[(i-0)//writeInterval, :] = u
+            v_hist[(i-0)//writeInterval, :] = v
     return u_hist, v_hist
     
-def RD_adi(u, v, dt, source=0, alpha=.01, beta=1.0, gamma=.05, step_num=200, writeInterval=1, plot=True, write=True):
+def RD_adi(u, 
+            v, 
+            dt, 
+            source=0, 
+            alpha=.01, 
+            beta=1.0,  
+            step_num=200, 
+            writeInterval=1):
     """ADI solver for FitzHugh-Nagumo RD equation"""
     
     global L_uminus, L_uplus, L_vminus, L_vplus
-    upper_bound = 1e5
-    flag = True
-    u_hist = np.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
-    v_hist = np.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
+    u_hist = jnp.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
+    v_hist = jnp.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
     if jnp.linalg.norm(source) != 0:
         rhsu_ = source[0]
         rhsv_ = source[1]
 
     for i in range(step_num):
-        if nalg.norm(u) > upper_bound:
-            print('unacceptable field!')
-            flag = False
-            break
         rhsu = rhsu_ * dt + L_uplus @ u @ L_uplus + dt * (u - v - u**3 + alpha)
         rhsv = rhsv_ * dt + L_vplus @ v @ L_vplus + beta * dt * (u - v)
         # L_uminus, L_vminus are both symmetric matrix, so we can solve by conjugate gradient
@@ -166,12 +204,21 @@ def RD_adi(u, v, dt, source=0, alpha=.01, beta=1.0, gamma=.05, step_num=200, wri
         v = v.T
 
         if (i+1)%writeInterval == 0:
-            u_hist[(i-0)//writeInterval, :] = u
-            v_hist[(i-0)//writeInterval, :] = v
+            u_hist = u_hist.at[(i-0)//writeInterval, :].set(u)
+            v_hist = v_hist.at[(i-0)//writeInterval, :].set(v)
 
-    return u_hist, v_hist, flag
+    return u_hist, v_hist
 
-def RD_cn(u, v, dt, alpha=.01, beta=.2, gamma=.05, step_num=200, tol=1e-8, writeInterval=1, plot=True, write=True):
+def RD_cn(u, 
+            v, 
+            dt, 
+            source=0, 
+            alpha=.01, 
+            beta=1.0,  
+            step_num=200, 
+            writeInterval=1, 
+            plot=True, 
+            write=True):
     """full implicit solver with Crank-Nielson discretization"""
     
     global L, D_

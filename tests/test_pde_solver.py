@@ -71,15 +71,25 @@ def test_reaction_diffusion_equation_solver():
     source = source.at[0].set((omega**2-1)*u + v**3 + v - alpha)
     source = source.at[1].set(omega**2*v + v - u)
 
-    u_hist, v_hist, flag = utils.RD_adi(u, 
+    # test the alternating direction implicit (ADI) method
+    u_hist, v_hist = utils.RD_adi(u, 
                                         v, 
                                         dt, 
                                         source=source,
                                         alpha=alpha, 
                                         beta=beta, 
-                                        gamma=gamma, 
                                         step_num=step_num+warm_up, 
-                                        writeInterval=writeInterval, 
-                                        plot=False)
+                                        writeInterval=writeInterval)
+    assert jnp.sum((u_hist[-1]-u_hist[0])**2 + (v_hist[-1]-v_hist[0])**2) < tol
+
+    # test the explicit method
+    u_hist, v_hist = utils.RD_exp(u, 
+                                    v, 
+                                    dt, 
+                                    source=source,
+                                    alpha=alpha, 
+                                    beta=beta, 
+                                    step_num=step_num+warm_up, 
+                                    writeInterval=writeInterval)
     
     assert jnp.sum((u_hist[-1]-u_hist[0])**2 + (v_hist[-1]-v_hist[0])**2) < tol
