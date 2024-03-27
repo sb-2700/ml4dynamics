@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 ROOT_PATH = str(Path(__file__).parent.parent)
 sys.path.append(ROOT_PATH)
+import pdb
 
 import numpy as np
 import numpy.linalg as nalg
@@ -18,7 +19,7 @@ def main():
     SAMPLE_NUM = 5
     MAX_SIZE = 2
     size_arr = np.linspace(.5, MAX_SIZE, SAMPLE_NUM)
-    lambda_array = [2,4,8,16,32,64,128,256,512,1024,2048]
+    lambda_array = [2,4,8,16,32,64,128,256,512,1024,2048,1000000]
     r.seed(0)
     rt = [[], [], []]
     var = [[], [], []]
@@ -26,6 +27,7 @@ def main():
     i = 0
     F = np.eye(dim) * 1.2
     F[:int_dim, :int_dim] = np.eye(int_dim) * 0.95
+    print(F)
     B = r.rand(dim, dim)
     Q, R = nalg.qr(B)
     B = Q
@@ -109,27 +111,36 @@ def main():
     rt = np.array(rt)
     var = np.array(var)
 
-    plt.rcParams['savefig.dpi'] = 300
-    plt.rcParams['figure.dpi']  = 300 
-    labelsize = 10
-    fontsize = 10
-    eps = 1e-7
-    plt.plot(lambda_array, np.log(rt[0]), label='OLS')
-    plt.fill_between(lambda_array, np.log(np.maximum(rt[0]-var[0], eps)), np.log(rt[0]+var[0]), color="gray", alpha=0.5)
-    plt.plot(lambda_array, np.log(rt[1]), label='mOLS')
-    plt.fill_between(lambda_array, np.log(np.maximum(rt[1]-var[1], eps)), np.log(rt[1]+var[1]), color="gray", alpha=0.5)
-    plt.plot(lambda_array, np.log(rt[2]), label='TR')
-    plt.fill_between(lambda_array, np.log(np.maximum(rt[2]-var[2], eps)), np.log(rt[2]+var[2]), color="gray", alpha=0.5)
-    #plt.xlabel(r'$B\widehat C$')
-    plt.xlabel(r'$\lambda$', fontsize=fontsize)
-    plt.ylabel(r'$\log\| u(T) - \widehat u(T) \|_{2}$', fontsize=fontsize)
-    plt.tick_params(labelsize=labelsize)
-    plt.legend(loc='upper left', bbox_to_anchor=(0.7, 0.7))
-    plt.savefig(ROOT_PATH+'/results/fig/exp2.pdf')
+    plt.plot(np.arange(1, step_num+1, 1), np.log10(err_OLS), label='OLS')
+    plt.plot(np.arange(1, step_num+1, 1), np.log10(err_mOLS), label='mOLS')
+    plt.plot(np.arange(1, step_num+1, 1), np.log10(err_TR), label='TR')
+    plt.plot(np.arange(1, step_num+1, 1), np.log10(0.95)*np.arange(1, step_num+1, 1)-2, label='best rate')
+    plt.legend()
+    plt.savefig(ROOT_PATH+'/results/fig/exp2-1.pdf')
     plt.show()
-    '''plt.scatter(U_OLS[0, :], U_OLS[1, :], label='OLS')
-    plt.scatter(U_TR[0, :], U_TR[1, :], label='TR')
-    plt.show()'''
+
+    # plt.rcParams['savefig.dpi'] = 300
+    # plt.rcParams['figure.dpi']  = 300 
+    # labelsize = 10
+    # fontsize = 10
+    # eps = 1e-7
+    # plt.plot(lambda_array, np.log(0.95**50*eps)*np.ones_like(lambda_array), label='best rate')
+    # plt.plot(lambda_array, np.log(rt[0]), label='OLS')
+    # plt.fill_between(lambda_array, np.log(np.maximum(rt[0]-var[0], eps)), np.log(rt[0]+var[0]), color="gray", alpha=0.5)
+    # plt.plot(lambda_array, np.log(rt[1]), label='mOLS')
+    # plt.fill_between(lambda_array, np.log(np.maximum(rt[1]-var[1], eps)), np.log(rt[1]+var[1]), color="gray", alpha=0.5)
+    # plt.plot(lambda_array, np.log(rt[2]), label='TR')
+    # plt.fill_between(lambda_array, np.log(np.maximum(rt[2]-var[2], eps)), np.log(rt[2]+var[2]), color="gray", alpha=0.5)
+    # #plt.xlabel(r'$B\widehat C$')
+    # plt.xlabel(r'$\lambda$', fontsize=fontsize)
+    # plt.ylabel(r'$\log\| u(T) - \widehat u(T) \|_{2}$', fontsize=fontsize)
+    # plt.tick_params(labelsize=labelsize)
+    # plt.legend(loc='upper left', bbox_to_anchor=(0.7, 0.7))
+    # plt.savefig(ROOT_PATH+'/results/fig/exp2.pdf')
+    # plt.show()
+    # '''plt.scatter(U_OLS[0, :], U_OLS[1, :], label='OLS')
+    # plt.scatter(U_TR[0, :], U_TR[1, :], label='TR')
+    # plt.show()'''
 
 if __name__ == '__main__':
     main()
