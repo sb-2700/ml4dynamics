@@ -15,11 +15,12 @@ def main():
     dim = 2
     int_dim = 1         # intrinsic dimension
     eps = .001
-    step_num = 50
+    step_num = 80
     SAMPLE_NUM = 5
     MAX_SIZE = 2
     size_arr = np.linspace(.5, MAX_SIZE, SAMPLE_NUM)
-    lambda_array = [2,4,8,16,32,64,128,256,512,1024,2048,1000000]
+    #lambda_array = [2,4,8,16,32,64,128,256,512,1024,2048,10000]
+    lambda_array = [1e3, 1e5, 1e7]
     r.seed(0)
     rt = [[], [], []]
     var = [[], [], []]
@@ -108,12 +109,13 @@ def main():
         var[0].append(np.std(tmp1))
         var[1].append(np.std(tmp2))
         var[2].append(np.std(tmp3))
+        plt.plot(np.arange(1, step_num+1, 1), np.log10(err_TR), label='TR{:.0e}'.format(lambda_))
     rt = np.array(rt)
     var = np.array(var)
 
+    print(lambda_)
     plt.plot(np.arange(1, step_num+1, 1), np.log10(err_OLS), label='OLS')
     plt.plot(np.arange(1, step_num+1, 1), np.log10(err_mOLS), label='mOLS')
-    plt.plot(np.arange(1, step_num+1, 1), np.log10(err_TR), label='TR')
     plt.plot(np.arange(1, step_num+1, 1), np.log10(0.95)*np.arange(1, step_num+1, 1)-2, label='best rate')
     plt.legend()
     plt.savefig(ROOT_PATH+'/results/fig/exp2-1.pdf')
