@@ -115,8 +115,10 @@ def main():
 
     print(lambda_)
     plt.plot(np.arange(1, step_num+1, 1), np.log10(err_OLS), label='OLS')
-    plt.plot(np.arange(1, step_num+1, 1), np.log10(err_mOLS), label='mOLS')
+    plt.plot(np.arange(1, step_num+1, 1), np.log10(err_mOLS), label='mOLS{:.0e}'.format(lambda_))
     plt.plot(np.arange(1, step_num+1, 1), np.log10(0.95)*np.arange(1, step_num+1, 1)-2, label='best rate')
+    plt.xlabel('t')
+    plt.ylabel(r'$\log_{10}\| u(t) - \widehat u(t) \|_{2}$')
     plt.legend()
     plt.savefig(ROOT_PATH+'/results/fig/exp2-1.pdf')
     plt.show()
