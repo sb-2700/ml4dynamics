@@ -10,6 +10,7 @@ import numpy.linalg as nalg
 import numpy.random as r
 import copy
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
 def main():
     dim = 2
@@ -20,7 +21,7 @@ def main():
     MAX_SIZE = 2
     size_arr = np.linspace(.5, MAX_SIZE, SAMPLE_NUM)
     #lambda_array = [2,4,8,16,32,64,128,256,512,1024,2048,10000]
-    lambda_array = [1e3, 1e5, 1e7]
+    lambda_array = [1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7]
     r.seed(0)
     rt = [[], [], []]
     var = [[], [], []]
@@ -48,6 +49,10 @@ def main():
     for j in range(1, step_num):
         U[:, j] = F @ U[:, j-1]
 
+    cmap = plt.cm.Reds  # 使用 Reds 颜色映射
+    norm = mcolors.Normalize(vmin=-1, vmax=9)  # 设置颜色映射范围
+
+    exponent = 1
     for lambda_ in lambda_array:
         tmp1 = []
         tmp2 = []
@@ -109,17 +114,20 @@ def main():
         var[0].append(np.std(tmp1))
         var[1].append(np.std(tmp2))
         var[2].append(np.std(tmp3))
-        plt.plot(np.arange(1, step_num+1, 1), np.log10(err_TR), label='TR{:.0e}'.format(lambda_))
+    
+        plt.plot(np.arange(1, step_num+1, 1), np.log10(err_TR), label=r'TR-$\lambda=10^{}$'.format(exponent), color=cmap(norm(np.log10(lambda_))))
+        exponent += 1
     rt = np.array(rt)
     var = np.array(var)
 
     print(lambda_)
-    plt.plot(np.arange(1, step_num+1, 1), np.log10(err_OLS), label='OLS')
-    plt.plot(np.arange(1, step_num+1, 1), np.log10(err_mOLS), label='mOLS{:.0e}'.format(lambda_))
-    plt.plot(np.arange(1, step_num+1, 1), np.log10(0.95)*np.arange(1, step_num+1, 1)-2, label='best rate')
+    plt.plot(np.arange(1, step_num+1, 1), np.log10(err_mOLS), label=r'mOLS-$\lambda=10^7$', color='green')
+    plt.plot(np.arange(1, step_num+1, 1), np.log10(err_OLS), label='OLS', color='blue')
+    plt.plot(np.arange(1, step_num+1, 1), np.log10(1.2)*np.arange(1, step_num+1, 1)-2, label=r'$e^{e_1t}$', color='black', linestyle='--')
+    plt.plot(np.arange(1, step_num+1, 1), np.log10(0.95)*np.arange(1, step_num+1, 1)-2, label=r'$e^{e_2t}$', color='black', linestyle='-.')
     plt.xlabel('t')
     plt.ylabel(r'$\log_{10}\| u(t) - \widehat u(t) \|_{2}$')
-    plt.legend()
+    plt.legend(fontsize=9)
     plt.savefig(ROOT_PATH+'/results/fig/exp2-1.pdf')
     plt.show()
 
