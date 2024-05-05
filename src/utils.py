@@ -73,21 +73,19 @@ def assembly_RDmatrix(n, dt, dx, beta=1.0, gamma=0.05, d=2):
     
     global L_uminus, L_uplus, L_vminus, L_vplus, A_uplus, A_uminus, A_vplus, A_vminus, \
               A0_u, A0_v, L, L2
-    L = jnp.eye(n) * (-2)
     
-    for i in range(1, n-1):
-        L = L.at[i, i-1].set(1)
-        L = L.at[i, i+1].set(1)
-    L = L.at[0, 1].set(1)
-    L = L.at[0, -1].set(1)
-    L = L.at[-1, 0].set(1)
-    L = L.at[-1, -2].set(1)
+    L = jnp.eye(n) * -2 + jnp.eye(n, k=1) + jnp.eye(n, k=-1)
+    L = L.at[0,-1].set(1)
+    L = L.at[-1,0].set(1)
     L = L/(dx**2)
+    L2 = jnp.kron(L, jnp.eye(n)) + jnp.kron(jnp.eye(n), L) 
+
+    # matrix for ADI scheme
     L_uminus = jnp.eye(n) - L * gamma * dt/2
     L_uplus = jnp.eye(n) + L * gamma * dt/2
     L_vminus = jnp.eye(n) - L * gamma * dt/2 * d
     L_vplus = jnp.eye(n) + L * gamma * dt/2 * d
-    L2 = jnp.kron(L, jnp.eye(n)) + jnp.kron(jnp.eye(n), L) 
+
     A0_u = jnp.eye(n*n) + L2 * gamma * dt
     A0_v = jnp.eye(n*n) + L2 * gamma * dt * d
     A_uplus = jnp.eye(n*n) + L2 * gamma * dt/2           
@@ -104,12 +102,6 @@ def assembly_RDmatrix(n, dt, dx, beta=1.0, gamma=0.05, d=2):
     # A_uminus = spa.eye(n*n) - L2 * gamma * dt/2
     # A_vplus = spa.eye(n*n) + L2 * gamma * dt/2 * d           
     # A_vminus = spa.eye(n*n) - L2 * gamma * dt/2 * d                    
-    
-    '''D_ = spa.lil_matrix((2*n*n, 2*n*n))
-    D_[:n*n, :n*n] = A2                                                # dF_u/du
-    D_[n*n:, n*n:] = A2 + dt*beta*spa.eye(n*n)/2                       # dF_v/dv
-    D_[:n*n, n*n:] = dt*spa.eye(n*n)/2                                 # dF_u/dv
-    D_[n*n:, :n*n] = -dt*beta*spa.eye(n*n)/2                           # dF_v/du'''
 
 def RD_exp(u, 
             v, 
@@ -124,7 +116,6 @@ def RD_exp(u,
     Modification has to be made for it to simulate PDE with different diffusion coefficient for two components
     """
     
-    global L_uminus, L_uplus, L_vminus, L_vplus
     nx = u.shape[0]
     ny = u.shape[1]
     u_hist = jnp.zeros([step_num//writeInterval, nx, ny])
@@ -157,7 +148,6 @@ def RD_semi(u,
             writeInterval=1):
     """semi-implicit solver for FitzHugh-Nagumo RD equation"""
     
-    global L_uminus, L_uplus, L_vminus, L_vplus
     u_hist = jnp.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
     v_hist = jnp.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
     if jnp.linalg.norm(source) != 0:
@@ -185,7 +175,6 @@ def RD_adi(u,
             writeInterval=1):
     """ADI solver for FitzHugh-Nagumo RD equation"""
     
-    global L_uminus, L_uplus, L_vminus, L_vplus
     u_hist = jnp.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
     v_hist = jnp.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
     if jnp.linalg.norm(source) != 0:
