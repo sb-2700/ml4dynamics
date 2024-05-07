@@ -1,9 +1,5 @@
-import os
 import copy
 import argparse
-import pdb
-#import torch
-#import numpy as np
 import numpy.linalg as nalg
 import numpy.random as r
 import jax.numpy as jnp
@@ -103,17 +99,19 @@ def assembly_RDmatrix(n, dt, dx, beta=1.0, gamma=0.05, d=2):
     # A_vplus = spa.eye(n*n) + L2 * gamma * dt/2 * d           
     # A_vminus = spa.eye(n*n) - L2 * gamma * dt/2 * d                    
 
-def RD_exp(u, 
-            v, 
-            dt, 
-            source=0, 
-            alpha=.01, 
-            beta=1.0,  
-            step_num=200, 
-            writeInterval=1):
+def RD_exp(
+        u: jnp.ndarray, 
+        v: jnp.ndarray, 
+        dt: float, 
+        source: jnp.ndarray=0, 
+        alpha: float=.01, 
+        beta: float=1.0,  
+        step_num: int=200, 
+        writeInterval: int=1):
     """
     explicit forward Euler solver for FitzHugh-Nagumo RD equation
-    Modification has to be made for it to simulate PDE with different diffusion coefficient for two components
+    :input:
+    u, v: initial condition, shape [nx, ny], different nx, ny is used for different diffusion coeff
     """
     
     nx = u.shape[0]
@@ -138,48 +136,57 @@ def RD_exp(u,
         
     return u_hist, v_hist
        
-def RD_semi(u, 
-            v, 
-            dt, 
-            source=0, 
-            alpha=.01, 
-            beta=1.0,  
-            step_num=200, 
-            writeInterval=1):
+def RD_semi(
+        u: jnp.ndarray, 
+        v: jnp.ndarray, 
+        dt: float, 
+        source: jnp.ndarray=0, 
+        alpha: float=.01, 
+        beta: float=1.0,  
+        step_num: int=200, 
+        writeInterval: int=1):
     """semi-implicit solver for FitzHugh-Nagumo RD equation"""
     
-    u_hist = jnp.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
-    v_hist = jnp.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
+    nx = u.shape[0]
+    ny = u.shape[1]
+    u_hist = jnp.zeros([step_num//writeInterval, nx, ny])
+    v_hist = jnp.zeros([step_num//writeInterval, nx, ny])
     if jnp.linalg.norm(source) != 0:
-        rhsu_ = source[0]
-        rhsv_ = source[1]
+        rhsu_ = source[0].reshape(nx*ny)
+        rhsv_ = source[1].reshape(nx*ny)
+    u = u.reshape(nx*ny)
+    v = v.reshape(nx*ny)
     
     for i in range(step_num):
-        rhsu = A_uplus @ u + dt * (u - v - u**3 + alpha)
-        rhsv = A_vplus @ v + beta * dt * (u - v)
-        u = sps(A_uminus, rhsu)
-        v = sps(A_vminus, rhsv)
+        rhsu = A_uplus @ u + dt * (u - v - u**3 + alpha) + rhsu_ * dt
+        rhsv = A_vplus @ v + beta * dt * (u - v) + rhsv_ * dt
+        u, _ = jsla.cg(A_uminus, rhsu)
+        v, _ = jsla.cg(A_vminus, rhsv)
         
         if (i+1)%writeInterval == 0:
-            u_hist[(i-0)//writeInterval, :] = u
-            v_hist[(i-0)//writeInterval, :] = v
+            u_hist = u_hist.at[(i-0)//writeInterval].set(u.reshape(nx, ny))
+            v_hist = v_hist.at[(i-0)//writeInterval].set(v.reshape(nx, ny))
+
     return u_hist, v_hist
     
-def RD_adi(u, 
-            v, 
-            dt, 
-            source=0, 
-            alpha=.01, 
-            beta=1.0,  
-            step_num=200, 
-            writeInterval=1):
+def RD_adi(
+        u: jnp.ndarray, 
+        v: jnp.ndarray, 
+        dt: float, 
+        source: jnp.ndarray=0, 
+        alpha: float=.01, 
+        beta: float=1.0,  
+        step_num: int=200, 
+        writeInterval: int=1):
     """ADI solver for FitzHugh-Nagumo RD equation"""
     
-    u_hist = jnp.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
-    v_hist = jnp.zeros([step_num//writeInterval, u.shape[0], u.shape[1]])
+    nx = u.shape[0]
+    ny = u.shape[1]
+    u_hist = jnp.zeros([step_num//writeInterval, nx, ny])
+    v_hist = jnp.zeros([step_num//writeInterval, nx, ny])
     if jnp.linalg.norm(source) != 0:
-        rhsu_ = source[0]
-        rhsv_ = source[1]
+        rhsu_ = source[0].reshape(nx, ny)
+        rhsv_ = source[1].reshape(nx, ny)
 
     for i in range(step_num):
         rhsu = rhsu_ * dt + L_uplus @ u @ L_uplus + dt * (u - v - u**3 + alpha)
@@ -198,17 +205,17 @@ def RD_adi(u,
 
     return u_hist, v_hist
 
-def RD_cn(u, 
-            v, 
-            dt, 
-            source=0, 
-            alpha=.01, 
-            beta=1.0,  
-            step_num=200, 
-            writeInterval=1, 
-            plot=True, 
-            write=True):
-    """full implicit solver with Crank-Nielson discretization"""
+def RD_cn(
+        u: jnp.ndarray, 
+        v: jnp.ndarray, 
+        dt: float, 
+        source: jnp.ndarray=0, 
+        alpha: float=.01, 
+        beta: float=1.0,  
+        step_num: int=200, 
+        writeInterval: int=1):
+    """full implicit solver with Crank-Nielson discretization
+    TODO: we have not tested this function yet"""
     
     global L, D_
     dt = 1/step_num
@@ -317,7 +324,7 @@ def assembly_NSmatrix(nx, ny, dt, dx, dy):
     return    
 
 
-def projection_method(u, v, t, dx=1/32, dy=1/32, nx=128, ny=32, y0=0.325, eps=1e-7, dt=.01, Re=100, flag=True):
+def projection_correction(u, v, t, dx=1/32, dy=1/32, nx=128, ny=32, y0=0.325, eps=1e-7, dt=.01, Re=100, flag=True):
     """projection method to solve the incompressible NS equation
     The convection discretization is given by central difference
     u_ij (u_i+1,j - u_i-1,j)/2dx + \Sigma v_ij (u_i,j+1 - u_i,j-1)/2dx"""
