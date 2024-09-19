@@ -6,6 +6,7 @@ import sys
 ROOT_PATH = str(Path(__file__).parent.parent)
 sys.path.append(ROOT_PATH)
 
+import h5py
 import utils
 import jax.numpy as jnp
 import numpy.random as r
@@ -105,10 +106,38 @@ def generate_RD_data(config: ml_collections.ConfigDict):
         U = jnp.concatenate([jnp.expand_dims(traning_u64, axis=2), jnp.expand_dims(traning_v64, axis=2)], axis=2)
         label = jnp.concatenate([jnp.expand_dims(traning_labelu64, axis=2), jnp.expand_dims(traning_labelv64, axis=2)], axis=2)
         label_dim = 2
-        jnp.savez('../data/RD/64-{}.npz'.format(int(gamma*20)), arg=[n, n, dt*writeInterval, T, label_dim], U=U, label=label)
+        data = {
+          "name": 'RD',
+          "start_time": 0,
+          "end_time": T,
+          "write_interval": dt*writeInterval,
+          "nx": n,
+          "ny": n,
+          "input": U,
+          "output": label,
+          "readme": None
+        }
+
+        with h5py.File('data/RD/64-{}.npz'.format(int(gamma*20)) + '.h5', 'w') as file:
+          for key, value in data.items():
+            file.create_dataset(key, data=value)
 
         # save 128 x 128 data
         n = 128
         U = jnp.concatenate([jnp.expand_dims(traning_u128, axis=2), jnp.expand_dims(traning_v128, axis=2)], axis=2)
         label = jnp.concatenate([jnp.expand_dims(traning_labelu128, axis=2), jnp.expand_dims(traning_labelv128, axis=2)], axis=2)
-        jnp.savez('../data/RD/128-{}.npz'.format(int(gamma*20)), arg=[n, n, dt*writeInterval, T, label_dim], U=U, label=label)
+        data = {
+          "name": 'RD',
+          "start_time": 0,
+          "end_time": T,
+          "write_interval": dt*writeInterval,
+          "nx": n,
+          "ny": n,
+          "input": U,
+          "output": label,
+          "readme": None
+        }
+
+        with h5py.File('data/RD/128-{}.npz'.format(int(gamma*20)) + '.h5', 'w') as file:
+          for key, value in data.items():
+            file.create_dataset(key, data=value)
