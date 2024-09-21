@@ -2,9 +2,10 @@ import h5py
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
+
 def plot_from_h5py(case: str):
   '''Plot the fluid field from the h5py file'''
-  path = 'data/processed/' + case + '.h5'
+  path = 'data/' + case + '.h5'
   with h5py.File(path, 'r') as file:
     U = file['data'][:]
     nx, ny, nz = U.shape[-3:]

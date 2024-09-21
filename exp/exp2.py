@@ -1,16 +1,18 @@
 # This script plot \cref{linear}
-from pathlib import Path
 import sys
+from pathlib import Path
+
 ROOT_PATH = str(Path(__file__).parent.parent)
 sys.path.append(ROOT_PATH)
+import copy
 import pdb
 
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as nalg
 import numpy.random as r
-import copy
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
+
 
 def main():
     dim = 2

@@ -1,6 +1,7 @@
-from utils import *
-from simulator import *
 from models import *
+from simulator import *
+from utils import *
+
 
 def test_simulator(n=64, model_type='aOLS', simu_type='RD', ds_parameter=1, test_index=0, true_model=0):
     r.seed(0)
