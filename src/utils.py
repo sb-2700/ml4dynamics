@@ -125,6 +125,8 @@ def RD_exp(
   ny = u.shape[1]
   u_hist = jnp.zeros([step_num // writeInterval, nx, ny])
   v_hist = jnp.zeros([step_num // writeInterval, nx, ny])
+  rhsu_ = jnp.zeros([nx, ny])
+  rhsv_ = jnp.zeros([nx, ny])
   if jnp.linalg.norm(source) != 0:
     rhsu_ = source[0].reshape(nx * ny)
     rhsv_ = source[1].reshape(nx * ny)
@@ -160,6 +162,8 @@ def RD_semi(
   ny = u.shape[1]
   u_hist = jnp.zeros([step_num // writeInterval, nx, ny])
   v_hist = jnp.zeros([step_num // writeInterval, nx, ny])
+  rhsu_ = jnp.zeros([nx, ny])
+  rhsv_ = jnp.zeros([nx, ny])
   if jnp.linalg.norm(source) != 0:
     rhsu_ = source[0].reshape(nx * ny)
     rhsv_ = source[1].reshape(nx * ny)
@@ -195,11 +199,14 @@ def RD_adi(
   ny = u.shape[1]
   u_hist = jnp.zeros([step_num // writeInterval, nx, ny])
   v_hist = jnp.zeros([step_num // writeInterval, nx, ny])
+  rhsu_ = jnp.zeros([nx, ny])
+  rhsv_ = jnp.zeros([nx, ny])
   if jnp.linalg.norm(source) != 0:
     rhsu_ = source[0].reshape(nx, ny)
     rhsv_ = source[1].reshape(nx, ny)
 
   for i in range(step_num):
+    print(i)
     rhsu = rhsu_ * dt + L_uplus @ u @ L_uplus + dt * (u - v - u**3 + alpha)
     rhsv = rhsv_ * dt + L_vplus @ v @ L_vplus + beta * dt * (u - v)
     # L_uminus, L_vminus are both symmetric matrix, so we can solve by conjugate gradient

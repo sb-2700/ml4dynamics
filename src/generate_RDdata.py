@@ -69,7 +69,7 @@ def generate_RD_data(config: ml_collections.ConfigDict):
 
     u = copy.deepcopy(u_init)
     v = copy.deepcopy(v_init)
-    u_hist, v_hist, flag = utils.RD_adi(
+    u_hist, v_hist = utils.RD_adi(
       u,
       v,
       dt,
@@ -101,7 +101,7 @@ def generate_RD_data(config: ml_collections.ConfigDict):
     utils.assembly_RDmatrix(n, dt, dx, beta, gamma)
     u_hist = jnp.zeros([(step_num + warm_up) // writeInterval, n, n])
     v_hist = jnp.zeros([(step_num + warm_up) // writeInterval, n, n])
-    u_hist, v_hist, flag = utils.RD_adi(
+    u_hist, v_hist = utils.RD_adi(
       u,
       v,
       dt,
