@@ -1,6 +1,7 @@
 import argparse
 import copy
 
+import jax
 import jax.numpy as jnp
 import jax.scipy.sparse.linalg as jsla
 import numpy.linalg as nalg
@@ -8,8 +9,7 @@ import numpy.random as r
 from matplotlib import cm
 from matplotlib import pyplot as plt
 
-#from scipy.sparse.linalg import spsolve as sps
-
+jax.config.update('jax_enable_x64', True)
 
 def read_data(filename=None):
 
@@ -182,7 +182,6 @@ def RD_semi(
 
   return u_hist, v_hist
 
-
 def RD_adi(
   u: jnp.ndarray,
   v: jnp.ndarray,
@@ -195,6 +194,22 @@ def RD_adi(
 ):
   """ADI solver for FitzHugh-Nagumo RD equation"""
 
+  u = jnp.array(u)
+  v = jnp.array(v)
+  @jax.jit
+  def update(u, v):
+
+    rhsu = rhsu_ * dt + L_uplus @ u @ L_uplus + dt * (u - v - u**3 + alpha)
+    rhsv = rhsv_ * dt + L_vplus @ v @ L_vplus + beta * dt * (u - v)
+
+    u = jax.scipy.linalg.solve(L_uminus, rhsu)
+    u = jax.scipy.linalg.solve(L_uminus, u.T)
+    u = u.T
+    v = jax.scipy.linalg.solve(L_vminus, rhsv)
+    v = jax.scipy.linalg.solve(L_vminus, v.T)
+    v = v.T
+    return u, v
+
   nx = u.shape[0]
   ny = u.shape[1]
   u_hist = jnp.zeros([step_num // writeInterval, nx, ny])
@@ -204,24 +219,19 @@ def RD_adi(
   if jnp.linalg.norm(source) != 0:
     rhsu_ = source[0].reshape(nx, ny)
     rhsv_ = source[1].reshape(nx, ny)
+  flag = True
 
   for i in range(step_num):
-    print(i)
-    rhsu = rhsu_ * dt + L_uplus @ u @ L_uplus + dt * (u - v - u**3 + alpha)
-    rhsv = rhsv_ * dt + L_vplus @ v @ L_vplus + beta * dt * (u - v)
-    # L_uminus, L_vminus are both symmetric matrix, so we can solve by conjugate gradient
-    u, _ = jsla.cg(L_uminus, rhsu)
-    u, _ = jsla.cg(L_uminus, u.T)
-    u = u.T
-    v, _ = jsla.cg(L_vminus, rhsv)
-    v, _ = jsla.cg(L_vminus, v.T)
-    v = v.T
+    u, v = update(u, v)
+    if jnp.any(jnp.isnan(u)) or jnp.any(jnp.isnan(v)) or jnp.any(jnp.isinf(u)) or jnp.any(jnp.isinf(v)):
+      flag = False
+      break
 
     if (i + 1) % writeInterval == 0:
       u_hist = u_hist.at[(i - 0) // writeInterval, :].set(u)
       v_hist = v_hist.at[(i - 0) // writeInterval, :].set(v)
 
-  return u_hist, v_hist
+  return u_hist, v_hist, flag
 
 
 def RD_cn(

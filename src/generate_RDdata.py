@@ -13,16 +13,15 @@ import pdb
 
 import h5py
 import jax
-import jax.numpy as jnp
-import jax.random as random
 import ml_collections
+import numpy as np
 import yaml
 
 import utils
 from box import Box
 
+np.set_printoptions(precision=15)
 jax.config.update('jax_enable_x64', True)
-
 
 def generate_RD_data(config: ml_collections.ConfigDict):
 
@@ -41,35 +40,35 @@ def generate_RD_data(config: ml_collections.ConfigDict):
   patience = 5  # we admit 50 times blow up generations
   writeInterval = 2
   tol = 1e-7
-  key = jax.random.key(config.seed)
+  seed = 42
+  rng = np.random.default_rng(seed)
 
   # simulating training trajectories
-  case_num = 1
-  traning_u64 = jnp.zeros([case_num, step_num // writeInterval, 64, 64])
-  traning_v64 = jnp.zeros([case_num, step_num // writeInterval, 64, 64])
-  traning_labelu64 = jnp.zeros([case_num, step_num // writeInterval, 64, 64])
-  traning_labelv64 = jnp.zeros([case_num, step_num // writeInterval, 64, 64])
-  traning_u128 = jnp.zeros([case_num, step_num // writeInterval, 128, 128])
-  traning_v128 = jnp.zeros([case_num, step_num // writeInterval, 128, 128])
-  traning_labelu128 = jnp.zeros([case_num, step_num // writeInterval, 128, 128])
-  traning_labelv128 = jnp.zeros([case_num, step_num // writeInterval, 128, 128])
+  case_num = 100
+  traning_u64 = np.zeros((case_num, step_num // writeInterval, 64, 64))
+  traning_v64 = np.zeros((case_num, step_num // writeInterval, 64, 64))
+  traning_labelu64 = np.zeros((case_num, step_num // writeInterval, 64, 64))
+  traning_labelv64 = np.zeros((case_num, step_num // writeInterval, 64, 64))
+  traning_u128 = np.zeros((case_num, step_num // writeInterval, 128, 128))
+  traning_v128 = np.zeros((case_num, step_num // writeInterval, 128, 128))
+  traning_labelu128 = np.zeros((case_num, step_num // writeInterval, 128, 128))
+  traning_labelv128 = np.zeros((case_num, step_num // writeInterval, 128, 128))
   j = 0
   i = 0
   while i < case_num and j < patience:
     print('generating the {}-th trajectory for gamma = {:.2e}'.format(i, gamma))
     # simulation in 128x128 grid
-    key, subkey = jax.random.split(key)
     n = 128
     dx = widthx / n
-    u_hist = jnp.zeros([(step_num + warm_up) // writeInterval, n, n])
-    v_hist = jnp.zeros([(step_num + warm_up) // writeInterval, n, n])
+    u_hist = np.zeros(((step_num + warm_up) // writeInterval, n, n))
+    v_hist = np.zeros(((step_num + warm_up) // writeInterval, n, n))
     utils.assembly_RDmatrix(n, dt, dx, beta, gamma)
-    u_init = random.normal(key=subkey, shape=(n, n))
-    v_init = random.normal(key=subkey, shape=(n, n))
+    u_init = rng.normal(size=(n, n))
+    v_init = rng.normal(size=(n, n))
 
     u = copy.deepcopy(u_init)
     v = copy.deepcopy(v_init)
-    u_hist, v_hist = utils.RD_adi(
+    u_hist, v_hist, flag = utils.RD_adi(
       u,
       v,
       dt,
@@ -83,8 +82,7 @@ def generate_RD_data(config: ml_collections.ConfigDict):
       continue
     traning_u128[i] = copy.deepcopy(u_hist[warm_up // writeInterval:])
     traning_v128[i] = copy.deepcopy(v_hist[warm_up // writeInterval:])
-    traning_labelu128[
-      i] = traning_u128[i] - traning_u128[i]**3 - traning_v128[i] + alpha
+    traning_labelu128[i] = traning_u128[i] - traning_u128[i]**3 - traning_v128[i] + alpha
     traning_labelv128[i] = beta * (traning_u128[i] - traning_v128[i])
 
     u_solu = copy.deepcopy(u)
@@ -99,9 +97,9 @@ def generate_RD_data(config: ml_collections.ConfigDict):
     n = 64
     dx = widthx / n
     utils.assembly_RDmatrix(n, dt, dx, beta, gamma)
-    u_hist = jnp.zeros([(step_num + warm_up) // writeInterval, n, n])
-    v_hist = jnp.zeros([(step_num + warm_up) // writeInterval, n, n])
-    u_hist, v_hist = utils.RD_adi(
+    u_hist = np.zeros(((step_num + warm_up) // writeInterval, n, n))
+    v_hist = np.zeros(((step_num + warm_up) // writeInterval, n, n))
+    u_hist, v_hist, flag = utils.RD_adi(
       u,
       v,
       dt,
@@ -112,6 +110,7 @@ def generate_RD_data(config: ml_collections.ConfigDict):
     )
     if flag == False:
       j = j + 1
+      print("generation fail!")
       continue
     traning_u64[i] = copy.deepcopy(u_hist[warm_up // writeInterval:])
     traning_v64[i] = copy.deepcopy(v_hist[warm_up // writeInterval:])
@@ -122,17 +121,17 @@ def generate_RD_data(config: ml_collections.ConfigDict):
 
   if i == case_num:
     # save 64 x 64 data
-    U = jnp.concatenate(
+    U = np.concatenate(
       [
-        jnp.expand_dims(traning_u64, axis=2),
-        jnp.expand_dims(traning_v64, axis=2)
+        np.expand_dims(traning_u64, axis=2),
+        np.expand_dims(traning_v64, axis=2)
       ],
       axis=2
     )
-    label = jnp.concatenate(
+    label = np.concatenate(
       [
-        jnp.expand_dims(traning_labelu64, axis=2),
-        jnp.expand_dims(traning_labelv64, axis=2)
+        np.expand_dims(traning_labelu64, axis=2),
+        np.expand_dims(traning_labelv64, axis=2)
       ],
       axis=2
     )
@@ -146,7 +145,7 @@ def generate_RD_data(config: ml_collections.ConfigDict):
       "ny": n,
       "input": U,
       "output": label,
-      "readme": None
+      "readme": ""
     }
 
     with h5py.File(
@@ -157,17 +156,17 @@ def generate_RD_data(config: ml_collections.ConfigDict):
 
     # save 128 x 128 data
     n = 128
-    U = jnp.concatenate(
+    U = np.concatenate(
       [
-        jnp.expand_dims(traning_u128, axis=2),
-        jnp.expand_dims(traning_v128, axis=2)
+        np.expand_dims(traning_u128, axis=2),
+        np.expand_dims(traning_v128, axis=2)
       ],
       axis=2
     )
-    label = jnp.concatenate(
+    label = np.concatenate(
       [
-        jnp.expand_dims(traning_labelu128, axis=2),
-        jnp.expand_dims(traning_labelv128, axis=2)
+        np.expand_dims(traning_labelu128, axis=2),
+        np.expand_dims(traning_labelv128, axis=2)
       ],
       axis=2
     )
@@ -180,7 +179,7 @@ def generate_RD_data(config: ml_collections.ConfigDict):
       "ny": n,
       "input": U,
       "output": label,
-      "readme": None
+      "readme": ""
     }
 
     with h5py.File(
