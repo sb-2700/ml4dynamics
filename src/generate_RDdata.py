@@ -44,7 +44,7 @@ def generate_RD_data(config: ml_collections.ConfigDict):
   rng = np.random.default_rng(seed)
 
   # simulating training trajectories
-  case_num = 100
+  case_num = 10
   traning_u64 = np.zeros((case_num, step_num // writeInterval, 64, 64))
   traning_v64 = np.zeros((case_num, step_num // writeInterval, 64, 64))
   traning_labelu64 = np.zeros((case_num, step_num // writeInterval, 64, 64))
@@ -149,7 +149,7 @@ def generate_RD_data(config: ml_collections.ConfigDict):
     }
 
     with h5py.File(
-      'data/RD/64-{}.npz'.format(int(gamma * 20)) + '.h5', 'w'
+      'data/RD/64-{}'.format(case_num) + '.h5', 'w'
     ) as file:
       for key, value in data.items():
         file.create_dataset(key, data=value)
@@ -183,7 +183,7 @@ def generate_RD_data(config: ml_collections.ConfigDict):
     }
 
     with h5py.File(
-      'data/RD/128-{}.npz'.format(int(gamma * 20)) + '.h5', 'w'
+      'data/RD/128-{}'.format(case_num) + '.h5', 'w'
     ) as file:
       for key, value in data.items():
         file.create_dataset(key, data=value)
