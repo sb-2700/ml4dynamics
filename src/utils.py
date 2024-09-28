@@ -4,6 +4,7 @@ import copy
 import jax
 import jax.numpy as jnp
 import jax.scipy.sparse.linalg as jsla
+import numpy as np
 import numpy.linalg as nalg
 import numpy.random as r
 from matplotlib import cm

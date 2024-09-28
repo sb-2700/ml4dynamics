@@ -1,5 +1,6 @@
 import time
 
+import numpy as np
 import torch as torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
@@ -37,7 +38,7 @@ tr_epochs = 1000
 batch_size = step_num
 learning_rate = 1e-4
 factor = 0.8  # learning rate decay factor
-noise_scale = 1e-3  # parameter for adverserial OLS
+noise_scale = 1e-3  # paramet.er for adverserial OLS
 printInterval = 100
 saveInterval = 100
 period = 2  # related to the scheduler
