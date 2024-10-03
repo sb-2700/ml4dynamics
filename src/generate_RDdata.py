@@ -19,6 +19,7 @@ import yaml
 
 import utils
 from box import Box
+from datetime import datetime
 
 np.set_printoptions(precision=15)
 jax.config.update('jax_enable_x64', True)
@@ -136,6 +137,45 @@ def generate_RD_data(config: ml_collections.ConfigDict):
       axis=2
     )
     label_dim = 2
+
+    data = {
+      "metadata": {
+        "name": 'RD',
+        "start_t": 0.0,
+        "end_time": T,
+        "write_interval": dt * writeInterval,
+        "description": "Reaction-Diffusion PDE solver output",
+        "author": "Jiaxi Zhao",
+        "version": "1.0",
+        "creation_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      },
+      "grid": {
+          "nx": n,
+          "ny": n
+      },
+      "data": {
+          "input": U,
+          "output": label
+      },
+      "readme": "This dataset contains the results of a Reaction-Diffusion PDE solver. "
+                "The 'input' field represents the velocity, and the 'output' "
+                "field represents the nonlinear RHS."
+      }
+
+    with h5py.File('pde_solver_output.h5', 'w') as f:
+        for key, value in data["metadata"].items():
+            f.attrs[key] = value
+
+        grid_group = f.create_group("grid")
+        for key, value in data["grid"].items():
+            grid_group.attrs[key] = value
+
+        data_group = f.create_group("data")
+        data_group.create_dataset("input", data=data["data"]["input"])
+        data_group.create_dataset("output", data=data["data"]["output"])
+
+        f.attrs["readme"] = data["readme"]
+      
     data = {
       "name": 'RD',
       "start_time": 0,
