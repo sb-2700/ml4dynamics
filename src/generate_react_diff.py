@@ -22,7 +22,7 @@ np.set_printoptions(precision=15)
 jax.config.update("jax_enable_x64", True)
 
 
-def generate_RD_data(config: ml_collections.ConfigDict):
+def generate_RD_data(config_dict: ml_collections.ConfigDict):
   """
   Generate reaction-diffusion simulation trajectories.
   Simulating the reaction-diffusion equation over a fine and corase grid with
@@ -31,6 +31,7 @@ def generate_RD_data(config: ml_collections.ConfigDict):
   # it is fixed to be 2
   """
 
+  config = Box(config_dict)
   print("Generating RD data with gamma = {:.2f}...".format(config.sim.gamma))
   # set simulation parameters
   # warm start, we perform several steps so that the flow comes to a physical
@@ -141,14 +142,15 @@ def generate_RD_data(config: ml_collections.ConfigDict):
       axis=2
     )
     label_coarse = np.concatenate(
-      [np.expand_dims(labelu_coarse, axis=2),
-       np.expand_dims(labelv_coarse, axis=2)],
+      [
+        np.expand_dims(labelu_coarse, axis=2),
+        np.expand_dims(labelv_coarse, axis=2)
+      ],
       axis=2
     )
     u_fine = np.concatenate(
       [np.expand_dims(u_fine, axis=2),
-       np.expand_dims(v_fine, axis=2)], 
-       axis=2
+       np.expand_dims(v_fine, axis=2)], axis=2
     )
     label_fine = np.concatenate(
       [
@@ -181,7 +183,7 @@ def generate_RD_data(config: ml_collections.ConfigDict):
         label_coarse,  # shape [case_num, step_num // writeInterval, 2, nx//2, ny//2]
       },
       "config":
-      config,
+      config_dict,
       "readme":
       "This dataset contains the results of a Reaction-Diffusion PDE solver. "
       "The 'input' field represents the velocity, and the 'output' "
@@ -216,5 +218,4 @@ if __name__ == "__main__":
 
   with open("config/react_diff.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
-    config = Box(config_dict)
-  generate_RD_data(config)
+  generate_RD_data(config_dict)

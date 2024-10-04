@@ -1,60 +1,44 @@
 import argparse
 import copy
 
+import h5py
 import jax
 import jax.numpy as jnp
 import jax.scipy.sparse.linalg as jsla
 import numpy as np
 import numpy.linalg as nalg
-import numpy.random as r
+import torch
+import yaml
 from matplotlib import cm
 from matplotlib import pyplot as plt
+from numpy import random
 
-jax.config.update('jax_enable_x64', True)
+jax.config.update("jax_enable_x64", True)
+torch.set_default_dtype(torch.float64)
 
-def read_data(filename=None):
+def read_and_preprocess(
+  filename: str = None,
+  device = None,
+):
 
-  data = np.load(filename)
-  U = torch.from_numpy(data['U']).to(torch.float32)
-  label = torch.from_numpy(data['label']).to(torch.float32)
-  arg = data['arg']
-  return arg, U, label
+  with h5py.File(filename, "r") as file:
+    breakpoint()
+    config_yaml = file["config"].attrs["config"]
+    config = yaml.safe_load(config_yaml)
 
-
-def parsing():
-  parser = argparse.ArgumentParser(description='manual to this script')
-  parser.add_argument('--type', type=str, default='RD')
-  parser.add_argument('--gamma', type=float, default=0.05)
-  parser.add_argument('--Re', type=int, default=400)
-  parser.add_argument('--n', type=int, default=64)
-  parser.add_argument('--batch_size', type=int, default=1000)
-  parser.add_argument('--GPU', type=int, default=0)
-  args = parser.parse_args()
-  gamma = args.gamma
-  Re = args.Re
-  n = args.n
-  type = args.type
-  GPU = args.GPU
-  if type == 'RD':
-    ds_parameter = int(gamma * 20)
-  else:
-    ds_parameter = Re
-  return n, gamma, Re, type, GPU, ds_parameter
-
-
-def preprocessing(arg, simutype, U, label, device, flag=True):
-  # later we can combine this function with the read_data function by
-  # including all the parameters into the .npz file
-  nx, ny, dt, T, label_dim = arg
-  nx = int(nx)
-  ny = int(ny)
-  label_dim = int(label_dim)
-  if flag and simutype == 'NS':
-    U = U[:, :, :, 1:-1, 1:-1]
-  traj_num = U.shape[0]
-  step_num = U.shape[1]
-  label = label.to(device)
-  return nx, ny, dt, T, label_dim, traj_num, step_num, U, label
+    input_fine = file["data"]["input_fine"][:]
+    output_fine = file["data"]["output_fine"][:]
+    # input_coarse = file["data"]["input_coarse"][:]
+    # output_coarse = file["data"]["output_coarse"][:]
+    metadata = file["metadata"][:]
+    
+  pde_type = metadata["type"]
+  nx = metadata["nx"]
+  ny = metadata["ny"]
+  traj_num, step_num, label_dim = output_fine.shape[:2]
+  input = torch.from_numpy(input_fine).to(torch.float64).to(device)
+  output = torch.from_numpy(output_fine).to(torch.float64).to(device)
+  return pde_type, nx, ny, label_dim, traj_num, step_num, input, output
 
 
 ############################################################################################################
