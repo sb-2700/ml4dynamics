@@ -80,7 +80,8 @@ opt:
 # Dataset related
 data:
   type: react_diff
-  folder: data/react_diff/alpha0.01_beta1.00_gamma0.05_n1.h5
+  folder: data/react_diff/
+  dataset: alpha0.01_beta1.00_gamma0.05_n10.h5
   # folder: '/data'
   batch_size: 16
   n_train: 10000

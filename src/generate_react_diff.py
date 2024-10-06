@@ -194,8 +194,9 @@ def generate_RD_data(config_dict: ml_collections.ConfigDict):
       "data/react_diff/alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".
       format(alpha, beta, gamma, case_num) + ".h5", "w"
     ) as f:
+      metadata_group = f.create_group("metadata")
       for key, value in data["metadata"].items():
-        f.attrs[key] = value
+        metadata_group.create_dataset(key, data=value)
 
       data_group = f.create_group("data")
       data_group.create_dataset("input_fine", data=data["data"]["input_fine"])

@@ -22,7 +22,6 @@ def read_and_preprocess(
 ):
 
   with h5py.File(filename, "r") as file:
-    breakpoint()
     config_yaml = file["config"].attrs["config"]
     config = yaml.safe_load(config_yaml)
 
@@ -30,15 +29,17 @@ def read_and_preprocess(
     output_fine = file["data"]["output_fine"][:]
     # input_coarse = file["data"]["input_coarse"][:]
     # output_coarse = file["data"]["output_coarse"][:]
-    metadata = file["metadata"][:]
-    
-  pde_type = metadata["type"]
+    metadata_h5py = file["metadata"]
+    metadata = {}
+    for key in metadata_h5py.keys():
+      metadata[key] = metadata_h5py[key][()]
+      
   nx = metadata["nx"]
   ny = metadata["ny"]
-  traj_num, step_num, label_dim = output_fine.shape[:2]
+  traj_num, step_num, label_dim = output_fine.shape[:3]
   input = torch.from_numpy(input_fine).to(torch.float64).to(device)
   output = torch.from_numpy(output_fine).to(torch.float64).to(device)
-  return pde_type, nx, ny, label_dim, traj_num, step_num, input, output
+  return nx, ny, label_dim, traj_num, step_num, input, output
 
 
 ############################################################################################################
