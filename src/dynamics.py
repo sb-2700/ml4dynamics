@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import numpy as np
 import scipy.sparse as sparse
@@ -6,7 +7,6 @@ import copy
 import time
 
 from scipy.integrate import solve_ivp
-from scipy.linalg import solve
 from scipy.linalg import svd
 #from scipy.linalg import lstsq
 from scipy.sparse import csr_matrix
@@ -35,6 +35,12 @@ from abc import ABCMeta, abstractmethod
 # Finance attractor
 # Thomas attractor
 class dynamics(object):
+  """Base class for simulating dynamical systems
+
+  TODO: need to do function programming for this class, i.e.
+  write make function for this and package all the params outside
+  the class
+  """
   __metaclass__ = ABCMeta
 
   def __init__(
@@ -124,6 +130,39 @@ class dynamics(object):
       t_eval=jnp.linspace(0, self.T, self.step_num + 1),
       vectorized=True
     )
+
+  def run_target_simulation(self, x):
+    # NOTE: self.x_targethist should be something like a static member
+    # which can only be modified in some static method and is
+    # forbidden to be changed in other methods
+    # This method is still maintained for inverse problem application, where we first simulate the
+    # model using certain parameters and set this as the target trajectory and use optimization
+    # method to find the optimal parameters or initial condition.
+    
+    step_num = self.step_num
+    iter = self.CN
+    self.x_targethist = jnp.zeros([self.N, step_num])
+    self.x_hist = jnp.zeros([self.N, step_num])
+    self.y_hist = jnp.zeros([self.N, step_num])
+    self.w_hist = jnp.zeros([self.N, step_num])
+    for i in range(step_num):
+      self.x_targethist = self.x_targethist.at[:, i].set(x)
+      x = iter(x)
+    self.x_hist = self.x_hist.at[:, 0].set(self.x_targethist[:, 0])
+
+  def run_simulation(self, x, iter):
+    step_num = self.step_num
+    self.x_hist = jnp.zeros([self.N, step_num])
+    for i in range(step_num):
+      self.x_hist = self.x_hist.at[:, i].set(x)
+      x = iter(x)
+
+  def run_simulation_with_correction(self, x, iter):
+    step_num = self.step_num
+    self.x_hist = jnp.zeros([self.N, step_num])
+    for i in range(step_num):
+      self.x_hist = self.x_hist.at[:, i].set(x)
+      x = iter(x) + self.corrector(x)
 
   def delay_embedding(self, observed_dim=0, method='RK45'):
     # observed_dim is the observed dimension, default to be 'x' coordinate
@@ -476,7 +515,7 @@ class KS(dynamics):
     self.nu = nu
     self.c = c
     self.set_attractor()
-    self.set_target_hist(self.attractor + init_scale * r.rand(N))
+    self.run_target_simulation(self.attractor + init_scale * r.rand(N))
     dt = self.dt
     k = jnprfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
     self.assembly_matrix()
@@ -537,15 +576,19 @@ class KS(dynamics):
     self.attractor = copy.deepcopy(x)
     self.attractor_flag = True
 
+  # @jax.jit
+  # NOTE: currently we can not jit as the self is not an array
   def CN_FEM(self, x):
     rt = jnp.zeros(x.shape)
-    rt = solve(self.Lplus, self.Lmimus @ x - self.dt / 2 * self.L1 @ x**2)
+    rt = jax.scipy.linalg.solve(
+      self.Lplus, self.Lmimus @ x - self.dt / 2 * self.L1 @ x**2
+    )
     return rt
 
   def CN_FEM_adj(self, x, i):
     rt = jnp.zeros(x.shape)
     delta_x = self.x_hist[:, i] - self.x_targethist[:, i]
-    rt = solve(
+    rt = jax.scipy.linalg.solve(
       self.Lplus, self.Lmimus @ x +
       self.dt * self.L1 @ (x * self.x_hist[:, i]) - self.dt * delta_x
     )
@@ -574,31 +617,6 @@ class KS(dynamics):
             /(1 + c*1j*k/2 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))
     lambda_ = irfft(lambda_hat)
     return lambda_
-
-  def set_target_hist(self, x):
-    # self.x_targethist should be something like a static member
-    # which can only be modified in some static method and is
-    # forbidden to be changed in other methods
-    # This method is still maintained for inverse problem application, where we first simulate the
-    # model using certain parameters and set this as the target trajectory and use optimization
-    # method to find the optimal parameters or initial condition.
-    step_num = self.step_num
-    iter = self.CN
-    self.x_targethist = jnp.zeros([self.N, step_num])
-    self.x_hist = jnp.zeros([self.N, step_num])
-    self.y_hist = jnp.zeros([self.N, step_num])
-    self.w_hist = jnp.zeros([self.N, step_num])
-    for i in range(step_num):
-      self.x_targethist = self.x_targethist.at[:, i].set(copy.deepcopy(x))
-      x = iter(x)
-    self.x_hist = self.x_hist.at[:, 0].set(copy.deepcopy(self.x_targethist[:, 0]))
-
-  def set_x_hist(self, x, iter):
-    step_num = self.step_num
-    self.x_hist = jnp.zeros([self.N, step_num])
-    for i in range(step_num):
-      self.x_hist = self.x_hist.at[:, i].set(copy.deepcopy(x))
-      x = iter(x)
 
   def calc_gradient(self):
     dt = self.dt
