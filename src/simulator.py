@@ -1,3 +1,5 @@
+"""This file is deprecated, consider using dynamics.py"""
+
 import copy
 from abc import ABCMeta, abstractmethod
 
