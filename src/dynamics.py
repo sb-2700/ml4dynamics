@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+import jax.random as random
 import numpy as np
 import scipy.sparse as sparse
 import torch
@@ -11,7 +12,6 @@ from scipy.linalg import svd
 #from scipy.linalg import lstsq
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import lsqr
-from numpy import random as r
 from numpy.fft import rfft, irfft
 from numpy.fft import rfftfreq as jnprfftfreq
 from numpy.fft import fftfreq as jnpfftfreq
@@ -52,6 +52,7 @@ class dynamics(object):
     tol=1e-8,
     init_scale=1e-2,
     tv_scale=1e-8,
+    key=random.PRNGKey(0),
     plot=False
   ):
     super().__init__()
@@ -63,6 +64,7 @@ class dynamics(object):
     self.tol = tol
     self.init_scale = init_scale  # perturbation scale to calculate Lyapunov exp
     self.tv_scale = tv_scale  #
+    self.key = key
     self.attractor = jnp.zeros(N)
     self.attractor_flag = False
     self.plot = plot
@@ -157,12 +159,20 @@ class dynamics(object):
       self.x_hist = self.x_hist.at[:, i].set(x)
       x = iter(x)
 
-  def run_simulation_with_correction(self, x, iter):
+    self.check_simulation()
+
+  def run_simulation_with_correction(self, x, iter, corrector):
     step_num = self.step_num
     self.x_hist = jnp.zeros([self.N, step_num])
     for i in range(step_num):
       self.x_hist = self.x_hist.at[:, i].set(x)
-      x = iter(x) + self.corrector(x)
+      x = iter(x) + corrector(x)
+
+    self.check_simulation()
+
+  def check_simulation(self):
+    if jnp.any(jnp.isnan(self.x_hist)) or jnp.any(jnp.isinf(self.x_hist)):
+      raise Exception("The data contains Inf or NaN")
 
   def delay_embedding(self, observed_dim=0, method='RK45'):
     # observed_dim is the observed dimension, default to be 'x' coordinate
@@ -187,8 +197,8 @@ class dynamics(object):
     iter = self.CN
     if ~self.attractor_flag:
       self.set_attractor()
-    x = self.attractor + self.init_scale * r.rand(self.N)
-    x_ = x + self.tv_scale * r.rand(self.N)
+    x = self.attractor + self.init_scale * random.normal(self.key, shape=(self.N, ))
+    x_ = x + self.tv_scale * random.normal(self.key, shape=(self.N, ))
     l_exp = 0
 
     for t in jnp.arange(0, T, dt):
@@ -502,10 +512,11 @@ class KS(dynamics):
     L=100 * jnp.pi,
     nu=1,
     c=1,
+    key=random.PRNGKey(0),
     plot=False
   ):
     super(KS,self).__init__(
-      model_type, N, T, dt, tol, init_scale, tv_scale, plot
+      model_type, N, T, dt, tol, init_scale, tv_scale, key, plot
     )
     self.L = L
     if dx == 0:
@@ -515,7 +526,7 @@ class KS(dynamics):
     self.nu = nu
     self.c = c
     self.set_attractor()
-    self.run_target_simulation(self.attractor + init_scale * r.rand(N))
+    self.run_target_simulation(self.attractor + init_scale * random.normal(self.key, shape=(N, )))
     dt = self.dt
     k = jnprfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
     self.assembly_matrix()
@@ -649,7 +660,7 @@ class KS(dynamics):
       #gradient = gradient + jnp.sum(self.y_hist[:,i]*irfft(rfft(self.x_hist[:,i])*(k**4))) * (1 if (r.rand()>bar) else 0)
       gradient = gradient + jnp.sum(
         self.y_hist[:, i] * irfft(rfft(self.x_hist[:, i]) * (k**4))
-      ) * (1 if (r.rand() > bar) else 0)
+      ) * (1 if (random.normal(self.key) > bar) else 0)
     gradient = gradient / step_num / self.N / (1 - bar)
     if self.print_:
       print("The numerical value of nu is {:.2e}".format(self.nu))
@@ -765,7 +776,7 @@ class KS(dynamics):
     for i in range(int(T / dt)):
       gradient = gradient + jnp.sum(
         self.w_hist[:, i] * (self.x_hist[:, i] - self.x_targethist[:, i])
-      ) * (1 if (r.rand() > bar) else 0)
+      ) * (1 if (random.normal(self.key) > bar) else 0)
       #print(jnp.sum(self.y_hist[:,i]*irfft(rfft(self.x_hist[:,i])*(k**4))))
     gradient = gradient / T / self.L
     if self.print_:
@@ -775,6 +786,105 @@ class KS(dynamics):
 
     #return gradient
     return -gradient, loss
+
+
+class RD(dynamics):
+
+  def __init__(
+    self,
+    model_type='NS',
+    N=128,
+    T=10,
+    dt=0.01,
+    dx=0,
+    tol=1e-8,
+    init_scale=4,
+    tv_scale=1e-8,
+    L=2 * jnp.pi,
+    nu=0.0001,
+    device=torch.device('cpu'),
+    plot=False
+  ):
+    super(NS,
+          self).__init__(model_type, N, T, dt, tol, init_scale, tv_scale, plot)
+
+    self.device = device
+    self.L = L
+    if dx == 0:
+      self.dx = self.L / self.N
+    else:
+      self.dx = torch.Tensor([dx]).to(self.device)
+    self.nu = torch.Tensor([dt]).to(self.device)
+    self.nu = torch.Tensor([nu]).to(self.device)
+    self.assembly_spectral()
+
+  def f(self, x):
+    print("This is an abstract f method!")
+    raise NotImplementedError
+
+  def assembly_matrix(self):
+    """assemble matrices used in the calculation
+    A1 = I - gamma dt \Delta, used in implicit discretization of diffusion term, size n2*n2
+    A2 = I - gamma dt/2 \Delta, used in CN discretization of diffusion term, size n2*n2
+    A3 = I + gamma dt/2 \Delta, used in CN discretization of diffusion term, size n2*n2
+    D, size 4n2*n2, Jacobi of the Newton solver in CN discretization
+    :d: ratio between the diffusion coeff for u & v
+    """
+
+    n = self.N
+    gamma = self.gamma
+    dt = self.dt
+    d = self.d
+    dx = self.dx
+
+    L = jnp.eye(n) * -2 + jnp.eye(n, k=1) + jnp.eye(n, k=-1)
+    L = L.at[0, -1].set(1)
+    L = L.at[-1, 0].set(1)
+    L = L / (dx**2)
+    L2 = jnp.kron(L, jnp.eye(n)) + jnp.kron(jnp.eye(n), L)
+
+    # matrix for ADI scheme
+    L_uminus = jnp.eye(n) - L * gamma * dt / 2
+    L_uplus = jnp.eye(n) + L * gamma * dt / 2
+    L_vminus = jnp.eye(n) - L * gamma * dt / 2 * d
+    L_vplus = jnp.eye(n) + L * gamma * dt / 2 * d
+
+    A0_u = jnp.eye(n * n) + L2 * gamma * dt
+    A0_v = jnp.eye(n * n) + L2 * gamma * dt * d
+    A_uplus = jnp.eye(n * n) + L2 * gamma * dt / 2
+    A_uminus = jnp.eye(n * n) - L2 * gamma * dt / 2
+    A_vplus = jnp.eye(n * n) + L2 * gamma * dt / 2 * d
+    A_vminus = jnp.eye(n * n) - L2 * gamma * dt / 2 * d
+    # L = spa.csc_matrix(L)
+    # L_uminus = spa.csc_matrix(L_uminus)
+    # L_uplus = spa.csc_matrix(L_uplus)
+    # L_vminus = spa.csc_matrix(L_vminus)
+    # L_vplus = spa.csc_matrix(L_vplus)
+    # L2 = spa.kron(L, np.eye(n)) + spa.kron(np.eye(n), L)
+    # A_uplus = spa.eye(n*n) + L2 * gamma * dt/2
+    # A_uminus = spa.eye(n*n) - L2 * gamma * dt/2
+    # A_vplus = spa.eye(n*n) + L2 * gamma * dt/2 * d
+    # A_vminus = spa.eye(n*n) - L2 * gamma * dt/2 * d
+
+  def Jacobi(self, w):
+    # This Jacobi matrix is based on flatten the 2D state variable w
+    # ijnput: w is the vorticity in physical space, a 1D tensor of size N \times N,
+    # output:
+    w_hat = rfft2(w)
+    psi = -w_hat / self.laplacian_
+    u = torch.zeros([2, self.N**2], device=self.device)
+    u[0] = irfft2(1j * psi * self.ky).reshape(self.N**2)
+    u[1] = irfft2(1j * psi * self.kx).reshape(self.N**2)
+    w = w.reshape(self.N**2)
+    jacobi = self.nu * self.L2 - \
+            (torch.diag(u[0]) @  self.Lx + torch.diag(u[1]) @ self.Ly) - \
+            (torch.diag(self.Lx @ w) @ self.Ly - torch.diag(self.Ly @ w) @ self.Lx) @ self.L2_inv
+    return jacobi
+
+  def dfds(self, w):
+    # ijnput: w is the vorticity in physical space, a 1D tensor of size N \times N,
+    # output: \Delta w is the Laplacian of the vorticity in physical space, a 1D tensor of size N \times N,
+    return self.L2 @ w.reshape(self.N**2)
 
 
 class NS(dynamics):

@@ -240,7 +240,7 @@ def RD_cn(
   #t_array = np.array([1, 2, 3, 4, 80])
 
   #plt.subplot(231)
-  #plt.imshow(u.reshape(n, n), cmap = cm.jet)
+  #plt.imshow(u.reshape(n, n), cmap = cm.viridis)
 
   def F(u_next, v_next, u, v):
     Fu = A2 @ u_next - A3 @ u + (
@@ -285,7 +285,7 @@ def RD_cn(
     for j in range(5):
       #if i == t_array[j] * step_num / 100:
       #    plt.subplot(2, 3, j+2)
-      #    plt.imshow(u.reshape(n, n), cmap = cm.jet)
+      #    plt.imshow(u.reshape(n, n), cmap = cm.viridis)
       #    plt.colorbar()
       Newton()
 
@@ -408,3 +408,41 @@ def projection_correction(
   #v[-1, 1:-1] = v[-1, 1:-1] + (p[-1, 1:] - p[-1, :-1])/dy
 
   return u, v, p / dt, flag
+
+
+def plot_with_horizontal_colorbar(
+  im_array, fig_size=(10, 4), title_array=None, file_path=None
+):
+
+  fig, axs = plt.subplots(
+    im_array.shape[0], im_array.shape[1], figsize=fig_size
+  )
+  axs = axs.flatten()
+  im = []
+  fraction = 0.05
+  pad = 0.001
+  cbar = []
+  for i in range(im_array.shape[0]):
+    for j in range(im_array.shape[1]):
+      im.append(
+        axs[i * im_array.shape[1] + j].imshow(im_array[i, j], cmap=cm.viridis)
+      )
+      if title_array is not None:
+        axs[i * im_array.shape[1] + j].set_title(
+          title_array[i * im_array.shape[1] + j]
+        )
+      axs[i * im_array.shape[1] + j].axis("off")
+      cbar.append(
+        fig.colorbar(
+          im[-1],
+          ax=axs[i * im_array.shape[1] + j],
+          fraction=fraction,
+          pad=pad,
+          orientation="horizontal"
+        )
+      )
+  fig.tight_layout(pad=0.0)
+
+  if file_path is not None:
+    plt.savefig(file_path, dpi=300)
+  plt.clf()

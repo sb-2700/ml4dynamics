@@ -24,6 +24,7 @@ from src import utils
 
 # def test_turing_pattern():
 #     """Test whether the set of parameter will generate Turing pattern for RD equation
+#     TODO
 #     """
 #     assert True
 

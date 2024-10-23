@@ -1,4 +1,5 @@
 from typing import Iterator, Optional, Tuple
+from functools import partial
 
 import haiku as hk
 import jax
@@ -10,15 +11,17 @@ from jaxtyping import Array
 from matplotlib import pyplot as plt 
 from matplotlib.colors import Normalize
 from mpl_toolkits.mplot3d import Axes3D
+from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from src.dynamics import KS
 from src.types import Batch, OptState, PRNGKey
+from src.utils import plot_with_horizontal_colorbar
 
 def main():
 
   # model parameters
-  nu1 = .5
+  nu1 = .1
   c = .1
   L = 10 * jnp.pi
   T = 40
@@ -27,39 +30,21 @@ def main():
   N2 = 1024
   dt = 0.01
   r = N1 // N2
+  key = random.PRNGKey(42)
 
   # fine simulation
   ks_fine = KS(  
     N = N1, T = T, dt = dt, dx = L / (N1+1), tol = 1e-8, init_scale = 1e-2,
-    tv_scale = 1e-8, L = L, nu = nu1, c = c
+    tv_scale = 1e-8, L = L, nu = nu1, c = c, key=key,
   )
   ks_fine.run_simulation(ks_fine.x_targethist[:,0], ks_fine.CN_FEM)
 
   # coarse simulation
   ks_coarse = KS(
     N = N2, T = T, dt = dt, dx = L / (N2 + 1), tol = 1e-8, init_scale = 1e-2,
-    tv_scale = 1e-8, L = L, nu = nu1, c = c
+    tv_scale = 1e-8, L = L, nu = nu1, c = c, key=key,
   )
   ks_coarse.run_simulation(ks_fine.x_hist[::r, 0], ks_coarse.CN_FEM)
-
-  if False:
-    # visualize the difference between the fine and coarse grid simulation
-    plt.subplot(3, 1, 1)
-    plt.imshow(ks_fine.x_hist[::r])
-    plt.colorbar()
-    plt.title(f"n = {N1}")
-    plt.axis("off")
-    plt.subplot(3, 1, 2)
-    plt.imshow(ks_coarse.x_hist)
-    plt.colorbar()
-    plt.title(f"n = {N2}")
-    plt.axis("off")
-    plt.subplot(3, 1, 3)
-    plt.imshow(ks_coarse.x_hist - ks_fine.x_hist[::r])
-    plt.colorbar()
-    plt.title("diff")
-    plt.axis("off")
-    plt.savefig(f"results/fig/ks_nu{nu1}_N1{N1}N2{N2}_cmp.pdf")
 
   # define the restriction and interpolation operator
   res_op = jnp.zeros((N2, N1))
@@ -78,6 +63,16 @@ def main():
 
   np.savez('data/ks/tmp.npz', input = input, output = output)
 
+  # train test split
+  train_x, test_x, train_y, test_y = train_test_split(input, output, test_size=0.2, random_state=42)
+  train_ds = {
+    "input": jnp.array(train_x),
+    "output": jnp.array(train_y)
+  }
+  test_ds = {
+    "input": jnp.array(test_x),
+    "output": jnp.array(test_y)
+  }
 
   # training a fully connected neural network to do the closure modeling
   def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
@@ -93,13 +88,13 @@ def main():
   
   correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
   optimizer = optax.adam(1e-3)
-  params = correction_nn.init(key, np.zeros((1, N2)))
+  params = correction_nn.init(random.PRNGKey(0), np.zeros((1, N2)))
   opt_state = optimizer.init(params)
 
   @jax.jit
   def loss_fn(params: hk.Params, input: jnp.ndarray, output: jnp.ndarray) -> float:
     predict = correction_nn.apply(params, input)
-    return optax.l2_loss(output, predict)
+    return jnp.mean((output - predict)**2)
 
   @jax.jit
   def evaluate(params: hk.Params, features: jnp.ndarray, labels: jnp.ndarray):
@@ -109,41 +104,51 @@ def main():
     return jnp.mean(predictions == labels)
   
   @jax.jit
-  def update(params: hk.Params, rng: PRNGKey,
-             opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
+  def update(params: hk.Params, input: jnp.ndarray, output: jnp.ndarray,
+    opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
     """Single SGD update step."""
-    loss, grads = jax.value_and_grad(loss_fn)(params, input, output)
+    loss, grads = jax.value_and_grad(
+      partial(loss_fn, input=input, output=output))(params)
+    # loss, grads = jax.value_and_grad(loss_fn)(params, input, output)
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
   
   loss_hist = []
   epochs = 10000
+  batch_size = 1000
   iters = tqdm(range(epochs))
-  
-
   for step in iters:
-
-    loss, params, opt_state = update(params, key, lambda_, opt_state)
-    loss_hist.append(loss)
-
-    if step % FLAGS.eval_frequency == 0:
+    for i in range(0, len(train_ds["input"]), batch_size):
+      input = train_ds["input"][i: i + batch_size]
+      output = train_ds["output"][i: i + batch_size]
+      loss, params, opt_state = update(params, input, output, opt_state)
+      loss_hist.append(loss)
       desc_str = f"{loss=:.4e}"
-
-      key, rng = jax.random.split(rng)
-      # wasserstein distance
-      if FLAGS.case == "wasserstein":
-        KL = density_fit_rkl_loss_fn(params, rng, lambda_, FLAGS.batch_size)
-        kin = loss - KL * lambda_
-        desc_str += f"{KL=:.4f} | {kin=:.1f} | {lambda_=:.1f}"
-      elif FLAGS.case == "mfg":
-        # KL = reverse_kl_loss_fn(params, rng, 0, FLAGS.batch_size)
-        KL = kl_loss_fn(params, rng, 0, FLAGS.batch_size)
-        pot = potential_loss_fn(params, rng, T, FLAGS.batch_size)
-        kin = loss - KL * lambda_ - pot
-        desc_str += f"{KL=:.4f} | {pot=:.2f} | {kin=:.2f} | {lambda_=:.1f}"
-
       iters.set_description_str(desc_str)
+
+  # a posteriori error estimate
+  ks_coarse.run_simulation(ks_fine.x_hist[::r, 0], ks_coarse.CN_FEM)
+  im_array = jnp.zeros((3, 1, ks_coarse.x_hist.shape[0], ks_coarse.x_hist.shape[1]))
+  im_array = im_array.at[0, 0].set(ks_fine.x_hist[::r])
+  im_array = im_array.at[1, 0].set(ks_coarse.x_hist)
+  im_array = im_array.at[2, 0].set(ks_coarse.x_hist - ks_fine.x_hist[::r])
+  title_array = [f"{N1}", f"{N2}", "diff"]
+  plot_with_horizontal_colorbar(
+    im_array, fig_size=(4, 6), title_array=title_array,
+    file_path=f"results/fig/ks_nu{nu1}_N1{N1}N2{N2}_cmp.pdf"
+  )
+
+  corrector = partial(correction_nn.apply, params)
+  ks_coarse.run_simulation_with_correction(ks_fine.x_hist[::r, 0], ks_coarse.CN_FEM, corrector)
+  im_array = jnp.zeros((3, 1, ks_coarse.x_hist.shape[0], ks_coarse.x_hist.shape[1]))
+  im_array = im_array.at[0, 0].set(ks_fine.x_hist[::r])
+  im_array = im_array.at[1, 0].set(ks_coarse.x_hist)
+  im_array = im_array.at[2, 0].set(ks_coarse.x_hist - ks_fine.x_hist[::r])
+  plot_with_horizontal_colorbar(
+    im_array, fig_size=(4, 6), title_array=title_array,
+    file_path=f"results/fig/ks_nu{nu1}_N1{N1}N2{N2}_correct_cmp.pdf"
+  )
 
 if __name__ == "__main__":
   main()
