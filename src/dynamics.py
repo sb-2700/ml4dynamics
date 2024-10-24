@@ -142,37 +142,38 @@ class dynamics(object):
     # method to find the optimal parameters or initial condition.
     
     step_num = self.step_num
+    N = self.N
     iter = self.CN
-    self.x_targethist = jnp.zeros([self.N, step_num])
-    self.x_hist = jnp.zeros([self.N, step_num])
-    self.y_hist = jnp.zeros([self.N, step_num])
-    self.w_hist = jnp.zeros([self.N, step_num])
+    self.x_targethist = jnp.zeros([step_num, N])
+    self.x_hist = jnp.zeros([step_num, N])
+    self.y_hist = jnp.zeros([step_num, N])
+    self.w_hist = jnp.zeros([step_num, N])
     for i in range(step_num):
-      self.x_targethist = self.x_targethist.at[:, i].set(x)
+      self.x_targethist = self.x_targethist.at[i].set(x)
       x = iter(x)
-    self.x_hist = self.x_hist.at[:, 0].set(self.x_targethist[:, 0])
+    self.x_hist = self.x_hist.at[0].set(self.x_targethist[0])
 
   def run_simulation(self, x, iter):
     step_num = self.step_num
-    self.x_hist = jnp.zeros([self.N, step_num])
+    self.x_hist = jnp.zeros([step_num, self.N])
     for i in range(step_num):
-      self.x_hist = self.x_hist.at[:, i].set(x)
+      self.x_hist = self.x_hist.at[i].set(x)
       x = iter(x)
 
     self.check_simulation()
 
   def run_simulation_with_correction(self, x, iter, corrector):
     step_num = self.step_num
-    self.x_hist = jnp.zeros([self.N, step_num])
+    self.x_hist = jnp.zeros([step_num, self.N])
     for i in range(step_num):
-      self.x_hist = self.x_hist.at[:, i].set(x)
-      x = iter(x) + corrector(x)
+      self.x_hist = self.x_hist.at[i].set(x)
+      x = iter(x) + corrector(x) * .01
 
     self.check_simulation()
 
   def check_simulation(self):
     if jnp.any(jnp.isnan(self.x_hist)) or jnp.any(jnp.isinf(self.x_hist)):
-      raise Exception("The data contains Inf or NaN")
+      raise Exception("The simulation contains Inf or NaN")
 
   def delay_embedding(self, observed_dim=0, method='RK45'):
     # observed_dim is the observed dimension, default to be 'x' coordinate
@@ -526,7 +527,9 @@ class KS(dynamics):
     self.nu = nu
     self.c = c
     self.set_attractor()
-    self.run_target_simulation(self.attractor + init_scale * random.normal(self.key, shape=(N, )))
+    self.run_target_simulation(
+      self.attractor + init_scale * random.normal(self.key, shape=(N, ))
+    )
     dt = self.dt
     k = jnprfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
     self.assembly_matrix()
