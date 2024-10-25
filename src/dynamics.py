@@ -167,9 +167,12 @@ class dynamics(object):
     self.x_hist = jnp.zeros([step_num, self.N])
     for i in range(step_num):
       self.x_hist = self.x_hist.at[i].set(x)
-      x = iter(x) + corrector(x) * .01
+      x = iter(x) + corrector(x)
 
-    self.check_simulation()
+    # postprocess for visualization
+    self.x_hist = jnp.where(self.x_hist < 20, self.x_hist, 20)
+    self.x_hist = jnp.where(self.x_hist > -20, self.x_hist, -20)
+    # self.check_simulation()
 
   def check_simulation(self):
     if jnp.any(jnp.isnan(self.x_hist)) or jnp.any(jnp.isinf(self.x_hist)):

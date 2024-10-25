@@ -24,7 +24,7 @@ def main():
   nu1 = .1
   c = .1
   L = 10 * jnp.pi
-  T = 40
+  T = 10
   init_scale = 1.
   # solver parameters
   N1 = 512
@@ -65,7 +65,9 @@ def main():
   np.savez('data/ks/tmp.npz', input = input, output = output)
 
   # train test split
-  train_x, test_x, train_y, test_y = train_test_split(input, output, test_size=0.2, random_state=42)
+  train_x, test_x, train_y, test_y = train_test_split(
+    input, output, test_size=0.2, random_state=42
+  )
   train_ds = {
     "input": jnp.array(train_x),
     "output": jnp.array(train_y)
@@ -77,17 +79,25 @@ def main():
 
   # training a fully connected neural network to do the closure modeling
   def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
+    """
+    NOTE: an example to show the inconsistency of a priori and a posteriori
+    error. Fix the network architecture to be the same, compare the results
+    where the lr is chosen to be 1e-3 and 1e-4.
+    """
 
     mlp = hk.Sequential([
       hk.Flatten(),
       hk.Linear(2048), jax.nn.relu,
       hk.Linear(1024), jax.nn.relu,
-      hk.Linear(N2), jax.nn.sigmoid
+      hk.Linear(N2),
     ])
-    return mlp(features)
+    linear_residue = hk.Linear(N2)
+    return mlp(features) # + linear_residue(features)
   
   correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
-  optimizer = optax.adam(1e-3)
+  # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
+  lr = 2e-2
+  optimizer = optax.adam(lr)
   params = correction_nn.init(random.PRNGKey(0), np.zeros((1, N2)))
   opt_state = optimizer.init(params)
 
@@ -95,13 +105,6 @@ def main():
   def loss_fn(params: hk.Params, input: jnp.ndarray, output: jnp.ndarray) -> float:
     predict = correction_nn.apply(params, input)
     return jnp.mean((output - predict)**2)
-
-  @jax.jit
-  def evaluate(params: hk.Params, features: jnp.ndarray, labels: jnp.ndarray):
-    """Checks the accuracy of predictions compared to labels."""
-    logits = correction_nn.apply(params, features)
-    predictions = jnp.around(logits, 0)
-    return jnp.mean(predictions == labels)
   
   @jax.jit
   def update(params: hk.Params, input: jnp.ndarray, output: jnp.ndarray,
@@ -124,30 +127,47 @@ def main():
       output = train_ds["output"][i: i + batch_size]
       loss, params, opt_state = update(params, input, output, opt_state)
       loss_hist.append(loss)
-      desc_str = f"{loss=:.4e}"
+      relative_loss = loss / jnp.mean(output**2)
+      desc_str = f"{relative_loss=:.4e}"
       iters.set_description_str(desc_str)
+
+  valid_loss = 0
+  for i in range(0, len(test_ds["input"]), batch_size):
+    input = train_ds["input"][i: i + batch_size]
+    output = train_ds["output"][i: i + batch_size]
+    valid_loss += loss_fn(params, input=input, output=output)
+  print("lr: {:.2e}".format(lr))
+  print("validation loss: {:.4e}".format(valid_loss))
 
   # a posteriori error estimate
   ks_coarse.run_simulation(ks_fine.x_hist[0, ::r], ks_coarse.CN_FEM)
-  im_array = jnp.zeros((3, 1, ks_coarse.x_hist.shape[0], ks_coarse.x_hist.shape[1]))
-  im_array = im_array.at[0, 0].set(ks_fine.x_hist[::r])
-  im_array = im_array.at[1, 0].set(ks_coarse.x_hist)
-  im_array = im_array.at[2, 0].set(ks_coarse.x_hist - ks_fine.x_hist[::r])
+  im_array = jnp.zeros((3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0]))
+  im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, ::r].T)
+  im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
+  im_array = im_array.at[2, 0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, ::r].T)
   title_array = [f"{N1}", f"{N2}", "diff"]
   plot_with_horizontal_colorbar(
     im_array, fig_size=(4, 6), title_array=title_array,
     file_path=f"results/fig/ks_nu{nu1}_N1{N1}N2{N2}_cmp.pdf"
   )
+  print("rmse without correction: {:.4f}".format(
+    jnp.sqrt(jnp.mean((ks_coarse.x_hist.T - ks_fine.x_hist[:, ::r].T)**2)))
+  )
 
   corrector = partial(correction_nn.apply, params)
-  ks_coarse.run_simulation_with_correction(ks_fine.x_hist[0, ::r], ks_coarse.CN_FEM, corrector)
-  im_array = jnp.zeros((3, 1, ks_coarse.x_hist.shape[0], ks_coarse.x_hist.shape[1]))
-  im_array = im_array.at[0, 0].set(ks_fine.x_hist[::r])
-  im_array = im_array.at[1, 0].set(ks_coarse.x_hist)
-  im_array = im_array.at[2, 0].set(ks_coarse.x_hist - ks_fine.x_hist[::r])
+  ks_coarse.run_simulation_with_correction(
+    ks_fine.x_hist[0, ::r], ks_coarse.CN_FEM, corrector
+  )
+  im_array = jnp.zeros((3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0]))
+  im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, ::r].T)
+  im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
+  im_array = im_array.at[2, 0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, ::r].T)
   plot_with_horizontal_colorbar(
     im_array, fig_size=(4, 6), title_array=title_array,
     file_path=f"results/fig/ks_nu{nu1}_N1{N1}N2{N2}_correct_cmp.pdf"
+  )
+  print("rmse with correction: {:.4f}".format(
+    jnp.sqrt(jnp.mean((ks_coarse.x_hist.T - ks_fine.x_hist[:, ::r].T)**2)))
   )
 
 if __name__ == "__main__":
