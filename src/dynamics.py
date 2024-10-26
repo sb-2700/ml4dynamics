@@ -6,14 +6,13 @@ import jax
 import jax.numpy as jnp
 import jax.random as random
 import torch
+from jax.numpy.linalg import solve
 from matplotlib import pyplot as plt
 from scipy.integrate import solve_ivp
 
 #from scipy.linalg import lstsq
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import lsqr
-from torch.fft import fftfreq, irfft2, rfft2, rfftfreq
-from torch.linalg import lstsq
 
 
 # Other candidates for chaotic dynamics:
@@ -168,6 +167,8 @@ class dynamics(object):
     self.x_hist = jnp.zeros([step_num, self.N])
     for i in range(step_num):
       self.x_hist = self.x_hist.at[i].set(x)
+      # TODO: maybe it is good to use correction iteration as 
+      # x = iter(x) + corrector(x) * self.dt
       x = iter(x) + corrector(x)
 
     # postprocess for visualization
@@ -300,22 +301,23 @@ class dynamics(object):
         Returns:
             sol: the solution object of the least square system, the shadowing direction array
                 is sol[0].reshape(N, N, step_num).
-        """
 
-    # \begin{equation}
-    #  \begin{pmatrix}
-    #   \mfI & -\nabla_u f(u_{T-1}) & 0 & \cdots & 0 & 0 \\
-    #   0 & \mfI & -\nabla_u f(u_{T-2}) & \cdots & 0 & 0 \\
-    #   0 & 0 & \mfI & \cdots & 0 & 0 \\
-    #   \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
-    #   0 & 0 & 0 & \cdots & \mfI & -\nabla_u f(u_1)	\\
-    #   0 & 0 & 0 & \cdots & 0 & 0
-    #  \end{pmatrix}\begin{pmatrix}
-    #   v_T \\ v_{T-1} \\ v_{T-2} \\ \vdots \\ v_2 \\ v_1
-    #  \end{pmatrix} = \begin{pmatrix}
-    #   \p_s f(u_{T-1}) \\ \p_s f(u_{T-2}) \\ \p_s f(u_{T-3}) \\ \vdots \\ \p_s f(u_{1}) \\ 0
-    #  \end{pmatrix}.
-    # \end{equation}
+        $$
+        \begin{pmatrix}
+          \mfI & -\nabla_u f(u_{T-1}) & 0 & \cdots & 0 & 0 \\
+          0 & \mfI & -\nabla_u f(u_{T-2}) & \cdots & 0 & 0 \\
+          0 & 0 & \mfI & \cdots & 0 & 0 \\
+          \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
+          0 & 0 & 0 & \cdots & \mfI & -\nabla_u f(u_1)	\\
+          0 & 0 & 0 & \cdots & 0 & 0
+        \end{pmatrix}\begin{pmatrix}
+          v_T \\ v_{T-1} \\ v_{T-2} \\ \vdots \\ v_2 \\ v_1
+        \end{pmatrix} = \begin{pmatrix}
+          \p_s f(u_{T-1}) \\ \p_s f(u_{T-2}) \\ \p_s f(u_{T-3}) \\ \vdots \\ \p_s f(u_{1}) \\ 0
+        \end{pmatrix}.
+        $$
+
+    """
 
     # the notation here is not consistent, for 1D problem, the size is NT while for
     # 2D problem the size should be N^2
@@ -537,7 +539,7 @@ class KS(dynamics):
       self.attractor + init_scale * random.normal(self.key, shape=(N, ))
     )
     dt = self.dt
-    k = jnprfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
     self.assembly_matrix()
     #print(jnp.max(jnp.abs(1 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))/(1 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))))
 
@@ -589,7 +591,7 @@ class KS(dynamics):
     x_hat = jnp.zeros(self.N // 2 + 1)
     x_hat = x_hat.at[5].set(self.N)
     x_hat = x_hat.at[10].set(self.N * 2)
-    x = irfft(x_hat)
+    x = jnp.fft.irfft(x_hat)
     iter = self.CN
     for t in jnp.arange(0, 100, self.dt):
       x = iter(x)
@@ -615,23 +617,23 @@ class KS(dynamics):
     # however, periodic boundary condition does not give ergodic system
     dt = self.dt
     c = self.c
-    k = jnprfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
-    x_hat = rfft(x)
-    x_hat = ((1 - c*1j*k/2 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))*x_hat - dt/2 * 1j * k * rfft(x*x))\
+    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    x_hat = jnp.fft.rfft(x)
+    x_hat = ((1 - c*1j*k/2 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))*x_hat - dt/2 * 1j * k * jnp.fft.rfft(x*x))\
         /(1 + c*1j*k/2 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))
-    x = irfft(x_hat)
+    x = jnp.fft.irfft(x_hat)
     return x
 
   def CN_adj(self, lambda_, i):
     # CN scheme for the dual variable \lambda
     dt = self.dt
     c = self.c
-    k = jnprfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
-    lambda_hat = rfft(lambda_)
-    delta_x = rfft(self.x_hist[:, i] - self.x_targethist[:, i])
-    lambda_hat = ((1 - c*1j*k/2 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))*lambda_hat - dt * 1j * k * rfft(lambda_*self.x_hist[:, i]) - dt * delta_x)\
+    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    lambda_hat = jnp.fft.rfft(lambda_)
+    delta_x = jnp.fft.rfft(self.x_hist[:, i] - self.x_targethist[:, i])
+    lambda_hat = ((1 - c*1j*k/2 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))*lambda_hat - dt * 1j * k * jnp.fft.rfft(lambda_*self.x_hist[:, i]) - dt * delta_x)\
             /(1 + c*1j*k/2 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))
-    lambda_ = irfft(lambda_hat)
+    lambda_ = jnp.fft.irfft(lambda_hat)
     return lambda_
 
   def calc_gradient(self):
@@ -639,7 +641,7 @@ class KS(dynamics):
     step_num = self.step_num
     iter = self.CN_FEM
     dual_iter = self.CN_FEM_adj
-    k = jnprfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
     # saving dual variable instead of primal variable helps save the memory consumption
     x = copy.deepcopy(self.x)
     y = jnp.zeros(self.N)
@@ -664,7 +666,7 @@ class KS(dynamics):
     for i in range(step_num):
       #gradient = gradient + jnp.sum(self.y_hist[:,i]*irfft(rfft(self.x_hist[:,i])*(k**4))) * (1 if (r.rand()>bar) else 0)
       gradient = gradient + jnp.sum(
-        self.y_hist[:, i] * irfft(rfft(self.x_hist[:, i]) * (k**4))
+        self.y_hist[:, i] * jnp.fft.irfft(jnp.fft.rfft(self.x_hist[:, i]) * (k**4))
       ) * (1 if (random.normal(self.key) > bar) else 0)
     gradient = gradient / step_num / self.N / (1 - bar)
     if self.print_:
@@ -680,33 +682,33 @@ class KS(dynamics):
   def CN_lss(self, w, i):
     # CN scheme for the modified equation of LSS method
     dt = self.dt
-    k = jnprfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
-    w_hat = rfft(w)
+    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    w_hat = jnp.fft.rfft(w)
     # I am not sure whether here should be
     u0 = copy.deepcopy(self.x_hist[:, i])
-    u0_hat = rfft(u0)
+    u0_hat = jnp.fft.rfft(u0)
     w_hat = ((1 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))*w_hat
              - dt * (k**4) * u0_hat
-             - dt * rfft(u0 * irfft(1j * k * w_hat))
-             - dt * rfft(w * irfft(1j * k * u0_hat)))\
+             - dt * jnp.fft.rfft(u0 * jnp.fft.irfft(1j * k * w_hat))
+             - dt * jnp.fft.rfft(w * jnp.fft.irfft(1j * k * u0_hat)))\
         /(1 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))
-    w = irfft(w_hat)
+    w = jnp.fft.irfft(w_hat)
     return w
 
   def CN_lss_adj(self, w, i):
     # CN scheme for the modified equation of LSS method
     dt = self.dt
-    k = jnprfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
-    w_hat = rfft(w)
+    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    w_hat = jnp.fft.rfft(w)
     # I am not sure whether here should be
     u0 = copy.deepcopy(self.x_hist[:, i])
-    u0_hat = rfft(u0)
+    u0_hat = jnp.fft.rfft(u0)
     w_hat = ((1 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))*w_hat
              - dt * (k**4) * u0_hat
-             - dt * rfft(u0 * irfft(1j * k * w_hat))
-             - dt * rfft(w * irfft(1j * k * u0_hat)))\
+             - dt * jnp.fft.rfft(u0 * jnp.fft.irfft(1j * k * w_hat))
+             - dt * jnp.fft.rfft(w * jnp.fft.irfft(1j * k * u0_hat)))\
         /(1 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))
-    w = irfft(w_hat)
+    w = jnp.fft.irfft(w_hat)
     return w
 
   def calc_init_condition(self):
@@ -716,7 +718,7 @@ class KS(dynamics):
     T = self.T
     iter = self.CN
     dual_iter = self.CN_adj
-    k = jnprfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
     # saving dual variable instead of primal variable helps save the memory consumption
     x = copy.deepcopy(self.x_hist[:, 0])
     y = jnp.zeros(self.N)
@@ -746,7 +748,7 @@ class KS(dynamics):
     iter = self.CN
     iter_lss = self.CN_lss
     dual_iter = self.CN_lss_adj
-    k = jnprfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
     # saving dual variable instead of primal variable helps save the memory consumption
     x = copy.deepcopy(self.x_hist[:, 0])
     y = jnp.zeros(self.N)
@@ -797,7 +799,7 @@ class RD(dynamics):
 
   def __init__(
     self,
-    model_type='NS',
+    model_type='react_diff',
     N=128,
     T=10,
     dt=0.01,
@@ -806,11 +808,13 @@ class RD(dynamics):
     init_scale=4,
     tv_scale=1e-8,
     L=2 * jnp.pi,
-    nu=0.0001,
+    alpha=0.01,
+    beta=1.0,
+    gamma=0.05,
     device=torch.device('cpu'),
     plot=False
   ):
-    super(NS,
+    super(RD,
           self).__init__(model_type, N, T, dt, tol, init_scale, tv_scale, plot)
 
     self.device = device
@@ -818,10 +822,11 @@ class RD(dynamics):
     if dx == 0:
       self.dx = self.L / self.N
     else:
-      self.dx = torch.Tensor([dx]).to(self.device)
-    self.nu = torch.Tensor([dt]).to(self.device)
-    self.nu = torch.Tensor([nu]).to(self.device)
-    self.assembly_spectral()
+      self.dx = dx
+    self.alpha = alpha
+    self.beta = beta
+    self.gamma = gamma
+    self.assembly_matrix()
 
   def f(self, x):
     print("This is an abstract f method!")
@@ -849,47 +854,24 @@ class RD(dynamics):
     L2 = jnp.kron(L, jnp.eye(n)) + jnp.kron(jnp.eye(n), L)
 
     # matrix for ADI scheme
-    L_uminus = jnp.eye(n) - L * gamma * dt / 2
-    L_uplus = jnp.eye(n) + L * gamma * dt / 2
-    L_vminus = jnp.eye(n) - L * gamma * dt / 2 * d
-    L_vplus = jnp.eye(n) + L * gamma * dt / 2 * d
+    self.L_uminus = jnp.eye(n) - L * gamma * dt / 2
+    self.L_uplus = jnp.eye(n) + L * gamma * dt / 2
+    self.L_vminus = jnp.eye(n) - L * gamma * dt / 2 * d
+    self.L_vplus = jnp.eye(n) + L * gamma * dt / 2 * d
 
-    A0_u = jnp.eye(n * n) + L2 * gamma * dt
-    A0_v = jnp.eye(n * n) + L2 * gamma * dt * d
-    A_uplus = jnp.eye(n * n) + L2 * gamma * dt / 2
-    A_uminus = jnp.eye(n * n) - L2 * gamma * dt / 2
-    A_vplus = jnp.eye(n * n) + L2 * gamma * dt / 2 * d
-    A_vminus = jnp.eye(n * n) - L2 * gamma * dt / 2 * d
-    # L = spa.csc_matrix(L)
-    # L_uminus = spa.csc_matrix(L_uminus)
-    # L_uplus = spa.csc_matrix(L_uplus)
-    # L_vminus = spa.csc_matrix(L_vminus)
-    # L_vplus = spa.csc_matrix(L_vplus)
-    # L2 = spa.kron(L, np.eye(n)) + spa.kron(np.eye(n), L)
-    # A_uplus = spa.eye(n*n) + L2 * gamma * dt/2
-    # A_uminus = spa.eye(n*n) - L2 * gamma * dt/2
-    # A_vplus = spa.eye(n*n) + L2 * gamma * dt/2 * d
-    # A_vminus = spa.eye(n*n) - L2 * gamma * dt/2 * d
+  def adi(self, u, v):
 
-  def Jacobi(self, w):
-    # This Jacobi matrix is based on flatten the 2D state variable w
-    # ijnput: w is the vorticity in physical space, a 1D tensor of size N \times N,
-    # output:
-    w_hat = rfft2(w)
-    psi = -w_hat / self.laplacian_
-    u = torch.zeros([2, self.N**2], device=self.device)
-    u[0] = irfft2(1j * psi * self.ky).reshape(self.N**2)
-    u[1] = irfft2(1j * psi * self.kx).reshape(self.N**2)
-    w = w.reshape(self.N**2)
-    jacobi = self.nu * self.L2 - \
-            (torch.diag(u[0]) @  self.Lx + torch.diag(u[1]) @ self.Ly) - \
-            (torch.diag(self.Lx @ w) @ self.Ly - torch.diag(self.Ly @ w) @ self.Lx) @ self.L2_inv
-    return jacobi
+    dt = self.dt
+    rhsu = self.L_uplus @ u @ self.L_uplus + dt * (u - v - u**3 + self.alpha)
+    rhsv = self.L_vplus @ v @ self.L_vplus + self.beta * dt * (u - v)
 
-  def dfds(self, w):
-    # ijnput: w is the vorticity in physical space, a 1D tensor of size N \times N,
-    # output: \Delta w is the Laplacian of the vorticity in physical space, a 1D tensor of size N \times N,
-    return self.L2 @ w.reshape(self.N**2)
+    u = jax.scipy.linalg.solve(self.L_uminus, rhsu)
+    u = jax.scipy.linalg.solve(self.L_uminus, u.T)
+    u = u.T
+    v = jax.scipy.linalg.solve(self.L_vminus, rhsv)
+    v = jax.scipy.linalg.solve(self.L_vminus, v.T)
+    v = v.T
+    return u, v
 
 
 class NS(dynamics):
@@ -935,13 +917,13 @@ class NS(dynamics):
     self.X, self.Y = torch.meshgrid(x, y, indexing='ij')
     self.X = self.X.to(self.device)
     self.Y = self.Y.to(self.device)
-    kx = rfftfreq(N, d=L / N) * 2 * jnp.pi
-    ky = fftfreq(N, d=L / N) * 2 * jnp.pi
+    kx = jnp.fft.rfftfreq(N, d=L / N) * 2 * jnp.pi
+    ky = jnp.fft.fftfreq(N, d=L / N) * 2 * jnp.pi
     self.kx, self.ky = torch.meshgrid(ky, kx, indexing='ij')
     self.kx = self.kx.to(self.device)
     self.ky = self.ky.to(self.device)
-    k2x = rfftfreq(N * 2, d=L / N * 2) * 2 * jnp.pi
-    k2y = fftfreq(N * 2, d=L / N * 2) * 2 * jnp.pi
+    k2x = jnp.fft.rfftfreq(N * 2, d=L / N * 2) * 2 * jnp.pi
+    k2y = jnp.fft.fftfreq(N * 2, d=L / N * 2) * 2 * jnp.pi
     self.k2x, self.k2y = torch.meshgrid(k2y, k2x, indexing='ij')
     self.k2x = self.k2x.to(self.device)
     self.k2y = self.k2y.to(self.device)
@@ -978,11 +960,11 @@ class NS(dynamics):
     # This Jacobi matrix is based on flatten the 2D state variable w
     # ijnput: w is the vorticity in physical space, a 1D tensor of size N \times N,
     # output:
-    w_hat = rfft2(w)
+    w_hat = jnp.fft.rfft2(w)
     psi = -w_hat / self.laplacian_
     u = torch.zeros([2, self.N**2], device=self.device)
-    u[0] = irfft2(1j * psi * self.ky).reshape(self.N**2)
-    u[1] = irfft2(1j * psi * self.kx).reshape(self.N**2)
+    u[0] = jnp.fft.irfft2(1j * psi * self.ky).reshape(self.N**2)
+    u[1] = jnp.fft.irfft2(1j * psi * self.kx).reshape(self.N**2)
     w = w.reshape(self.N**2)
     jacobi = self.nu * self.L2 - \
             (torch.diag(u[0]) @  self.Lx + torch.diag(u[1]) @ self.Ly) - \
@@ -1006,15 +988,15 @@ class NS(dynamics):
     ).to(self.device)
     w_hat2[:w_hat.shape[0], :w_hat.shape[1]] = w_hat.clone()
     psi_hat2[:w_hat.shape[0], :w_hat.shape[1]] = -w_hat / self.laplacian_
-    wx2 = irfft2(1j * w_hat2 * self.k2x)
-    wy2 = irfft2(1j * w_hat2 * self.k2y)
-    psix2 = irfft2(1j * psi_hat2 * self.k2x)
-    psiy2 = irfft2(1j * psi_hat2 * self.k2y)
+    wx2 = jnp.fft.irfft2(1j * w_hat2 * self.k2x)
+    wy2 = jnp.fft.irfft2(1j * w_hat2 * self.k2y)
+    psix2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2x)
+    psiy2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2y)
     #force = jnp.cos(2*Y) * 0.0
     #print(jnp.linalg.norm(wx2*psiy2-wy2*psix2))
     w_hat = (
       (1 + dt / 2 * nu * self.laplacian) * w_hat -
-      dt * rfft2(wx2 * psiy2 - wy2 * psix2)[:w_hat.shape[0], :w_hat.shape[1]]
+      dt * jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)[:w_hat.shape[0], :w_hat.shape[1]]
     ) / (1 - dt / 2 * nu * self.laplacian)
     return w_hat
 
@@ -1028,18 +1010,18 @@ class NS(dynamics):
     self.xhat_hist = torch.zeros(
       w.shape[0], w.shape[1], step_num, dtype=torch.complex128
     ).to(self.device)
-    self.x_hist = torch.zeros(irfft2(w).shape[0],
-                              irfft2(w).shape[1], step_num).to(self.device)
+    self.x_hist = torch.zeros(jnp.fft.irfft2(w).shape[0],
+                              jnp.fft.irfft2(w).shape[1], step_num).to(self.device)
     self.u_hist = torch.zeros([2, self.N, self.N, step_num]).to(self.device)
     self.ke = torch.zeros(step_num).to(self.device)
     self.err_hist = torch.zeros(step_num).to(self.device)
     self.kappa = torch.Tensor([4]).to(self.device)
     for i in range(step_num):
       self.xhat_hist[:, :, i] = w.clone()
-      self.x_hist[:, :, i] = irfft2(w)
+      self.x_hist[:, :, i] = jnp.fft.irfft2(w)
       psi = -w / self.laplacian_
-      self.u_hist[1, :, :, i] = -irfft2(1j * psi * self.kx)
-      self.u_hist[0, :, :, i] = irfft2(1j * psi * self.ky)
+      self.u_hist[1, :, :, i] = -jnp.fft.irfft2(1j * psi * self.kx)
+      self.u_hist[0, :, :, i] = jnp.fft.irfft2(1j * psi * self.ky)
       self.ke[i] = torch.sum(self.u_hist[:, :, :, i]**2)
       w = iter(w)
       #self.err_hist[i] = torch.sum((irfft2(w) -

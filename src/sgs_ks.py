@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import ml_collections
 import numpy as np
 import optax
+import os
 import yaml
 from box import Box
 from jax import random as random
@@ -26,7 +27,7 @@ def main(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
   # model parameters
-  nu1 = config.ks.nu
+  nu = config.ks.nu
   c = config.ks.c
   L = config.ks.L
   T = config.ks.T
@@ -48,7 +49,7 @@ def main(config_dict: ml_collections.ConfigDict):
     init_scale=init_scale,
     tv_scale=1e-8,
     L=L,
-    nu=nu1,
+    nu=nu,
     c=c,
     key=key,
   )
@@ -62,7 +63,7 @@ def main(config_dict: ml_collections.ConfigDict):
     init_scale=init_scale,
     tv_scale=1e-8,
     L=L,
-    nu=nu1,
+    nu=nu,
     c=c,
     key=key,
   )
@@ -77,33 +78,47 @@ def main(config_dict: ml_collections.ConfigDict):
 
   assert jnp.allclose(res_op @ int_op, jnp.eye(N2))
 
-  input = jnp.zeros((config.sim.case_num, int(T / dt), N2))
-  output = jnp.zeros((config.sim.case_num, int(T / dt), N2))
-  for i in range(config.sim.case_num):
-    key, subkey = random.split(key)
-    x = ks_fine.attractor + init_scale * random.normal(
-      subkey, shape=(ks_fine.N, )
+  if os.path.isfile(
+    'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num)
+  ):
+    data = np.load(
+      'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num)
     )
-    # ks_fine.run_simulation(x, ks_fine.CN_FEM)
-    ks_fine.run_simulation(ks_fine.x_targethist[0], ks_fine.CN_FEM)
-    input_ = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
-    output_ = jnp.zeros_like(input_)
-    for j in range(ks_fine.step_num):
-      next_step_fine = ks_fine.CN_FEM(
-        ks_fine.x_hist[j]
-      )  # shape = [N1, step_num]
-      next_step_coarse = ks_coarse.CN_FEM(input_[j])  # shape = [step_num, N2]
-      output_ = output_.at[j].set(res_op @ next_step_fine - next_step_coarse)
+    input = data["input"]
+    output = data["output"]
+  else:
+    input = jnp.zeros((config.sim.case_num, int(T / dt), N2))
+    output = jnp.zeros((config.sim.case_num, int(T / dt), N2))
+    for i in range(config.sim.case_num):
+      print(i)
+      key, subkey = random.split(key)
+      x = ks_fine.attractor + init_scale * random.normal(
+        subkey, shape=(ks_fine.N, )
+      )
+      ks_fine.run_simulation(x, ks_fine.CN_FEM)
+      # ks_fine.run_simulation(ks_fine.x_targethist[0], ks_fine.CN_FEM)
+      input_ = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
+      output_ = jnp.zeros_like(input_)
+      for j in range(ks_fine.step_num):
+        next_step_fine = ks_fine.CN_FEM(
+          ks_fine.x_hist[j]
+        )  # shape = [N1, step_num]
+        next_step_coarse = ks_coarse.CN_FEM(input_[j])  # shape = [step_num, N2]
+        output_ = output_.at[j].set(res_op @ next_step_fine - next_step_coarse)
 
-    input = input.at[i].set(input_)
-    output = output.at[i].set(output_)
+      input = input.at[i].set(input_)
+      output = output.at[i].set(output_)
 
-  input = input.reshape(-1, N2)
-  output = output.reshape(-1, N2)
-  if jnp.any(jnp.isnan(input)) or jnp.any(jnp.isnan(output)) or\
-    jnp.any(jnp.isinf(input)) or jnp.any(jnp.isinf(output)):
-    raise Exception("The data contains Inf or NaN")
-  np.savez('data/ks/tmp.npz', input=input, output=output)
+    input = input.reshape(-1, N2)
+    output = output.reshape(-1, N2)
+    if jnp.any(jnp.isnan(input)) or jnp.any(jnp.isnan(output)) or\
+      jnp.any(jnp.isinf(input)) or jnp.any(jnp.isinf(output)):
+      raise Exception("The data contains Inf or NaN")
+    np.savez(
+      'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num), 
+      input=input, 
+      output=output
+    )
 
   # train test split
   train_x, test_x, train_y, test_y = train_test_split(
@@ -175,7 +190,6 @@ def main(config_dict: ml_collections.ConfigDict):
       desc_str = f"{relative_loss=:.4e}"
       iters.set_description_str(desc_str)
 
-  breakpoint()
   valid_loss = 0
   for i in range(0, len(test_ds["input"]), batch_size):
     input = train_ds["input"][i:i + batch_size]
@@ -203,7 +217,7 @@ def main(config_dict: ml_collections.ConfigDict):
     im_array,
     fig_size=(4, 6),
     title_array=title_array,
-    file_path=f"results/fig/ks_nu{nu1}_N1{N1}N2{N2}_cmp.pdf"
+    file_path=f"results/fig/ks_nu{nu}_N1{N1}N2{N2}_cmp.pdf"
   )
   print(
     "rmse without correction: {:.4f}".format(
@@ -224,7 +238,7 @@ def main(config_dict: ml_collections.ConfigDict):
     im_array,
     fig_size=(4, 6),
     title_array=title_array,
-    file_path=f"results/fig/ks_nu{nu1}_N1{N1}N2{N2}_correct_cmp.pdf"
+    file_path=f"results/fig/ks_nu{nu}_N1{N1}N2{N2}_correct_cmp.pdf"
   )
   print(
     "rmse with correction: {:.4f}".format(

@@ -46,7 +46,7 @@ ks:
 
 sim:
   seed: 42
-  case_num: 1     # number of simulations to perform
+  case_num: 100     # number of simulations to perform
   warm_up: 200      # warm up step for simulation
   patience: 5       # patience for NaN simulation
   writeInterval: 2
