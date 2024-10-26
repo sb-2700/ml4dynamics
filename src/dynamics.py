@@ -154,6 +154,11 @@ class dynamics(object):
     self.x_hist = self.x_hist.at[0].set(self.x_targethist[0])
 
   def run_simulation(self, x, iter):
+    """
+    NOTE: One can write a run_simulation version with PRNGKey as input but it
+    seems that we also need a simulator with specified initial value for
+    the comparison of reduced order model
+    """
     step_num = self.step_num
     self.x_hist = jnp.zeros([step_num, self.N])
     for i in range(step_num):
@@ -596,20 +601,16 @@ class KS(dynamics):
   # @jax.jit
   # NOTE: currently we can not jit as the self is not an array
   def CN_FEM(self, x):
-    rt = jnp.zeros(x.shape)
-    rt = jax.scipy.linalg.solve(
+    return jax.scipy.linalg.solve(
       self.Lplus, self.Lmimus @ x - self.dt / 2 * self.L1 @ x**2
     )
-    return rt
 
   def CN_FEM_adj(self, x, i):
-    rt = jnp.zeros(x.shape)
     delta_x = self.x_hist[:, i] - self.x_targethist[:, i]
-    rt = jax.scipy.linalg.solve(
+    return jax.scipy.linalg.solve(
       self.Lplus, self.Lmimus @ x +
       self.dt * self.L1 @ (x * self.x_hist[:, i]) - self.dt * delta_x
     )
-    return rt
 
   def CN(self, x):
     # Crank-Nicolson scheme for spectral method with periodic boundary condition,

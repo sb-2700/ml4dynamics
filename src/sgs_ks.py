@@ -4,8 +4,11 @@ from functools import partial
 import haiku as hk
 import jax
 import jax.numpy as jnp
+import ml_collections
 import numpy as np
 import optax
+import yaml
+from box import Box
 from jax import random as random
 from jaxtyping import Array
 from matplotlib import pyplot as plt 
@@ -18,36 +21,36 @@ from src.dynamics import KS
 from src.types import Batch, OptState, PRNGKey
 from src.utils import plot_with_horizontal_colorbar
 
-def main():
+def main(config_dict: ml_collections.ConfigDict):
 
+  config = Box(config_dict)
   # model parameters
-  nu1 = .1
-  c = .1
-  L = 10 * jnp.pi
-  T = 10
-  init_scale = 1.
+  nu1 = config.ks.nu
+  c = config.ks.c
+  L = config.ks.L
+  T = config.ks.T
+  init_scale = config.ks.init_scale
   # solver parameters
-  N1 = 512
-  N2 = 256
-  dt = 0.01
+  N1 = config.ks.nx
+  N2 = N1 // 2
+  dt = config.ks.dt
   r = N1 // N2
-  key = random.PRNGKey(42)
+  key = random.PRNGKey(config.sim.seed)
 
   # fine simulation
   ks_fine = KS(  
     N = N1, T = T, dt = dt, dx = L / (N1+1), tol = 1e-8,
     init_scale = init_scale, tv_scale = 1e-8, L = L, nu = nu1, c = c, key=key,
   )
-  ks_fine.run_simulation(ks_fine.x_targethist[0], ks_fine.CN_FEM)
-
-  # coarse simulation
+  # coarse simulator
   ks_coarse = KS(
     N = N2, T = T, dt = dt, dx = L / (N2 + 1), tol = 1e-8,
     init_scale = init_scale, tv_scale = 1e-8, L = L, nu = nu1, c = c, key=key,
   )
-  ks_coarse.run_simulation(ks_fine.x_hist[0, ::r], ks_coarse.CN_FEM)
 
   # define the restriction and interpolation operator
+  # TODO: try to change the restriction and projection operator to test the
+  # results, these operator should have test file
   res_op = jnp.zeros((N2, N1))
   int_op = jnp.zeros((N1, N2))
   res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r].set(1)
@@ -55,13 +58,28 @@ def main():
 
   assert jnp.allclose(res_op @ int_op, jnp.eye(N2))
 
-  input = ks_fine.x_hist @ res_op.T # shape = [step_num, N2]
-  output = jnp.zeros_like(input)
-  for i in range(ks_fine.step_num):
-    next_step_fine = ks_fine.CN_FEM(ks_fine.x_hist[i]) # shape = [N1, step_num]
-    next_step_coarse = ks_coarse.CN_FEM(input[i]) # shape = [step_num, N2]
-    output = output.at[i].set(res_op @ next_step_fine - next_step_coarse)
+  input = jnp.zeros((config.sim.case_num, int(T/dt), N2))
+  output = jnp.zeros((config.sim.case_num, int(T/dt), N2))
+  for i in range(config.sim.case_num):
+    key, subkey = random.split(key)
+    x = ks_fine.attractor + init_scale * random.normal(subkey, shape=(ks_fine.N, ))
+    # ks_fine.run_simulation(x, ks_fine.CN_FEM)
+    ks_fine.run_simulation(ks_fine.x_targethist[0], ks_fine.CN_FEM)
+    input_ = ks_fine.x_hist @ res_op.T # shape = [step_num, N2]
+    output_ = jnp.zeros_like(input_)
+    for j in range(ks_fine.step_num):
+      next_step_fine = ks_fine.CN_FEM(ks_fine.x_hist[j]) # shape = [N1, step_num]
+      next_step_coarse = ks_coarse.CN_FEM(input_[j]) # shape = [step_num, N2]
+      output_ = output_.at[j].set(res_op @ next_step_fine - next_step_coarse)
 
+    input = input.at[i].set(input_)
+    output = output.at[i].set(output_)
+
+  input = input.reshape(-1, N2)
+  output = output.reshape(-1, N2)
+  if jnp.any(jnp.isnan(input)) or jnp.any(jnp.isnan(output)) or\
+    jnp.any(jnp.isinf(input)) or jnp.any(jnp.isinf(output)):
+    raise Exception("The data contains Inf or NaN")
   np.savez('data/ks/tmp.npz', input = input, output = output)
 
   # train test split
@@ -96,7 +114,7 @@ def main():
   
   correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
   # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
-  lr = 2e-2
+  lr = 5e-4
   optimizer = optax.adam(lr)
   params = correction_nn.init(random.PRNGKey(0), np.zeros((1, N2)))
   opt_state = optimizer.init(params)
@@ -131,6 +149,7 @@ def main():
       desc_str = f"{relative_loss=:.4e}"
       iters.set_description_str(desc_str)
 
+  breakpoint()
   valid_loss = 0
   for i in range(0, len(test_ds["input"]), batch_size):
     input = train_ds["input"][i: i + batch_size]
@@ -140,7 +159,10 @@ def main():
   print("validation loss: {:.4e}".format(valid_loss))
 
   # a posteriori error estimate
-  ks_coarse.run_simulation(ks_fine.x_hist[0, ::r], ks_coarse.CN_FEM)
+  key, subkey = random.split(key)
+  x = ks_fine.attractor + init_scale * random.normal(subkey, shape=(ks_fine.N, ))
+  ks_fine.run_simulation(x, ks_fine.CN_FEM)
+  ks_coarse.run_simulation(x[::r], ks_coarse.CN_FEM)
   im_array = jnp.zeros((3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0]))
   im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, ::r].T)
   im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
@@ -156,7 +178,7 @@ def main():
 
   corrector = partial(correction_nn.apply, params)
   ks_coarse.run_simulation_with_correction(
-    ks_fine.x_hist[0, ::r], ks_coarse.CN_FEM, corrector
+    x[::r], ks_coarse.CN_FEM, corrector
   )
   im_array = jnp.zeros((3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0]))
   im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, ::r].T)
@@ -171,4 +193,7 @@ def main():
   )
 
 if __name__ == "__main__":
-  main()
+
+  with open("config/simulation.yaml", "r") as file:
+    config_dict = yaml.safe_load(file)
+  main(config_dict)

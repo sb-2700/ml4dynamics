@@ -37,17 +37,17 @@ def generate_RD_data(config_dict: ml_collections.ConfigDict):
   # warm start, we perform several steps so that the flow comes to a physical
   # state
   warm_up = config.sim.warm_up
-  widthx = (config.sim.x_right - config.sim.x_left)
-  widthy = (config.sim.y_top - config.sim.y_bottom)
-  nx = config.sim.nx
-  ny = config.sim.ny
+  widthx = (config.react_diff.x_right - config.react_diff.x_left)
+  widthy = (config.react_diff.y_top - config.react_diff.y_bottom)
+  nx = config.react_diff.nx
+  ny = config.react_diff.ny
   dx = widthx / nx
   dy = widthy / ny
-  gamma = config.sim.gamma
-  t = config.sim.t
-  alpha = config.sim.alpha
-  beta = config.sim.beta
-  step_num = config.sim.nt
+  gamma = config.react_diff.gamma
+  t = config.react_diff.t
+  alpha = config.react_diff.alpha
+  beta = config.react_diff.beta
+  step_num = config.react_diff.nt
   dt = t / step_num
 
   patience = config.sim.patience  # we admit 5 times blow up generations
@@ -217,6 +217,6 @@ def generate_RD_data(config_dict: ml_collections.ConfigDict):
 
 if __name__ == "__main__":
 
-  with open("config/react_diff.yaml", "r") as file:
+  with open("config/simulation.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
   generate_RD_data(config_dict)

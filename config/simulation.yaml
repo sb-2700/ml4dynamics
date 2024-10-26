@@ -21,7 +21,7 @@ output_path: 2D_diff-react_NA_NA
 # name of the run, accessed by loggers
 name: 2d_diff-react
 
-sim:
+react_diff:
   alpha: 0.01
   beta: 1.0
   gamma: 0.05
@@ -34,8 +34,19 @@ sim:
   y_top: 6.4
   ny: 128
   n: 2              # number of components
+
+ks:
+  nu: .1
+  c: .1
+  L: 31.4159265358
+  T: 10
+  init_scale: .1
+  nx: 512
+  dt: .01
+
+sim:
   seed: 42
-  case_num: 100     # number of simulations to perform
+  case_num: 1     # number of simulations to perform
   warm_up: 200      # warm up step for simulation
   patience: 5       # patience for NaN simulation
   writeInterval: 2
