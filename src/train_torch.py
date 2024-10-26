@@ -6,19 +6,20 @@ import numpy as np
 import numpy.random as random
 import torch as torch
 import yaml
+from box import Box
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 
-from box import Box
-from models import UNet, EDNet
+from models import EDNet, UNet
 from simulator import *
 from utils import read_and_preprocess
 
 np.set_printoptions(precision=15)
 torch.set_default_dtype(torch.float64)
 
+
 def train(config_dict: ml_collections.ConfigDict):
-  
+
   config = Box(config_dict)
   pde_type = config.data.type
   folder = config.data.folder
@@ -28,11 +29,11 @@ def train(config_dict: ml_collections.ConfigDict):
     "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
   )
 
-  nx, ny, label_dim, traj_num, step_num, input, output = read_and_preprocess(folder+dataset, device)
+  nx, ny, label_dim, traj_num, step_num, input, output = read_and_preprocess(
+    folder + dataset, device
+  )
   print(
-    "Training {} model with data: {} ...".format(
-      pde_type, config.data.folder
-    )
+    "Training {} model with data: {} ...".format(pde_type, config.data.folder)
   )
 
   # setting training hyperparameters
@@ -63,9 +64,7 @@ def train(config_dict: ml_collections.ConfigDict):
     model_mols = UNet([2, 4, 8, 32, 64, 128, 1]).to(device)
     model_aols = UNet([2, 4, 8, 32, 64, 128, 1]).to(device)
     model_tr = UNet([2, 4, 8, 32, 64, 128, 1]).to(device)
-  if os.path.isfile(
-    "ckpts/{}/OLS-{}.pth".format(pde_type, dataset)
-  ):
+  if os.path.isfile("ckpts/{}/OLS-{}.pth".format(pde_type, dataset)):
     model_ols.load_state_dict(
       torch.load(
         "ckpts/{}/OLS-{}.pth".format(pde_type, dataset),
@@ -73,9 +72,7 @@ def train(config_dict: ml_collections.ConfigDict):
       )
     )
     model_ols.eval()
-  if os.path.isfile(
-    "ckpts/{}/OLS-{}.pth".format(pde_type, dataset),
-  ):
+  if os.path.isfile("ckpts/{}/OLS-{}.pth".format(pde_type, dataset), ):
     model_mols.load_state_dict(
       torch.load(
         "ckpts/{}/OLS-{}.pth".format(pde_type, dataset),
@@ -83,9 +80,7 @@ def train(config_dict: ml_collections.ConfigDict):
       )
     )
     model_mols.eval()
-  if os.path.isfile(
-    "ckpts/{}/aOLS-{}.pth".format(pde_type, dataset)
-  ):
+  if os.path.isfile("ckpts/{}/aOLS-{}.pth".format(pde_type, dataset)):
     model_aols.load_state_dict(
       torch.load(
         "ckpts/{}/aOLS-{}.pth".format(pde_type, dataset),
@@ -93,9 +88,7 @@ def train(config_dict: ml_collections.ConfigDict):
       )
     )
     model_aols.eval()
-  if os.path.isfile(
-    "ckpts/{}/TR-{}.pth".format(pde_type, dataset)
-  ):
+  if os.path.isfile("ckpts/{}/TR-{}.pth".format(pde_type, dataset)):
     model_tr.load_state_dict(
       torch.load(
         "ckpts/{}/TR-{}.pth".format(pde_type, dataset),
@@ -105,9 +98,7 @@ def train(config_dict: ml_collections.ConfigDict):
     model_tr.eval()
   # if u switch this EDNet to UNet, the error will become very small
   model_ed = EDNet(channel_array=[2, 4, 8, 16, 32, 64]).to(device)
-  if os.path.isfile(
-    "ckpts/{}/ED-{}.pth".format(pde_type, dataset)
-  ):
+  if os.path.isfile("ckpts/{}/ED-{}.pth".format(pde_type, dataset)):
     model_ed.load_state_dict(
       torch.load(
         "ckpts/{}/ED-{}.pth".format(pde_type, dataset),
@@ -169,7 +160,8 @@ def train(config_dict: ml_collections.ConfigDict):
     test_loss = 0
     for j in range(traj_num):
       for i in range(0, step_num, batch_size):
-        uv = input[j, i:i + batch_size].reshape([batch_size, 2, nx, ny]).to(device)
+        uv = input[j, i:i + batch_size].reshape([batch_size, 2, nx,
+                                                 ny]).to(device)
         outputs = model_ed(uv)
         loss_ed = criterion(outputs, uv)
         if j == test_index:
@@ -187,7 +179,8 @@ def train(config_dict: ml_collections.ConfigDict):
       break
     if (epoch + 1) % printInterval == 0:
       print(
-        "Autoencoder Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
+        "Autoencoder Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".
+        format(
           epoch + 1, ed_epochs,
           train_loss * batch_size / step_num / (traj_num - 1),
           test_loss * batch_size / step_num
@@ -195,8 +188,7 @@ def train(config_dict: ml_collections.ConfigDict):
       )
     if (epoch + 1) % saveInterval == 0:
       torch.save(
-        model_ed.state_dict(),
-        "ckpts/{}/ED-{}.pth".format(pde_type, dataset)
+        model_ed.state_dict(), "ckpts/{}/ED-{}.pth".format(pde_type, dataset)
       )
 
   T2 = time.perf_counter()
@@ -214,7 +206,8 @@ def train(config_dict: ml_collections.ConfigDict):
         outputs = model_ols(uv)
         loss_ols = criterion(
           outputs,
-          output[j, i:i + batch_size, :, :].reshape(batch_size, label_dim, nx, ny)
+          output[j,
+                 i:i + batch_size, :, :].reshape(batch_size, label_dim, nx, ny)
         )
         if j == test_index:
           # test trajectory is used for validation
@@ -239,8 +232,7 @@ def train(config_dict: ml_collections.ConfigDict):
       )
     if (epoch + 1) % saveInterval == 0:
       torch.save(
-        model_ols.state_dict(),
-        "ckpts/{}/OLS-{}.pth".format(pde_type, dataset)
+        model_ols.state_dict(), "ckpts/{}/OLS-{}.pth".format(pde_type, dataset)
       )
 
   T3 = time.perf_counter()
@@ -258,7 +250,8 @@ def train(config_dict: ml_collections.ConfigDict):
         outputs = model_mols(uv)
         loss_mols = criterion(
           outputs,
-          output[j, i:i + batch_size, :, :].reshape(batch_size, label_dim, nx, ny)
+          output[j,
+                 i:i + batch_size, :, :].reshape(batch_size, label_dim, nx, ny)
         )
         if j == test_index:
           # test trajectory is used for validation
@@ -305,7 +298,8 @@ def train(config_dict: ml_collections.ConfigDict):
         outputs = model_aols(uv)
         loss_aols = criterion(
           outputs,
-          output[j, i:i + batch_size, :, :].reshape(batch_size, label_dim, nx, ny)
+          output[j,
+                 i:i + batch_size, :, :].reshape(batch_size, label_dim, nx, ny)
         )
         if j == test_index:
           # test trajectory is used for validation
@@ -351,7 +345,8 @@ def train(config_dict: ml_collections.ConfigDict):
         outputs = model_tr(uv)
         loss_tr = criterion(
           outputs,
-          output[j, i:i + batch_size, :, :].reshape(batch_size, label_dim, nx, ny)
+          output[j,
+                 i:i + batch_size, :, :].reshape(batch_size, label_dim, nx, ny)
         )
         est_tr = loss_tr.item()
         z1 = torch.ones_like(uv).to(device)
@@ -389,8 +384,7 @@ def train(config_dict: ml_collections.ConfigDict):
       )
     if (epoch + 1) % saveInterval == 0:
       torch.save(
-        model_tr.state_dict(),
-        "ckpts/{}/TR-{}.pth".format(pde_type, dataset)
+        model_tr.state_dict(), "ckpts/{}/TR-{}.pth".format(pde_type, dataset)
       )
 
   T6 = time.perf_counter()

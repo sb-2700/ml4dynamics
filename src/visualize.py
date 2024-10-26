@@ -24,7 +24,7 @@ def plot_from_h5py(case: str):
     for i in range(n1):
       for j in range(n2):
         plt.subplot(n2, n1, i * n2 + j + 1)
-        plt.imshow(U[random_integer, (i * n2 + j)*30, 0, :, :], cmap=cm.jet)
+        plt.imshow(U[random_integer, (i * n2 + j) * 30, 0, :, :], cmap=cm.jet)
         plt.axis('off')
     plt.savefig('results/fig/traj_' + str(random_integer) + '.pdf')
 
@@ -50,7 +50,9 @@ def plot_from_h5py_cmp():
     for i in range(n1):
       for j in range(n2):
         plt.subplot(n2, n1, i * n2 + j + 1)
-        plt.imshow(U128[random_integer, (i * n2 + j)*30, 0, :, :], cmap=cm.jet)
+        plt.imshow(
+          U128[random_integer, (i * n2 + j) * 30, 0, :, :], cmap=cm.viridis
+        )
         plt.axis('off')
     plt.savefig('results/fig/traj_128_' + str(random_integer) + '.pdf')
     plt.clf()
@@ -59,6 +61,8 @@ def plot_from_h5py_cmp():
     for i in range(n1):
       for j in range(n2):
         plt.subplot(n2, n1, i * n2 + j + 1)
-        plt.imshow(U64[random_integer, (i * n2 + j)*30, 0, :, :], cmap=cm.jet)
+        plt.imshow(
+          U64[random_integer, (i * n2 + j) * 30, 0, :, :], cmap=cm.viridis
+        )
         plt.axis('off')
     plt.savefig('results/fig/traj_64_' + str(random_integer) + '.pdf')

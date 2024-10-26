@@ -16,9 +16,10 @@ from numpy import random
 jax.config.update("jax_enable_x64", True)
 torch.set_default_dtype(torch.float64)
 
+
 def read_and_preprocess(
   filename: str = None,
-  device = None,
+  device=None,
 ):
 
   with h5py.File(filename, "r") as file:
@@ -33,7 +34,7 @@ def read_and_preprocess(
     metadata = {}
     for key in metadata_h5py.keys():
       metadata[key] = metadata_h5py[key][()]
-      
+
   nx = metadata["nx"]
   ny = metadata["ny"]
   traj_num, step_num, label_dim = output_fine.shape[:3]
@@ -168,6 +169,7 @@ def RD_semi(
 
   return u_hist, v_hist
 
+
 def RD_adi(
   u: jnp.ndarray,
   v: jnp.ndarray,
@@ -182,6 +184,7 @@ def RD_adi(
 
   u = jnp.array(u)
   v = jnp.array(v)
+
   @jax.jit
   def update(u, v):
 
@@ -209,7 +212,9 @@ def RD_adi(
 
   for i in range(step_num):
     u, v = update(u, v)
-    if jnp.any(jnp.isnan(u)) or jnp.any(jnp.isnan(v)) or jnp.any(jnp.isinf(u)) or jnp.any(jnp.isinf(v)):
+    if jnp.any(jnp.isnan(u)) or jnp.any(jnp.isnan(v)) or jnp.any(
+      jnp.isinf(u)
+    ) or jnp.any(jnp.isinf(v)):
       flag = False
       break
 
@@ -428,9 +433,8 @@ def plot_with_horizontal_colorbar(
         axs[i * im_array.shape[1] + j].imshow(im_array[i, j], cmap=cm.viridis)
       )
       if title_array is not None:
-        axs[i * im_array.shape[1] + j].set_title(
-          title_array[i * im_array.shape[1] + j]
-        )
+        axs[i * im_array.shape[1] +
+            j].set_title(title_array[i * im_array.shape[1] + j])
       axs[i * im_array.shape[1] + j].axis("off")
       cbar.append(
         fig.colorbar(

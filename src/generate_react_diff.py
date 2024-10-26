@@ -7,16 +7,16 @@ sys.path.append(ROOT_PATH)
 import argparse
 import copy
 import pdb
+from datetime import datetime
 
 import h5py
 import jax
 import ml_collections
 import numpy as np
 import yaml
+from box import Box
 
 import utils
-from box import Box
-from datetime import datetime
 
 np.set_printoptions(precision=15)
 jax.config.update("jax_enable_x64", True)

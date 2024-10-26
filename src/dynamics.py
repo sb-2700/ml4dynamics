@@ -1,24 +1,20 @@
+import copy
+import time
+from abc import ABCMeta, abstractmethod
+
 import jax
 import jax.numpy as jnp
 import jax.random as random
-import numpy as np
-import scipy.sparse as sparse
 import torch
-import copy
-import time
-
+from matplotlib import pyplot as plt
 from scipy.integrate import solve_ivp
-from scipy.linalg import svd
+
 #from scipy.linalg import lstsq
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import lsqr
-from numpy.fft import rfft, irfft
-from numpy.fft import rfftfreq as jnprfftfreq
-from numpy.fft import fftfreq as jnpfftfreq
-from torch.fft import rfft2, irfft2, rfftfreq, fftfreq
+from torch.fft import fftfreq, irfft2, rfft2, rfftfreq
 from torch.linalg import lstsq
-from matplotlib import pyplot as plt
-from abc import ABCMeta, abstractmethod
+
 
 # Other candidates for chaotic dynamics:
 # Logistic mapping
@@ -140,7 +136,7 @@ class dynamics(object):
     # This method is still maintained for inverse problem application, where we first simulate the
     # model using certain parameters and set this as the target trajectory and use optimization
     # method to find the optimal parameters or initial condition.
-    
+
     step_num = self.step_num
     N = self.N
     iter = self.CN
@@ -206,7 +202,9 @@ class dynamics(object):
     iter = self.CN
     if ~self.attractor_flag:
       self.set_attractor()
-    x = self.attractor + self.init_scale * random.normal(self.key, shape=(self.N, ))
+    x = self.attractor + self.init_scale * random.normal(
+      self.key, shape=(self.N, )
+    )
     x_ = x + self.tv_scale * random.normal(self.key, shape=(self.N, ))
     l_exp = 0
 
@@ -284,8 +282,8 @@ class dynamics(object):
         # CN discretization
         sol[(i + 1) * N:(i + 2) * N] = solve(
           jnp.eye(N) - dt / 2 * J(self.x_hist[:, i + 1]),
-          (jnp.eye(N) + dt / 2 * J(self.x_hist[:, i])) @ sol[i * N:(i + 1) * N] +
-          dfds(self.x_hist[:, i + 1]) / 2 + dfds(self.x_hist[:, i]) / 2
+          (jnp.eye(N) + dt / 2 * J(self.x_hist[:, i])) @ sol[i * N:(i + 1) * N]
+          + dfds(self.x_hist[:, i + 1]) / 2 + dfds(self.x_hist[:, i]) / 2
         )
 
     return sol.reshape(1, N * n)
@@ -524,7 +522,7 @@ class KS(dynamics):
     key=random.PRNGKey(0),
     plot=False
   ):
-    super(KS,self).__init__(
+    super(KS, self).__init__(
       model_type, N, T, dt, tol, init_scale, tv_scale, key, plot
     )
     self.L = L
