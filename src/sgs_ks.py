@@ -78,6 +78,7 @@ def main(config_dict: ml_collections.ConfigDict):
 
   assert jnp.allclose(res_op @ int_op, jnp.eye(N2))
 
+  # prepare the training data
   if os.path.isfile(
     'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num)
   ):
@@ -128,53 +129,100 @@ def main(config_dict: ml_collections.ConfigDict):
   test_ds = {"input": jnp.array(test_x), "output": jnp.array(test_y)}
 
   # training a fully connected neural network to do the closure modeling
-  def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
+  # via regression
+  train_mode = config.train.mode
+  if train_mode == "regression":
+    def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
+      """
+      NOTE: an example to show the inconsistency of a priori and a posteriori
+      error. Fix the network architecture to be the same, compare the results
+      where the lr is chosen to be 1e-3 and 1e-4.
+      """
+
+      mlp = hk.Sequential(
+        [
+          hk.Flatten(),
+          hk.Linear(2048),
+          jax.nn.relu,
+          hk.Linear(1024),
+          jax.nn.relu,
+          hk.Linear(N2),
+        ]
+      )
+      linear_residue = hk.Linear(N2)
+      return mlp(features)  # + linear_residue(features)
+
+    correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
+    # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
+    lr = 5e-4
+    optimizer = optax.adam(lr)
+    params = correction_nn.init(random.PRNGKey(0), np.zeros((1, N2)))
+    opt_state = optimizer.init(params)
+
+    @jax.jit
+    def loss_fn(
+      params: hk.Params, input: jnp.ndarray, output: jnp.ndarray, rng: PRNGKey,
+    ) -> float:
+      predict = correction_nn.apply(params, input)
+      return jnp.mean((output - predict)**2)
+
+    @jax.jit
+    def update(
+      params: hk.Params, input: jnp.ndarray, output: jnp.ndarray, rng: PRNGKey,
+      opt_state: OptState
+    ) -> Tuple[Array, hk.Params, OptState]:
+      """Single SGD update step."""
+      loss, grads = jax.value_and_grad(
+        partial(loss_fn, input=input, output=output, rng=rng)
+      )(params)
+      # loss, grads = jax.value_and_grad(loss_fn)(params, input, output)
+      updates, new_opt_state = optimizer.update(grads, opt_state)
+      new_params = optax.apply_updates(params, updates)
+      return loss, new_params, new_opt_state
+    
+  elif train_mode == "generative":
     """
-    NOTE: an example to show the inconsistency of a priori and a posteriori
-    error. Fix the network architecture to be the same, compare the results
-    where the lr is chosen to be 1e-3 and 1e-4.
+    TODO: currently we are using different structure for regression and
+    generative modeling, need to unify
     """
+    from src.model_jax import model
 
-    mlp = hk.Sequential(
-      [
-        hk.Flatten(),
-        hk.Linear(2048),
-        jax.nn.relu,
-        hk.Linear(1024),
-        jax.nn.relu,
-        hk.Linear(N2),
-      ]
-    )
-    linear_residue = hk.Linear(N2)
-    return mlp(features)  # + linear_residue(features)
+    print("initialize vae model")
+    vae = model(config.train.vae.latents, N2)
+    rng, key = random.split(key)
+    params = vae.init(key, train_ds["input"][0:1], train_ds["output"][0:1], rng)['params']
 
-  correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
-  # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
-  lr = 5e-4
-  optimizer = optax.adam(lr)
-  params = correction_nn.init(random.PRNGKey(0), np.zeros((1, N2)))
-  opt_state = optimizer.init(params)
+    lr = 1e-4
+    optimizer = optax.adam(lr)
+    opt_state = optimizer.init(params)
+    @jax.jit
+    def loss_fn(
+      params: hk.Params, input: jnp.ndarray,
+      output: jnp.ndarray, rng: PRNGKey
+    ) -> float:
+      
+      # NOTE: notice the input is the condition, output is x
+      recon_x, mean, logvar = vae.apply({"params": params}, output, input, rng)
+      # NOTE: lots of code are using BCE, we may also try
+      return jnp.sum((input - recon_x)**2) +\
+        -0.5 * jnp.sum(1 + logvar - jnp.power(mean, 2) - jnp.exp(logvar))
 
-  @jax.jit
-  def loss_fn(
-    params: hk.Params, input: jnp.ndarray, output: jnp.ndarray
-  ) -> float:
-    predict = correction_nn.apply(params, input)
-    return jnp.mean((output - predict)**2)
+    @jax.jit
+    def update(
+      params: hk.Params, input: jnp.ndarray, output: jnp.ndarray, rng: PRNGKey,
+      opt_state: OptState
+    ) -> Tuple[Array, hk.Params, OptState]:
+      """Single SGD update step."""
+      loss, grads = jax.value_and_grad(
+        partial(loss_fn, input=input, output=output, rng=rng)
+      )(params)
+      # loss, grads = jax.value_and_grad(loss_fn)(params, input, output)
+      updates, new_opt_state = optimizer.update(grads, opt_state)
+      new_params = optax.apply_updates(params, updates)
+      return loss, new_params, new_opt_state
 
-  @jax.jit
-  def update(
-    params: hk.Params, input: jnp.ndarray, output: jnp.ndarray,
-    opt_state: OptState
-  ) -> Tuple[Array, hk.Params, OptState]:
-    """Single SGD update step."""
-    loss, grads = jax.value_and_grad(
-      partial(loss_fn, input=input, output=output)
-    )(params)
-    # loss, grads = jax.value_and_grad(loss_fn)(params, input, output)
-    updates, new_opt_state = optimizer.update(grads, opt_state)
-    new_params = optax.apply_updates(params, updates)
-    return loss, new_params, new_opt_state
+  else:
+    raise Exception("Unknown learning mode.")
 
   loss_hist = []
   epochs = 10000
@@ -182,19 +230,22 @@ def main(config_dict: ml_collections.ConfigDict):
   iters = tqdm(range(epochs))
   for step in iters:
     for i in range(0, len(train_ds["input"]), batch_size):
+      rng, key = random.split(key)
       input = train_ds["input"][i:i + batch_size]
       output = train_ds["output"][i:i + batch_size]
-      loss, params, opt_state = update(params, input, output, opt_state)
+      loss, params, opt_state = update(params, input, output, rng, opt_state)
       loss_hist.append(loss)
-      relative_loss = loss / jnp.mean(output**2)
-      desc_str = f"{relative_loss=:.4e}"
+      # relative_loss = loss / jnp.mean(output**2)
+      # desc_str = f"{relative_loss=:.4e}"
+      desc_str = f"{loss=:.4e}"
       iters.set_description_str(desc_str)
 
   valid_loss = 0
   for i in range(0, len(test_ds["input"]), batch_size):
+    rng, key = random.split(key)
     input = train_ds["input"][i:i + batch_size]
     output = train_ds["output"][i:i + batch_size]
-    valid_loss += loss_fn(params, input=input, output=output)
+    valid_loss += loss_fn(params, input=input, output=output, rng=rng)
   print("lr: {:.2e}".format(lr))
   print("validation loss: {:.4e}".format(valid_loss))
 
@@ -217,7 +268,8 @@ def main(config_dict: ml_collections.ConfigDict):
     im_array,
     fig_size=(4, 6),
     title_array=title_array,
-    file_path=f"results/fig/ks_nu{nu}_N1{N1}N2{N2}_cmp.pdf"
+    file_path=f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}\
+      _{train_mode}_cmp.pdf"
   )
   print(
     "rmse without correction: {:.4f}".format(
@@ -225,7 +277,10 @@ def main(config_dict: ml_collections.ConfigDict):
     )
   )
 
-  corrector = partial(correction_nn.apply, params)
+  # corrector = partial(correction_nn.apply, params)
+  vae_bind = vae.bind({"params": params})
+  z = random.normal(key, shape=(1, config.train.vae.latents))
+  corrector = partial(vae_bind.generate, z)
   ks_coarse.run_simulation_with_correction(x[::r], ks_coarse.CN_FEM, corrector)
   im_array = jnp.zeros(
     (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
@@ -238,7 +293,8 @@ def main(config_dict: ml_collections.ConfigDict):
     im_array,
     fig_size=(4, 6),
     title_array=title_array,
-    file_path=f"results/fig/ks_nu{nu}_N1{N1}N2{N2}_correct_cmp.pdf"
+    file_path=f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}\
+      _{train_mode}_correct_cmp.pdf"
   )
   print(
     "rmse with correction: {:.4f}".format(
