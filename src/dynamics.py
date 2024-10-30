@@ -169,7 +169,7 @@ class dynamics(object):
       self.x_hist = self.x_hist.at[i].set(x)
       # TODO: maybe it is good to use correction iteration as 
       # x = iter(x) + corrector(x) * self.dt
-      x = iter(x) + corrector(x)
+      x = iter(x) + corrector(x.reshape(1, -1)).reshape(-1)
 
     # postprocess for visualization
     self.x_hist = jnp.where(self.x_hist < 20, self.x_hist, 20)
