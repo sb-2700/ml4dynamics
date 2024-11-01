@@ -81,11 +81,17 @@ def plot_stats(
   plt.plot(t_array, np.mean(coarse_traj1, axis=1), label='baseline')
   plt.plot(t_array, np.mean(coarse_traj2, axis=1), label='correction')
   plt.legend()
+  plt.axis("on")
+  plt.xlabel(r"$T$")
+  plt.ylabel(r"$\overline{u}$")
   plt.subplot(212)
   plt.plot(t_array, np.mean(fine_traj**2, axis=1), label='truth')
   plt.plot(t_array, np.mean(coarse_traj1**2, axis=1), label='baseline')
   plt.plot(t_array, np.mean(coarse_traj2**2, axis=1), label='correction')
   plt.legend()
+  plt.axis("on")
+  plt.xlabel(r"$T$")
+  plt.ylabel(r"$\overline{u^2}$")
   plt.savefig(fig_name)
 
 

@@ -82,14 +82,12 @@ def main(config_dict: ml_collections.ConfigDict):
   if os.path.isfile(
     'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num)
   ):
-    data = np.load(
-      'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num)
-    )
-    input = data["input"]
-    output = data["output"]
+    data = np.load('data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num))
+    inputs = data["input"]
+    outputs = data["output"]
   else:
-    input = jnp.zeros((config.sim.case_num, int(T / dt), N2))
-    output = jnp.zeros((config.sim.case_num, int(T / dt), N2))
+    inputs = jnp.zeros((config.sim.case_num, int(T / dt), N2))
+    outputs = jnp.zeros((config.sim.case_num, int(T / dt), N2))
     for i in range(config.sim.case_num):
       print(i)
       key, subkey = random.split(key)
@@ -98,47 +96,63 @@ def main(config_dict: ml_collections.ConfigDict):
       x = ks_fine.attractor + init_scale * random.normal(subkey) *\
         jnp.sin(5 * jnp.linspace(0, L - L/N1, N1))
       ks_fine.run_simulation(x, ks_fine.CN_FEM)
-      input_ = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
-      output_ = jnp.zeros_like(input_)
+      input = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
+      output = jnp.zeros_like(input)
       for j in range(ks_fine.step_num):
         next_step_fine = ks_fine.CN_FEM(
           ks_fine.x_hist[j]
         )  # shape = [N1, step_num]
-        next_step_coarse = ks_coarse.CN_FEM(input_[j])  # shape = [step_num, N2]
+        next_step_coarse = ks_coarse.CN_FEM(input[j])  # shape = [step_num, N2]
         output_ = output_.at[j].set(res_op @ next_step_fine - next_step_coarse)
-      input = input.at[i].set(input_)
-      output = output.at[i].set(output_)
+      inputs = inputs.at[i].set(input)
+      outputs = outputs.at[i].set(output)
 
-    input = input.reshape(-1, N2)
-    output = output.reshape(-1, N2) / dt
-    if jnp.any(jnp.isnan(input)) or jnp.any(jnp.isnan(output)) or\
-      jnp.any(jnp.isinf(input)) or jnp.any(jnp.isinf(output)):
+    inputs = inputs.reshape(-1, N2)
+    outputs = outputs.reshape(-1, N2) / dt
+    if jnp.any(jnp.isnan(inputs)) or jnp.any(jnp.isnan(outputs)) or\
+      jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs)):
       raise Exception("The data contains Inf or NaN")
     np.savez(
       'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num),
-      input=input,
-      output=output
+      input=inputs,
+      output=outputs
     )
 
-  breakpoint()
-  dx = 10 * jnp.pi / 256
-  u_x = (jnp.roll(input, 1, axis=1) - jnp.roll(input, -1, axis=1)) / dx / 2
-  u_xx = (
-    (jnp.roll(input, 1, axis=1) + jnp.roll(input, -1, axis=1)) - 2 * input
-  ) / dx**2
-  u_xxxx = ((jnp.roll(input, 2, axis=1) + jnp.roll(input, -2, axis=1)) -\
-      4*(jnp.roll(input, 1, axis=1) + jnp.roll(input, -1, axis=1)) + 6 * input) /\
-      dx**4
-  input = u_xxxx.reshape(-1, 1)
-  output = output.reshape(-1, 1)
+  # preprocess the input-output pair for training
+  if config.train.input == "uglobal":
+    # training global ROM
+    input_dim = output_dim = N2
+    inputs = inputs.reshape(-1, input_dim)
+    outputs = outputs.reshape(-1, output_dim)
+  else:
+    # training local ROM with local input
+    input_dim = output_dim = 1
+    dx = L / N2
+    u_x = (jnp.roll(inputs, 1, axis=1) - jnp.roll(inputs, -1, axis=1)) / dx / 2
+    u_xx = (
+      (jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) - 2 * inputs
+    ) / dx**2
+    u_xxxx = ((jnp.roll(inputs, 2, axis=1) + jnp.roll(inputs, -2, axis=1)) -\
+        4*(jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) + 6 * inputs) /\
+        dx**4
+    outputs = outputs.reshape(-1, output_dim)
+    if config.train.input == "ux":
+      inputs = u_x.reshape(-1, input_dim)
+    elif config.train.input == "uxx":
+      inputs = u_xx.reshape(-1, input_dim)
+    elif config.train.input == "uxxxx":
+      inputs = u_xxxx.reshape(-1, input_dim)
+    else: 
+      inputs = inputs.reshape(-1, input_dim)
 
   # train test split
   train_x, test_x, train_y, test_y = train_test_split(
-    input, output, test_size=0.2, random_state=42
+    inputs, outputs, test_size=0.2, random_state=42
   )
   train_ds = {"input": jnp.array(train_x), "output": jnp.array(train_y)}
   test_ds = {"input": jnp.array(test_x), "output": jnp.array(test_y)}
 
+  # define the network model
   train_mode = config.train.mode
   if train_mode == "regression":
     # training a fully connected neural network to do the closure modeling
@@ -153,21 +167,21 @@ def main(config_dict: ml_collections.ConfigDict):
       mlp = hk.Sequential(
         [
           hk.Flatten(),
-          hk.Linear(64),
+          hk.Linear(512),
           jax.nn.relu,
-          hk.Linear(64),
+          hk.Linear(512),
           jax.nn.relu,
-          hk.Linear(1),
+          hk.Linear(output_dim),
         ]
       )
-      linear_residue = hk.Linear(1)
-      return mlp(features) + linear_residue(features)
+      linear_residue = hk.Linear(output_dim)
+      return mlp(features) # + linear_residue(features)
 
     correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
     # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
     lr = 5e-4
     optimizer = optax.adam(lr)
-    params = correction_nn.init(random.PRNGKey(0), np.zeros((1, 1)))
+    params = correction_nn.init(random.PRNGKey(0), np.zeros((1, input_dim)))
     opt_state = optimizer.init(params)
 
     @jax.jit
@@ -240,11 +254,12 @@ def main(config_dict: ml_collections.ConfigDict):
   else:
     raise Exception("Unknown learning mode.")
 
+  # training loop
   loss_hist = []
   epochs = config.train.epochs
   batch_size = config.train.batch_size
   iters = tqdm(range(epochs))
-  for step in iters:
+  for _ in iters:
     for i in range(0, len(train_ds["input"]), batch_size):
       rng, key = random.split(key)
       input = train_ds["input"][i:i + batch_size]
@@ -267,24 +282,32 @@ def main(config_dict: ml_collections.ConfigDict):
   print("lr: {:.2e}".format(lr))
   print("validation loss: {:.4e}".format(valid_loss))
 
-  breakpoint()
-  # visualize the error distribution (A priori analysis)
-  data = np.load(
-    'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num)
-  )
-  input = data["input"]
-  output = data["output"]
-  input = input.reshape(-1, 1)
-  output = output.reshape(-1, 1)
-  err = correction_nn.apply(params, input) - output
-  from src.visualize import plot_error_cloudmap
-  plot_error_cloudmap(
-    input.reshape(1000, 256).T,
-    err.reshape(1000, 256).T, u_x.T, u_xx.T, u_xxxx.T
-  )
-  breakpoint()
+  # A priori analysis
+  # visualize the error distribution
+  if config.train.input == "uglobal":
+    err = jnp.linalg.norm(correction_nn.apply(params, inputs) - outputs, axis=1)
+    plt.plot(np.arange(ks_fine.x_hist.shape[0]) * ks_fine.dt, err)
+    plt.xlabel(r"$T$")
+    plt.ylabel("error")
+  else:
+    err = correction_nn.apply(params, inputs) - outputs
+    from src.visualize import plot_error_cloudmap
+    plot_error_cloudmap(
+      inputs.reshape(1000, 256).T,
+      err.reshape(1000, 256).T, u_x.T, u_xx.T, u_xxxx.T
+    )
+    if config.train.input == "u":
+      plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=err)
+    elif config.train.input == "ux":
+      plt.scatter(u_x.reshape(-1, 1), outputs, s=.2, c=err)
+    elif config.train.input == "uxx":
+      plt.scatter(u_xx.reshape(-1, 1), outputs, s=.2, c=err)
+    elif config.train.input == "uxxxx":
+      plt.scatter(u_xxxx.reshape(-1, 1), outputs, s=.2, c=err)
+  plt.savefig(f"results/fig/{config.train.input}_tau_err_scatter.pdf")
+  plt.clf()
 
-  # a posteriori error estimate
+  # a posteriori analysis
   key, subkey = random.split(key)
   x = ks_fine.attractor + init_scale * random.normal(subkey) *\
         jnp.sin(5 * jnp.linspace(0, L - L/N1, N1))
@@ -320,17 +343,19 @@ def main(config_dict: ml_collections.ConfigDict):
       output.shape = (N, )
       """
 
-      dx = 10 * jnp.pi / 256
+      # dx = L / N2
       # u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) /dx/2
       # u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
-      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
-          4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
-          dx**4
+      # u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
+      #     4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
+      #     dx**4
       # local model: [1] to [1]
-      return partial(correction_nn.apply, params)(u_xx.reshape(-1,
-                                                               1)).reshape(-1)
+      # return partial(correction_nn.apply, params)(u_x.reshape(-1,
+      #                                                          1)).reshape(-1)
       # global model: [N] to [N]
-      # return partial(correction_nn.apply, params)(x.reshape(1, -1)).reshape(-1)
+      return partial(correction_nn.apply, params)(
+        input.reshape(1, -1)
+      ).reshape(-1)
 
   elif train_mode == "generative":
     vae_bind = vae.bind({"params": params})
@@ -366,7 +391,6 @@ def main(config_dict: ml_collections.ConfigDict):
     ks_coarse.x_hist,
     f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_cmp_stats.pdf",
   )
-  breakpoint()
 
 
 if __name__ == "__main__":
