@@ -43,11 +43,12 @@ def read_and_preprocess(
   return nx, ny, label_dim, traj_num, step_num, input, output
 
 
-############################################################################################################
+###############################################################################
 #                   Numerical solver of the reaction-diffusion equation:
-# For linear term, we use different discretization scheme, e.g. explicit, implicit, Crank-Nielson, ADI etc.
+# For linear term, we use different discretization scheme, e.g. explicit,
+#  implicit, Crank-Nielson, ADI etc.
 # For nonlinear term, we use the explicit scheme (need to implement Ashford)
-############################################################################################################
+###############################################################################
 
 
 def assembly_RDmatrix(n, dt, dx, beta=1.0, gamma=0.05, d=2):
@@ -105,7 +106,8 @@ def RD_exp(
   """
     explicit forward Euler solver for FitzHugh-Nagumo RD equation
     :input:
-    u, v: initial condition, shape [nx, ny], different nx, ny is used for different diffusion coeff
+    u, v: initial condition, shape [nx, ny], different nx, ny is used for
+    different diffusion coeff
     """
 
   nx = u.shape[0]
@@ -301,10 +303,11 @@ def RD_cn(
 def assembly_NSmatrix(nx, ny, dt, dx, dy):
   """assemble matrices used in the calculation
     LD: Laplacian operator with Dirichlet BC
-    LN: Laplacian operator with Neuman BC, notice that this operator may have different form 
-        depends on the position of the boundary, here we use the case that boundary is between 
-        the outmost two grids
-    L:  Laplacian operator associated with current BC with three Neuman BCs on upper, lower, left boundary and a Dirichlet BC on right
+    LN: Laplacian operator with Neuman BC, notice that this operator may have
+    different form depends on the position of the boundary, here we use the
+    case that boundary is between the outmost two grids
+    L:  Laplacian operator associated with current BC with three Neuman BCs on
+    upper, lower, left boundary and a Dirichlet BC on right
     """
 
   global L
@@ -382,7 +385,8 @@ def projection_correction(
   v[1:-1, 1:-1] = v[
     1:-1, 1:-1] + dt * ((v_xx + v_yy) / Re - u2v * v_x - v[1:-1, 1:-1] * v_y)
 
-  # correction step: calculating the residue of Poisson equation as the divergence of new velocity field
+  # correction step: calculating the residue of Poisson equation as the
+  #  divergence of new velocity field
   divu = (u[1:-1, 1:-1] - u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
   # GMRES with initial guess pressure in last time step
   p = jsla.gmres(A=L, b=divu.reshape(nx * ny), x0=p).reshape([nx, ny])

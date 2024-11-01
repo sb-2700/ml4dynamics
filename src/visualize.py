@@ -75,7 +75,7 @@ def plot_stats(
   coarse_traj2: np.ndarray,
   fig_name: str,
 ):
-  
+
   plt.subplot(211)
   plt.plot(t_array, np.mean(fine_traj, axis=1), label='truth')
   plt.plot(t_array, np.mean(coarse_traj1, axis=1), label='baseline')
@@ -96,7 +96,7 @@ def plot_error_cloudmap(
   u_xx: np.ndarray,
   u_xxxx: np.ndarray,
 ):
-  
+
   plt.subplot(511)
   plt.imshow(u)
   plt.colorbar()

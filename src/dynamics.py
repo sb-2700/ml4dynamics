@@ -599,7 +599,7 @@ class KS(dynamics):
   # NOTE: currently we can not jit as the self is not an array
   def CN_FEM(self, x):
     return jax.scipy.linalg.solve(
-      jnp.eye(self.N) + self.L * self.dt, 
+      jnp.eye(self.N) + self.L * self.dt,
       (jnp.eye(self.N) - self.L * self.dt) @ x -\
       self.dt / 2 * self.L1 @ (x**2)
     )
@@ -609,17 +609,19 @@ class KS(dynamics):
     with Crank-Nicolson scheme
     """
     return jax.scipy.linalg.solve(
-      jnp.eye(self.N) + self.L * self.dt, 
+      jnp.eye(self.N) + self.L * self.dt,
       (jnp.eye(self.N) - self.L * self.dt) @ x -\
       self.dt / 2 * self.L1 @ (x**2) - self.dt * self.source
     )
-  
+
   def FE_test(self, x):
     """Test the solver of the KS equation using analytic formula
     with Forward Euler scheme
     """
-    return x + self.dt * (self.c * self.L1 @ x + self.L2 @ x +
-      self.nu * self.L4 @ x + self.L1 @ (x**2) / 2 + self.source)
+    return x + self.dt * (
+      self.c * self.L1 @ x + self.L2 @ x + self.nu * self.L4 @ x +
+      self.L1 @ (x**2) / 2 + self.source
+    )
 
   def CN_FEM_adj(self, x, i):
     delta_x = self.x_hist[:, i] - self.x_targethist[:, i]
@@ -682,7 +684,8 @@ class KS(dynamics):
     for i in range(step_num):
       #gradient = gradient + jnp.sum(self.y_hist[:,i]*irfft(rfft(self.x_hist[:,i])*(k**4))) * (1 if (r.rand()>bar) else 0)
       gradient = gradient + jnp.sum(
-        self.y_hist[:, i] * jnp.fft.irfft(jnp.fft.rfft(self.x_hist[:, i]) * (k**4))
+        self.y_hist[:, i] *
+        jnp.fft.irfft(jnp.fft.rfft(self.x_hist[:, i]) * (k**4))
       ) * (1 if (random.normal(self.key) > bar) else 0)
     gradient = gradient / step_num / self.N / (1 - bar)
     if self.print_:
@@ -1011,8 +1014,8 @@ class NS(dynamics):
     #force = jnp.cos(2*Y) * 0.0
     #print(jnp.linalg.norm(wx2*psiy2-wy2*psix2))
     w_hat = (
-      (1 + dt / 2 * nu * self.laplacian) * w_hat -
-      dt * jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)[:w_hat.shape[0], :w_hat.shape[1]]
+      (1 + dt / 2 * nu * self.laplacian) * w_hat - dt *
+      jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)[:w_hat.shape[0], :w_hat.shape[1]]
     ) / (1 - dt / 2 * nu * self.laplacian)
     return w_hat
 
@@ -1026,8 +1029,10 @@ class NS(dynamics):
     self.xhat_hist = torch.zeros(
       w.shape[0], w.shape[1], step_num, dtype=torch.complex128
     ).to(self.device)
-    self.x_hist = torch.zeros(jnp.fft.irfft2(w).shape[0],
-                              jnp.fft.irfft2(w).shape[1], step_num).to(self.device)
+    self.x_hist = torch.zeros(
+      jnp.fft.irfft2(w).shape[0],
+      jnp.fft.irfft2(w).shape[1], step_num
+    ).to(self.device)
     self.u_hist = torch.zeros([2, self.N, self.N, step_num]).to(self.device)
     self.ke = torch.zeros(step_num).to(self.device)
     self.err_hist = torch.zeros(step_num).to(self.device)

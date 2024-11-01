@@ -1,6 +1,5 @@
 """
-This is the demo code that uses hy                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      dra to access the parameters in under the directory config.
-
+This is the demo code that uses hy
 Author: Khuyen Tran
 """
 

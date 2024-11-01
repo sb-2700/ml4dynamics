@@ -1,3 +1,4 @@
+import os
 from functools import partial
 from typing import Iterator, Optional, Tuple
 
@@ -7,7 +8,6 @@ import jax.numpy as jnp
 import ml_collections
 import numpy as np
 import optax
-import os
 import yaml
 from box import Box
 from jax import random as random
@@ -101,7 +101,9 @@ def main(config_dict: ml_collections.ConfigDict):
       input_ = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
       output_ = jnp.zeros_like(input_)
       for j in range(ks_fine.step_num):
-        next_step_fine = ks_fine.CN_FEM(ks_fine.x_hist[j])  # shape = [N1, step_num]
+        next_step_fine = ks_fine.CN_FEM(
+          ks_fine.x_hist[j]
+        )  # shape = [N1, step_num]
         next_step_coarse = ks_coarse.CN_FEM(input_[j])  # shape = [step_num, N2]
         output_ = output_.at[j].set(res_op @ next_step_fine - next_step_coarse)
       input = input.at[i].set(input_)
@@ -113,16 +115,17 @@ def main(config_dict: ml_collections.ConfigDict):
       jnp.any(jnp.isinf(input)) or jnp.any(jnp.isinf(output)):
       raise Exception("The data contains Inf or NaN")
     np.savez(
-      'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num), 
-      input=input, 
+      'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num),
+      input=input,
       output=output
     )
 
   breakpoint()
   dx = 10 * jnp.pi / 256
-  u_x = (jnp.roll(input, 1, axis=1) - jnp.roll(input, -1, axis=1)) /dx/2
-  u_xx = ((jnp.roll(input, 1, axis=1) + jnp.roll(input, -1, axis=1)) -
-     2 * input) / dx**2
+  u_x = (jnp.roll(input, 1, axis=1) - jnp.roll(input, -1, axis=1)) / dx / 2
+  u_xx = (
+    (jnp.roll(input, 1, axis=1) + jnp.roll(input, -1, axis=1)) - 2 * input
+  ) / dx**2
   u_xxxx = ((jnp.roll(input, 2, axis=1) + jnp.roll(input, -2, axis=1)) -\
       4*(jnp.roll(input, 1, axis=1) + jnp.roll(input, -1, axis=1)) + 6 * input) /\
       dx**4
@@ -158,7 +161,7 @@ def main(config_dict: ml_collections.ConfigDict):
         ]
       )
       linear_residue = hk.Linear(1)
-      return mlp(features)  + linear_residue(features)
+      return mlp(features) + linear_residue(features)
 
     correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
     # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
@@ -169,7 +172,10 @@ def main(config_dict: ml_collections.ConfigDict):
 
     @jax.jit
     def loss_fn(
-      params: hk.Params, input: jnp.ndarray, output: jnp.ndarray, rng: PRNGKey,
+      params: hk.Params,
+      input: jnp.ndarray,
+      output: jnp.ndarray,
+      rng: PRNGKey,
     ) -> float:
       predict = correction_nn.apply(params, input)
       return jnp.mean((output - predict)**2)
@@ -187,7 +193,7 @@ def main(config_dict: ml_collections.ConfigDict):
       updates, new_opt_state = optimizer.update(grads, opt_state)
       new_params = optax.apply_updates(params, updates)
       return loss, new_params, new_opt_state
-    
+
   elif train_mode == "generative":
     """
     TODO: currently we are using different structure for regression and
@@ -198,17 +204,19 @@ def main(config_dict: ml_collections.ConfigDict):
     print("initialize vae model")
     vae = model(config.train.vae.latents, N2)
     rng, key = random.split(key)
-    params = vae.init(key, train_ds["input"][0:1], train_ds["output"][0:1], rng)['params']
+    params = vae.init(
+      key, train_ds["input"][0:1], train_ds["output"][0:1], rng
+    )['params']
 
     lr = 1e-4
     optimizer = optax.adam(lr)
     opt_state = optimizer.init(params)
+
     @jax.jit
     def loss_fn(
-      params: hk.Params, input: jnp.ndarray,
-      output: jnp.ndarray, rng: PRNGKey
+      params: hk.Params, input: jnp.ndarray, output: jnp.ndarray, rng: PRNGKey
     ) -> float:
-      
+
       # NOTE: notice the input is the condition, output is x
       recon_x, mean, logvar = vae.apply({"params": params}, output, input, rng)
       # NOTE: lots of code are using BCE, we may also try
@@ -272,10 +280,7 @@ def main(config_dict: ml_collections.ConfigDict):
   from src.visualize import plot_error_cloudmap
   plot_error_cloudmap(
     input.reshape(1000, 256).T,
-    err.reshape(1000, 256).T,
-    u_x.T,
-    u_xx.T,
-    u_xxxx.T
+    err.reshape(1000, 256).T, u_x.T, u_xx.T, u_xxxx.T
   )
   breakpoint()
 
@@ -297,7 +302,8 @@ def main(config_dict: ml_collections.ConfigDict):
     im_array,
     fig_size=(4, 6),
     title_array=title_array,
-    file_path=f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_cmp.pdf"
+    file_path=
+    f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_cmp.pdf"
   )
   print(
     "rmse without correction: {:.4f}".format(
@@ -307,12 +313,13 @@ def main(config_dict: ml_collections.ConfigDict):
   baseline = ks_coarse.x_hist
 
   if train_mode == "regression":
+
     def corrector(input):
       """
       input.shape = (N, )
       output.shape = (N, )
       """
-      
+
       dx = 10 * jnp.pi / 256
       # u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) /dx/2
       # u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
@@ -320,7 +327,8 @@ def main(config_dict: ml_collections.ConfigDict):
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
           dx**4
       # local model: [1] to [1]
-      return partial(correction_nn.apply, params)(u_xx.reshape(-1, 1)).reshape(-1)
+      return partial(correction_nn.apply, params)(u_xx.reshape(-1,
+                                                               1)).reshape(-1)
       # global model: [N] to [N]
       # return partial(correction_nn.apply, params)(x.reshape(1, -1)).reshape(-1)
 
@@ -340,7 +348,8 @@ def main(config_dict: ml_collections.ConfigDict):
     im_array,
     fig_size=(4, 6),
     title_array=title_array,
-    file_path=f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_correct_cmp.pdf"
+    file_path=
+    f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_correct_cmp.pdf"
   )
   print(
     "rmse with correction: {:.4f}".format(
@@ -358,6 +367,7 @@ def main(config_dict: ml_collections.ConfigDict):
     f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_cmp_stats.pdf",
   )
   breakpoint()
+
 
 if __name__ == "__main__":
 
