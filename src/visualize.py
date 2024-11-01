@@ -66,3 +66,61 @@ def plot_from_h5py_cmp():
         )
         plt.axis('off')
     plt.savefig('results/fig/traj_64_' + str(random_integer) + '.pdf')
+
+
+def plot_stats(
+  t_array: np.array,
+  fine_traj: np.ndarray,
+  coarse_traj1: np.ndarray,
+  coarse_traj2: np.ndarray,
+  fig_name: str,
+):
+  
+  plt.subplot(211)
+  plt.plot(t_array, np.mean(fine_traj, axis=1), label='truth')
+  plt.plot(t_array, np.mean(coarse_traj1, axis=1), label='baseline')
+  plt.plot(t_array, np.mean(coarse_traj2, axis=1), label='correction')
+  plt.legend()
+  plt.subplot(212)
+  plt.plot(t_array, np.mean(fine_traj**2, axis=1), label='truth')
+  plt.plot(t_array, np.mean(coarse_traj1**2, axis=1), label='baseline')
+  plt.plot(t_array, np.mean(coarse_traj2**2, axis=1), label='correction')
+  plt.legend()
+  plt.savefig(fig_name)
+
+
+def plot_error_cloudmap(
+  u: np.ndarray,
+  err: np.ndarray,
+  u_x: np.ndarray,
+  u_xx: np.ndarray,
+  u_xxxx: np.ndarray,
+):
+  
+  plt.subplot(511)
+  plt.imshow(u)
+  plt.colorbar()
+  plt.axis("off")
+  plt.ylabel(r"$u$")
+  plt.subplot(512)
+  plt.imshow(err)
+  plt.colorbar()
+  plt.axis("off")
+  plt.ylabel(r"$\Delta \tau$")
+  plt.subplot(513)
+  plt.imshow(u_x)
+  plt.colorbar()
+  plt.axis("off")
+  plt.ylabel(r"$u_x$")
+  plt.subplot(514)
+  plt.imshow(u_xx)
+  plt.colorbar()
+  plt.axis("off")
+  plt.ylabel(r"$u_{xx}$")
+  plt.subplot(515)
+  plt.imshow(u_xxxx)
+  plt.colorbar()
+  plt.axis("off")
+  plt.ylabel(r"$u_{xxxx}$")
+  plt.savefig("results/fig/err_dist.pdf")
+  plt.clf()

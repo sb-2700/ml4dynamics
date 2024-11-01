@@ -93,25 +93,22 @@ def main(config_dict: ml_collections.ConfigDict):
     for i in range(config.sim.case_num):
       print(i)
       key, subkey = random.split(key)
-      x = ks_fine.attractor + init_scale * random.normal(
-        subkey, shape=(ks_fine.N, )
-      )
+      # NOTE: the initialization here is important, DO NOT use the random i.i.d.
+      # Gaussian noise as the initial condition
+      x = ks_fine.attractor + init_scale * random.normal(subkey) *\
+        jnp.sin(5 * jnp.linspace(0, L - L/N1, N1))
       ks_fine.run_simulation(x, ks_fine.CN_FEM)
-      # ks_fine.run_simulation(ks_fine.x_targethist[0], ks_fine.CN_FEM)
       input_ = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
       output_ = jnp.zeros_like(input_)
       for j in range(ks_fine.step_num):
-        next_step_fine = ks_fine.CN_FEM(
-          ks_fine.x_hist[j]
-        )  # shape = [N1, step_num]
+        next_step_fine = ks_fine.CN_FEM(ks_fine.x_hist[j])  # shape = [N1, step_num]
         next_step_coarse = ks_coarse.CN_FEM(input_[j])  # shape = [step_num, N2]
         output_ = output_.at[j].set(res_op @ next_step_fine - next_step_coarse)
-
       input = input.at[i].set(input_)
       output = output.at[i].set(output_)
 
     input = input.reshape(-1, N2)
-    output = output.reshape(-1, N2)
+    output = output.reshape(-1, N2) / dt
     if jnp.any(jnp.isnan(input)) or jnp.any(jnp.isnan(output)) or\
       jnp.any(jnp.isinf(input)) or jnp.any(jnp.isinf(output)):
       raise Exception("The data contains Inf or NaN")
@@ -121,6 +118,17 @@ def main(config_dict: ml_collections.ConfigDict):
       output=output
     )
 
+  breakpoint()
+  dx = 10 * jnp.pi / 256
+  u_x = (jnp.roll(input, 1, axis=1) - jnp.roll(input, -1, axis=1)) /dx/2
+  u_xx = ((jnp.roll(input, 1, axis=1) + jnp.roll(input, -1, axis=1)) -
+     2 * input) / dx**2
+  u_xxxx = ((jnp.roll(input, 2, axis=1) + jnp.roll(input, -2, axis=1)) -\
+      4*(jnp.roll(input, 1, axis=1) + jnp.roll(input, -1, axis=1)) + 6 * input) /\
+      dx**4
+  input = u_xxxx.reshape(-1, 1)
+  output = output.reshape(-1, 1)
+
   # train test split
   train_x, test_x, train_y, test_y = train_test_split(
     input, output, test_size=0.2, random_state=42
@@ -128,10 +136,10 @@ def main(config_dict: ml_collections.ConfigDict):
   train_ds = {"input": jnp.array(train_x), "output": jnp.array(train_y)}
   test_ds = {"input": jnp.array(test_x), "output": jnp.array(test_y)}
 
-  # training a fully connected neural network to do the closure modeling
-  # via regression
   train_mode = config.train.mode
   if train_mode == "regression":
+    # training a fully connected neural network to do the closure modeling
+    # via regression
     def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
       """
       NOTE: an example to show the inconsistency of a priori and a posteriori
@@ -142,21 +150,21 @@ def main(config_dict: ml_collections.ConfigDict):
       mlp = hk.Sequential(
         [
           hk.Flatten(),
-          hk.Linear(2048),
+          hk.Linear(64),
           jax.nn.relu,
-          hk.Linear(1024),
+          hk.Linear(64),
           jax.nn.relu,
-          hk.Linear(N2),
+          hk.Linear(1),
         ]
       )
-      linear_residue = hk.Linear(N2)
-      return mlp(features)  # + linear_residue(features)
+      linear_residue = hk.Linear(1)
+      return mlp(features)  + linear_residue(features)
 
     correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
     # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
     lr = 5e-4
     optimizer = optax.adam(lr)
-    params = correction_nn.init(random.PRNGKey(0), np.zeros((1, N2)))
+    params = correction_nn.init(random.PRNGKey(0), np.zeros((1, 1)))
     opt_state = optimizer.init(params)
 
     @jax.jit
@@ -225,8 +233,8 @@ def main(config_dict: ml_collections.ConfigDict):
     raise Exception("Unknown learning mode.")
 
   loss_hist = []
-  epochs = 10000
-  batch_size = 1000
+  epochs = config.train.epochs
+  batch_size = config.train.batch_size
   iters = tqdm(range(epochs))
   for step in iters:
     for i in range(0, len(train_ds["input"]), batch_size):
@@ -235,9 +243,11 @@ def main(config_dict: ml_collections.ConfigDict):
       output = train_ds["output"][i:i + batch_size]
       loss, params, opt_state = update(params, input, output, rng, opt_state)
       loss_hist.append(loss)
-      # relative_loss = loss / jnp.mean(output**2)
-      # desc_str = f"{relative_loss=:.4e}"
-      desc_str = f"{loss=:.4e}"
+      if train_mode == "regression":
+        relative_loss = loss / jnp.mean(output**2)
+        desc_str = f"{relative_loss=:.4e}"
+      elif train_mode == "generative":
+        desc_str = f"{loss=:.4e}"
       iters.set_description_str(desc_str)
 
   valid_loss = 0
@@ -249,11 +259,30 @@ def main(config_dict: ml_collections.ConfigDict):
   print("lr: {:.2e}".format(lr))
   print("validation loss: {:.4e}".format(valid_loss))
 
+  breakpoint()
+  # visualize the error distribution (A priori analysis)
+  data = np.load(
+    'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num)
+  )
+  input = data["input"]
+  output = data["output"]
+  input = input.reshape(-1, 1)
+  output = output.reshape(-1, 1)
+  err = correction_nn.apply(params, input) - output
+  from src.visualize import plot_error_cloudmap
+  plot_error_cloudmap(
+    input.reshape(1000, 256).T,
+    err.reshape(1000, 256).T,
+    u_x.T,
+    u_xx.T,
+    u_xxxx.T
+  )
+  breakpoint()
+
   # a posteriori error estimate
   key, subkey = random.split(key)
-  x = ks_fine.attractor + init_scale * random.normal(
-    subkey, shape=(ks_fine.N, )
-  )
+  x = ks_fine.attractor + init_scale * random.normal(subkey) *\
+        jnp.sin(5 * jnp.linspace(0, L - L/N1, N1))
   ks_fine.run_simulation(x, ks_fine.CN_FEM)
   ks_coarse.run_simulation(x[::r], ks_coarse.CN_FEM)
   im_array = jnp.zeros(
@@ -268,19 +297,37 @@ def main(config_dict: ml_collections.ConfigDict):
     im_array,
     fig_size=(4, 6),
     title_array=title_array,
-    file_path=f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}\
-      _{train_mode}_cmp.pdf"
+    file_path=f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_cmp.pdf"
   )
   print(
     "rmse without correction: {:.4f}".format(
       jnp.sqrt(jnp.mean((ks_coarse.x_hist.T - ks_fine.x_hist[:, ::r].T)**2))
     )
   )
+  baseline = ks_coarse.x_hist
 
-  # corrector = partial(correction_nn.apply, params)
-  vae_bind = vae.bind({"params": params})
-  z = random.normal(key, shape=(1, config.train.vae.latents))
-  corrector = partial(vae_bind.generate, z)
+  if train_mode == "regression":
+    def corrector(input):
+      """
+      input.shape = (N, )
+      output.shape = (N, )
+      """
+      
+      dx = 10 * jnp.pi / 256
+      # u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) /dx/2
+      # u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
+      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
+          4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
+          dx**4
+      # local model: [1] to [1]
+      return partial(correction_nn.apply, params)(u_xx.reshape(-1, 1)).reshape(-1)
+      # global model: [N] to [N]
+      # return partial(correction_nn.apply, params)(x.reshape(1, -1)).reshape(-1)
+
+  elif train_mode == "generative":
+    vae_bind = vae.bind({"params": params})
+    z = random.normal(key, shape=(1, config.train.vae.latents))
+    corrector = partial(vae_bind.generate, z)
   ks_coarse.run_simulation_with_correction(x[::r], ks_coarse.CN_FEM, corrector)
   im_array = jnp.zeros(
     (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
@@ -293,8 +340,7 @@ def main(config_dict: ml_collections.ConfigDict):
     im_array,
     fig_size=(4, 6),
     title_array=title_array,
-    file_path=f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}\
-      _{train_mode}_correct_cmp.pdf"
+    file_path=f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_correct_cmp.pdf"
   )
   print(
     "rmse with correction: {:.4f}".format(
@@ -302,6 +348,16 @@ def main(config_dict: ml_collections.ConfigDict):
     )
   )
 
+  # compare the simulation statistics (A posteriori analysis)
+  from src.visualize import plot_stats
+  plot_stats(
+    np.arange(ks_fine.x_hist.shape[0]) * ks_fine.dt,
+    ks_fine.x_hist,
+    baseline,
+    ks_coarse.x_hist,
+    f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_cmp_stats.pdf",
+  )
+  breakpoint()
 
 if __name__ == "__main__":
 

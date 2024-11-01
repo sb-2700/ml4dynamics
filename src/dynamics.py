@@ -167,9 +167,7 @@ class dynamics(object):
     self.x_hist = jnp.zeros([step_num, self.N])
     for i in range(step_num):
       self.x_hist = self.x_hist.at[i].set(x)
-      # TODO: maybe it is good to use correction iteration as 
-      # x = iter(x) + corrector(x) * self.dt
-      x = iter(x) + corrector(x.reshape(1, -1)).reshape(-1)
+      x = iter(x) + corrector(x) * self.dt
 
     # postprocess for visualization
     self.x_hist = jnp.where(self.x_hist < 20, self.x_hist, 20)
@@ -503,9 +501,11 @@ class KS(dynamics):
   """Kuramoto–Sivashinsky equation
 
   The 1d version of the Kuramoto–Sivashinsky equation is:
+
   $$
-    u_t + u_{xx} + u_{xxxx} + 1/2 (u_x)^2 = 0.
+    u_t + (c + u)u_c + uu_x + u_{xx} + \nu u_{xxxx} = 0.
   $$
+
   """
 
   def __init__(
@@ -574,10 +574,7 @@ class KS(dynamics):
     self.L1 = L1 / 2 / dx
     self.L2 = L2 / dx**2
     self.L4 = L4 / dx**4
-    self.Lplus = jnp.eye(N) + self.c * self.dt / 2 * self.L1 +\
-      self.dt / 2 * self.L2 + self.nu * self.dt / 2 * self.L4
-    self.Lmimus = jnp.eye(N) - self.c * self.dt / 2 * self.L1 +\
-      -self.dt / 2 * self.L2 - self.nu * self.dt / 2 * self.L4
+    self.L = self.c / 2 * self.L1 + self.L2 / 2 + self.nu * self.L4 / 2
 
   def Jacobi(self, x):
     # u_x w term
@@ -602,8 +599,27 @@ class KS(dynamics):
   # NOTE: currently we can not jit as the self is not an array
   def CN_FEM(self, x):
     return jax.scipy.linalg.solve(
-      self.Lplus, self.Lmimus @ x - self.dt / 2 * self.L1 @ x**2
+      jnp.eye(self.N) + self.L * self.dt, 
+      (jnp.eye(self.N) - self.L * self.dt) @ x -\
+      self.dt / 2 * self.L1 @ (x**2)
     )
+
+  def CN_FEM_test(self, x):
+    """Test the solver of the KS equation using analytic formula
+    with Crank-Nicolson scheme
+    """
+    return jax.scipy.linalg.solve(
+      jnp.eye(self.N) + self.L * self.dt, 
+      (jnp.eye(self.N) - self.L * self.dt) @ x -\
+      self.dt / 2 * self.L1 @ (x**2) - self.dt * self.source
+    )
+  
+  def FE_test(self, x):
+    """Test the solver of the KS equation using analytic formula
+    with Forward Euler scheme
+    """
+    return x + self.dt * (self.c * self.L1 @ x + self.L2 @ x +
+      self.nu * self.L4 @ x + self.L1 @ (x**2) / 2 + self.source)
 
   def CN_FEM_adj(self, x, i):
     delta_x = self.x_hist[:, i] - self.x_targethist[:, i]
