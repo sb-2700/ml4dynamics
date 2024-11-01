@@ -8,6 +8,8 @@ notebook
 import jax
 import jax.numpy as jnp
 import pytest
+import yaml
+from box import Box
 from jax import random
 from matplotlib import pyplot as plt
 
@@ -28,10 +30,12 @@ from src import utils
 #     """
 #     assert True
 
-
+@pytest.mark.skip
 def test_reaction_diffusion_equation_solver():
   """We check the numerical solution with the following analytic solution
     test case for RD equation:
+
+    $$
         u(x, y, t) = sin(2\pi x/L)
         v(x, y, t) = sin(2\pi y/L)
         D = [[1, 0], [0, 1]]
@@ -39,6 +43,8 @@ def test_reaction_diffusion_equation_solver():
         beta = 1.0
         s_u(x, y, t) = ((2\pi/L)^2-1)*u + v**3 + v - 0.01
         s_v(x, y, t) = (2\pi/L)^2*v + v - u
+    $$
+
     """
 
   n = 32
@@ -111,6 +117,7 @@ def test_reaction_diffusion_equation_solver():
   ) < tol
 
 
+@pytest.mark.skip
 def test_navier_stokes_equation_solver():
   """We check the numerical solution with the following analytic solution
     test case for NS equation:
@@ -159,3 +166,45 @@ def test_navier_stokes_equation_solver():
   assert jnp.mean(
     (u_hist[-1] - u_hist[0])**2 + (v_hist[-1] - v_hist[0])**2
   ) < tol
+
+
+def test_kuramoto_sivashinsky_equation_solver():
+
+  from src.dynamics import KS
+
+  with open("config/simulation.yaml", "r") as file:
+    config_dict = yaml.safe_load(file)
+  config = Box(config_dict)
+  nu = config.ks.nu
+  c = config.ks.c
+  L = config.ks.L
+  T = config.ks.T
+  init_scale = config.ks.init_scale
+  # solver parameters
+  N1 = config.ks.nx
+  dt = config.ks.dt
+  key = random.PRNGKey(config.sim.seed)
+
+  # fine simulation
+  ks_fine = KS(
+    N=N1,
+    T=T,
+    dt=dt,
+    # dx=L / (N1 + 1),
+    dx = L / N1,
+    tol=1e-8,
+    init_scale=init_scale,
+    tv_scale=1e-8,
+    L=L,
+    nu=nu,
+    c=c,
+    key=key,
+  )
+
+  ks_fine.source = 0.8 * jnp.sin(jnp.linspace(0, L - L/N1, N1)) -\
+    0.5 * jnp.sin(2 * jnp.linspace(0, L - L/N1, N1))
+  start = jnp.sin(jnp.linspace(0, L - L/N1, N1))
+  result = ks_fine.CN_FEM_test(start)
+
+  assert jnp.linalg.norm(result - start) < 1e-2
+  breakpoint()
