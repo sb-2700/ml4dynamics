@@ -14,21 +14,22 @@ from scipy.integrate import solve_ivp
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import lsqr
 
-
-# Other candidates for chaotic dynamics:
-# Logistic mapping
-# van der Pol oscillator, it seems that
-# double pendulum
-# Aizawa Attractor
-# Newton-Leipnik system
-# Nose-Hoover oscillator
-# Halvorsen Attractor
-# Rabinovich-Fabrikant system
-# Chen-Lee system
-# 3-cell CNN
-# Bouali system
-# Finance attractor
-# Thomas attractor
+"""
+Other candidates for chaotic dynamics:
+Logistic mapping
+van der Pol oscillator, it seems that
+double pendulum
+Aizawa Attractor
+Newton-Leipnik system
+Nose-Hoover oscillator
+Halvorsen Attractor
+Rabinovich-Fabrikant system
+Chen-Lee system
+3-cell CNN
+Bouali system
+Finance attractor
+Thomas attractor
+"""
 class dynamics(object):
   """Base class for simulating dynamical systems
 
@@ -319,6 +320,7 @@ class dynamics(object):
 
     # the notation here is not consistent, for 1D problem, the size is NT while for
     # 2D problem the size should be N^2
+    # TODO: maybe we should change the model_type to DIM
     if self.model_type == 'Lorenz' or self.model_type == 'Rossler' or self.model_type == 'KS':
       N = self.N
     elif self.model_type == 'NS':
@@ -512,15 +514,15 @@ class KS(dynamics):
     self,
     model_type='KS',
     N=512,
-    T=100,
+    T=10,
     dt=0.01,
-    dx=0,
     tol=1e-8,
     init_scale=1e-2,
     tv_scale=1e-8,
     L=100 * jnp.pi,
     nu=1,
     c=1,
+    BC="periodic",
     key=random.PRNGKey(0),
     plot=False
   ):
@@ -528,18 +530,19 @@ class KS(dynamics):
       model_type, N, T, dt, tol, init_scale, tv_scale, key, plot
     )
     self.L = L
-    if dx == 0:
-      self.dx = self.L / self.N
-    else:
-      self.dx = dx
     self.nu = nu
     self.c = c
-    self.set_attractor()
-    self.run_target_simulation(
-      self.attractor + init_scale * random.normal(self.key, shape=(N, ))
-    )
+    # self.set_attractor()
+    # self.run_target_simulation(
+    #   self.attractor + init_scale * random.normal(self.key, shape=(N, ))
+    # )
     dt = self.dt
-    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    # k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    self.BC = BC
+    if self.BC == "periodic":
+      self.dx = self.L / self.N
+    elif self.BC == "Dirichlet-Neumann":
+      self.dx = self.L / (self.N + 1)
     self.assembly_matrix()
     #print(jnp.max(jnp.abs(1 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))/(1 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))))
 
@@ -548,8 +551,6 @@ class KS(dynamics):
     raise NotImplementedError
 
   def assembly_matrix(self):
-    """
-    """
 
     N = self.N
     dx = self.dx
@@ -561,15 +562,20 @@ class KS(dynamics):
       4*jnp.roll(jnp.eye(N), 1, axis=1) - 4*jnp.roll(jnp.eye(N), -1, axis=1) +\
       jnp.eye(N) * 6
 
-    # TODO: Dirichlet BC
-
-    # Neuman BC
-    # L4 = L4.at[0, -1].set(-4)
-    # L4 = L4.at[-1, 0].set(-4)
-    # L4 = L4.at[0, -2].set(1)
-    # L4 = L4.at[1, -1].set(1)
-    # L4 = L4.at[-2, 0].set(1)
-    # L4 = L4.at[-1, 1].set(1)
+    if self.BC == "Dirichlet-Neumann":
+      # Dirichlet & Neumann BC following https://arxiv.org/pdf/1307.8197
+      L1 = L1.at[0, -1].set(0)
+      L1 = L1.at[-1, 0].set(0)
+      L2 = L2.at[0, -1].set(0)
+      L2 = L2.at[-1, 0].set(0)
+      L4 = L4.at[0, -1].set(0)
+      L4 = L4.at[0, 0].set(7)
+      L4 = L4.at[0, -2].set(0)
+      L4 = L4.at[1, -1].set(0)
+      L4 = L4.at[-2, 0].set(0)
+      L4 = L4.at[-1, -1].set(7)
+      L4 = L4.at[-1, 0].set(0)
+      L4 = L4.at[-1, 1].set(0)
 
     self.L1 = L1 / 2 / dx
     self.L2 = L2 / dx**2
