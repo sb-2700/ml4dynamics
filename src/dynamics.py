@@ -30,6 +30,8 @@ Bouali system
 Finance attractor
 Thomas attractor
 """
+
+
 class dynamics(object):
   """Base class for simulating dynamical systems
 

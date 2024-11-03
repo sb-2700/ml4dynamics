@@ -79,7 +79,9 @@ def main(config_dict: ml_collections.ConfigDict):
   if os.path.isfile(
     'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num)
   ):
-    data = np.load('data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num))
+    data = np.load(
+      'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num)
+    )
     inputs = data["input"]
     outputs = data["output"]
   else:
@@ -88,8 +90,8 @@ def main(config_dict: ml_collections.ConfigDict):
     for i in range(config.sim.case_num):
       print(i)
       key, subkey = random.split(key)
-      # NOTE: the initialization here is important, DO NOT use the random i.i.d.
-      # Gaussian noise as the initial condition
+      # NOTE: the initialization here is important, DO NOT use the random
+      # i.i.d. Gaussian noise as the initial condition
       x = ks_fine.attractor + init_scale * random.normal(subkey) *\
         jnp.sin(5 * jnp.linspace(0, L - L/N1, N1))
       ks_fine.run_simulation(x, ks_fine.CN_FEM)
@@ -130,8 +132,8 @@ def main(config_dict: ml_collections.ConfigDict):
       (jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) - 2 * inputs
     ) / dx**2
     u_xxxx = ((jnp.roll(inputs, 2, axis=1) + jnp.roll(inputs, -2, axis=1)) -\
-        4*(jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) + 6 * inputs) /\
-        dx**4
+        4*(jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) +\
+        6 * inputs) / dx**4
     outputs = outputs.reshape(-1, output_dim)
     if config.train.input == "ux":
       inputs = u_x.reshape(-1, input_dim)
@@ -139,7 +141,7 @@ def main(config_dict: ml_collections.ConfigDict):
       inputs = u_xx.reshape(-1, input_dim)
     elif config.train.input == "uxxxx":
       inputs = u_xxxx.reshape(-1, input_dim)
-    else: 
+    else:
       inputs = inputs.reshape(-1, input_dim)
 
   # train test split
@@ -172,7 +174,7 @@ def main(config_dict: ml_collections.ConfigDict):
         ]
       )
       # linear_residue = hk.Linear(output_dim)
-      return mlp(features) # + linear_residue(features)
+      return mlp(features)  # + linear_residue(features)
 
     correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
     # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
@@ -247,7 +249,7 @@ def main(config_dict: ml_collections.ConfigDict):
       updates, new_opt_state = optimizer.update(grads, opt_state)
       new_params = optax.apply_updates(params, updates)
       return loss, new_params, new_opt_state
-  
+
   elif train_mode == "gaussian":
     # training a fully connected neural network to do the closure modeling
     # by gaussian process regression
@@ -272,7 +274,7 @@ def main(config_dict: ml_collections.ConfigDict):
         ]
       )
       # linear_residue = hk.Linear(output_dim * 2)
-      return mlp(features) # + linear_residue(features)
+      return mlp(features)  # + linear_residue(features)
 
     correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
     # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
@@ -289,8 +291,9 @@ def main(config_dict: ml_collections.ConfigDict):
       rng: PRNGKey,
     ) -> float:
       predict = correction_nn.apply(params, input)
-      return jnp.mean((output - predict[0])**2 / predict[1]**2 / 2 +
-                       jnp.log(predict[1]))
+      return jnp.mean(
+        (output - predict[0])**2 / predict[1]**2 / 2 + jnp.log(predict[1])
+      )
 
     @jax.jit
     def update(
@@ -410,9 +413,8 @@ def main(config_dict: ml_collections.ConfigDict):
       # return partial(correction_nn.apply, params)(input.reshape(-1,
       #                                                          1)).reshape(-1)
       # global model: [N] to [N]
-      return partial(correction_nn.apply, params)(
-        input.reshape(1, -1)
-      ).reshape(-1)
+      return partial(correction_nn.apply,
+                     params)(input.reshape(1, -1)).reshape(-1)
 
   elif train_mode == "generative":
     vae_bind = vae.bind({"params": params})
@@ -420,6 +422,7 @@ def main(config_dict: ml_collections.ConfigDict):
     corrector = partial(vae_bind.generate, z)
   elif train_mode == "gaussian":
     z = random.normal(key)
+
     def corrector(input):
       """
       input.shape = (N, )
@@ -427,7 +430,7 @@ def main(config_dict: ml_collections.ConfigDict):
       """
 
       dx = L / N2
-      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) /dx/2
+      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) / dx / 2
       u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
       u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
