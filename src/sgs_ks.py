@@ -32,6 +32,7 @@ def main(config_dict: ml_collections.ConfigDict):
   L = config.ks.L
   T = config.ks.T
   init_scale = config.ks.init_scale
+  BC = config.ks.BC
   # solver parameters
   N1 = config.ks.nx
   N2 = N1 // 2
@@ -44,13 +45,11 @@ def main(config_dict: ml_collections.ConfigDict):
     N=N1,
     T=T,
     dt=dt,
-    dx=L / (N1 + 1),
-    tol=1e-8,
     init_scale=init_scale,
-    tv_scale=1e-8,
     L=L,
     nu=nu,
     c=c,
+    BC=BC,
     key=key,
   )
   # coarse simulator
@@ -58,13 +57,11 @@ def main(config_dict: ml_collections.ConfigDict):
     N=N2,
     T=T,
     dt=dt,
-    dx=L / (N2 + 1),
-    tol=1e-8,
     init_scale=init_scale,
-    tv_scale=1e-8,
     L=L,
     nu=nu,
     c=c,
+    BC=BC,
     key=key,
   )
 
@@ -103,7 +100,7 @@ def main(config_dict: ml_collections.ConfigDict):
           ks_fine.x_hist[j]
         )  # shape = [N1, step_num]
         next_step_coarse = ks_coarse.CN_FEM(input[j])  # shape = [step_num, N2]
-        output_ = output_.at[j].set(res_op @ next_step_fine - next_step_coarse)
+        output = output.at[j].set(res_op @ next_step_fine - next_step_coarse)
       inputs = inputs.at[i].set(input)
       outputs = outputs.at[i].set(output)
 
@@ -174,7 +171,7 @@ def main(config_dict: ml_collections.ConfigDict):
           hk.Linear(output_dim),
         ]
       )
-      linear_residue = hk.Linear(output_dim)
+      # linear_residue = hk.Linear(output_dim)
       return mlp(features) # + linear_residue(features)
 
     correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
@@ -250,6 +247,64 @@ def main(config_dict: ml_collections.ConfigDict):
       updates, new_opt_state = optimizer.update(grads, opt_state)
       new_params = optax.apply_updates(params, updates)
       return loss, new_params, new_opt_state
+  
+  elif train_mode == "gaussian":
+    # training a fully connected neural network to do the closure modeling
+    # by gaussian process regression
+    if config.train.input == "uglobal":
+      raise Exception("GPR only supports local modeling!")
+
+    def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
+      """
+      NOTE: an example to show the inconsistency of a priori and a posteriori
+      error. Fix the network architecture to be the same, compare the results
+      where the lr is chosen to be 1e-3 and 1e-4.
+      """
+
+      mlp = hk.Sequential(
+        [
+          hk.Flatten(),
+          hk.Linear(512),
+          jax.nn.relu,
+          hk.Linear(512),
+          jax.nn.relu,
+          hk.Linear(output_dim * 2),
+        ]
+      )
+      # linear_residue = hk.Linear(output_dim * 2)
+      return mlp(features) # + linear_residue(features)
+
+    correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
+    # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
+    lr = 5e-4
+    optimizer = optax.adam(lr)
+    params = correction_nn.init(random.PRNGKey(0), np.zeros((1, input_dim)))
+    opt_state = optimizer.init(params)
+
+    @jax.jit
+    def loss_fn(
+      params: hk.Params,
+      input: jnp.ndarray,
+      output: jnp.ndarray,
+      rng: PRNGKey,
+    ) -> float:
+      predict = correction_nn.apply(params, input)
+      return jnp.mean((output - predict[0])**2 / predict[1]**2 / 2 +
+                       jnp.log(predict[1]))
+
+    @jax.jit
+    def update(
+      params: hk.Params, input: jnp.ndarray, output: jnp.ndarray, rng: PRNGKey,
+      opt_state: OptState
+    ) -> Tuple[Array, hk.Params, OptState]:
+      """Single SGD update step."""
+      loss, grads = jax.value_and_grad(
+        partial(loss_fn, input=input, output=output, rng=rng)
+      )(params)
+      # loss, grads = jax.value_and_grad(loss_fn)(params, input, output)
+      updates, new_opt_state = optimizer.update(grads, opt_state)
+      new_params = optax.apply_updates(params, updates)
+      return loss, new_params, new_opt_state
 
   else:
     raise Exception("Unknown learning mode.")
@@ -269,7 +324,7 @@ def main(config_dict: ml_collections.ConfigDict):
       if train_mode == "regression":
         relative_loss = loss / jnp.mean(output**2)
         desc_str = f"{relative_loss=:.4e}"
-      elif train_mode == "generative":
+      elif train_mode == "generative" or train_mode == "gaussian":
         desc_str = f"{loss=:.4e}"
       iters.set_description_str(desc_str)
 
@@ -286,10 +341,12 @@ def main(config_dict: ml_collections.ConfigDict):
   # visualize the error distribution
   if config.train.input == "uglobal":
     err = jnp.linalg.norm(correction_nn.apply(params, inputs) - outputs, axis=1)
-    plt.plot(np.arange(ks_fine.x_hist.shape[0]) * ks_fine.dt, err)
+    err = err.reshape(1000, -1)
+    err = jnp.mean(err, axis=1)
+    plt.plot(np.arange(ks_fine.step_num) * ks_fine.dt, err)
     plt.xlabel(r"$T$")
     plt.ylabel("error")
-  else:
+  elif config.train.mode == "regression":
     err = correction_nn.apply(params, inputs) - outputs
     from src.visualize import plot_error_cloudmap
     plot_error_cloudmap(
@@ -349,8 +406,8 @@ def main(config_dict: ml_collections.ConfigDict):
       # u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
       #     4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
       #     dx**4
-      # local model: [1] to [1]
-      # return partial(correction_nn.apply, params)(u_x.reshape(-1,
+      # # local model: [1] to [1]
+      # return partial(correction_nn.apply, params)(input.reshape(-1,
       #                                                          1)).reshape(-1)
       # global model: [N] to [N]
       return partial(correction_nn.apply, params)(
@@ -361,6 +418,24 @@ def main(config_dict: ml_collections.ConfigDict):
     vae_bind = vae.bind({"params": params})
     z = random.normal(key, shape=(1, config.train.vae.latents))
     corrector = partial(vae_bind.generate, z)
+  elif train_mode == "gaussian":
+    z = random.normal(key)
+    def corrector(input):
+      """
+      input.shape = (N, )
+      output.shape = (N, )
+      """
+
+      dx = L / N2
+      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) /dx/2
+      u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
+      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
+          4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
+          dx**4
+      # local model: [1] to [1]
+      tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
+      return (tmp[:, 0] + tmp[:, 1] * z).reshape(-1)
+
   ks_coarse.run_simulation_with_correction(x[::r], ks_coarse.CN_FEM, corrector)
   im_array = jnp.zeros(
     (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])

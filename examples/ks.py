@@ -6,9 +6,8 @@ $$
 $$
 
 We perform sensitivity analysis of several statistics of the KS equation
-w.r.t. the parameter c.
-
-
+w.r.t. the parameter c. We reproduce the fig. 1 in reference [1]. This
+statistics can also be used to evaluate the ROM we proposed.
 
 reference:
 1. https://arxiv.org/pdf/1307.8197
@@ -46,30 +45,88 @@ L = config.ks.L
 T = config.ks.T
 init_scale = config.ks.init_scale
 # solver parameters
-N1 = config.ks.nx
-N2 = N1 // 2
+N = config.ks.nx
 dt = config.ks.dt
-r = N1 // N2
+n_sample = 10
 key = random.PRNGKey(config.sim.seed)
 
-# fine simulation with Dirichlet Neumann BC
-ks_fine = KS(
-  N=N1,
+# KS simulator with Dirichlet Neumann BC
+ks512 = KS(
+  N=N - 1,
   T=T,
   dt=dt,
-  tol=1e-8,
   init_scale=init_scale,
-  tv_scale=1e-8,
   L=L,
-  nu=1.0,
-  c=0.8,
+  nu=nu,
+  c=c,
   BC="Dirichlet-Neumann",
   key=key,
 )
+ks256 = KS(
+  N=N // 2 - 1,
+  T=T,
+  dt=dt,
+  init_scale=init_scale,
+  L=L,
+  nu=nu,
+  c=c,
+  BC="Dirichlet-Neumann",
+  key=key,
+)
+ks128 = KS(
+  N=N // 4 - 1,
+  T=T,
+  dt=dt,
+  init_scale=init_scale,
+  L=L,
+  nu=nu,
+  c=c,
+  BC="Dirichlet-Neumann",
+  key=key,
+)
+ks_models = [ks512, ks256] # , ks128]
 
-dx = L / (N1 + 1)
-x = jnp.linspace(dx, L - dx, N1)
-u0 = jnp.exp(-(x - L/2)**2 / (L / 2)**2 * 10)
-ks_fine.run_simulation(u0, ks_fine.CN_FEM)
-plt.imshow(ks_fine.x_hist)
-plt.savefig("ks.pdf")
+c_array = jnp.linspace(0.0, 2.0, 20)
+dx = L / N
+x = jnp.linspace(dx, L - dx, N - 1)
+ubar = jnp.zeros((3, c_array.shape[0]))
+u2bar = jnp.zeros((3, c_array.shape[0]))
+fig, axs = plt.subplots(1, 2, figsize=(10, 4))
+color_array = ["r", "b", "g"]
+
+for i in range(c_array.shape[0]):
+  for _ in range(n_sample):
+    key, subkey = random.split(key)
+    r = random.uniform(subkey) * 20 + 44
+    u0 = jnp.exp(-(x - r)**2 / r**2 * 4)
+    for ks in ks_models:
+      ks.c = c_array[i]
+      ks.assembly_matrix()
+
+    ks_models[0].run_simulation(u0, ks_models[0].CN_FEM)
+    ks_models[1].run_simulation(u0[1::2], ks_models[1].CN_FEM)
+    # ks_models[2].run_simulation(u0[3::4], ks_models[2].CN_FEM)
+
+    for j in range(len(ks_models)):
+      umean = jnp.mean(ks_models[j].x_hist[-500:])
+      u2mean = jnp.mean(ks_models[j].x_hist[-500:]**2)
+      axs[0].scatter(c_array[i], umean, c=color_array[j], s=2)
+      axs[1].scatter(c_array[i], u2mean, c=color_array[j], s=2)
+      ubar = ubar.at[j, i].add(umean)
+      u2bar = u2bar.at[j, i].add(u2mean)
+
+ubar /= n_sample
+u2bar /= n_sample
+axs[0].plot(c_array, ubar[0], label=r"$N = 512$", c="r")
+axs[1].plot(c_array, u2bar[0], label=r"$N = 512$", c="r")
+axs[0].plot(c_array, ubar[1], label=r"$N = 256$", c="b")
+axs[1].plot(c_array, u2bar[1], label=r"$N = 256$", c="b")
+# axs[0].plot(c_array, ubar[2], label=r"$N = 128$", c="g")
+# axs[1].plot(c_array, u2bar[2], label=r"$N = 128$", c="g")
+axs[0].set_xlabel(r"$c$")
+axs[1].set_xlabel(r"$c$")
+axs[0].set_ylabel(r"$\langle \overline{u} \rangle$")
+axs[1].set_ylabel(r"$\langle \overline{u^2} \rangle$")
+axs[0].legend()
+axs[1].legend()
+plt.savefig("results/fig/ks_c_stats.pdf")
