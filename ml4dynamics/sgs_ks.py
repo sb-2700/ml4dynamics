@@ -18,9 +18,9 @@ from mpl_toolkits.mplot3d import Axes3D
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-from src.dynamics import KS
-from src.types import Batch, OptState, PRNGKey
-from src.utils import plot_with_horizontal_colorbar
+from ml4dynamics.dynamics import KS
+from ml4dynamics.types import Batch, OptState, PRNGKey
+from ml4dynamics.utils import plot_with_horizontal_colorbar
 
 
 def main(config_dict: ml_collections.ConfigDict):
@@ -212,7 +212,7 @@ def main(config_dict: ml_collections.ConfigDict):
     TODO: currently we are using different structure for regression and
     generative modeling, need to unify
     """
-    from src.model_jax import model
+    from ml4dynamics.model_jax import model
 
     print("initialize vae model")
     vae = model(config.train.vae.latents, N2)
@@ -352,7 +352,7 @@ def main(config_dict: ml_collections.ConfigDict):
   elif config.train.mode == "regression" or config.train.mode == "gaussian":
     err = correction_nn.apply(params, inputs) - outputs
     err = err[:, 0]
-    from src.visualize import plot_error_cloudmap
+    from ml4dynamics.visualize import plot_error_cloudmap
     plot_error_cloudmap(
       inputs.reshape(1000, 256).T,
       err.reshape(1000, 256).T, u_x.T, u_xx.T, u_xxxx.T
@@ -477,7 +477,7 @@ def main(config_dict: ml_collections.ConfigDict):
   )
 
   # compare the simulation statistics (A posteriori analysis)
-  from src.visualize import plot_stats
+  from ml4dynamics.visualize import plot_stats
   plot_stats(
     np.arange(ks_fine.x_hist.shape[0]) * ks_fine.dt,
     ks_fine.x_hist,

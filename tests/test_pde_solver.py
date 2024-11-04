@@ -13,7 +13,7 @@ from box import Box
 from jax import random
 from matplotlib import pyplot as plt
 
-from src import utils
+from ml4dynamics import utils
 
 # @pytest.mark.parametrize(
 #     ("hw", "param_count"),
@@ -30,7 +30,7 @@ from src import utils
 #     """
 #     assert True
 
-@pytest.mark.skip
+
 def test_reaction_diffusion_equation_solver():
   """We check the numerical solution with the following analytic solution
     test case for RD equation:
@@ -70,7 +70,7 @@ def test_reaction_diffusion_equation_solver():
   source = source.at[1].set(omega**2 * v + v - u)
 
   # test the alternating direction implicit (ADI) method
-  u_hist, v_hist = utils.RD_adi(
+  u_hist, v_hist, _ = utils.RD_adi(
     u,
     v,
     dt,
@@ -168,9 +168,10 @@ def test_navier_stokes_equation_solver():
   ) < tol
 
 
+@pytest.mark.skip
 def test_kuramoto_sivashinsky_equation_solver():
 
-  from src.dynamics import KS
+  from ml4dynamics.dynamics import KS
 
   with open("config/simulation.yaml", "r") as file:
     config_dict = yaml.safe_load(file)

@@ -17,9 +17,9 @@ from mpl_toolkits.mplot3d import Axes3D
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-from src.dynamics import KS
-from src.types import Batch, OptState, PRNGKey
-from src.utils import plot_with_horizontal_colorbar
+from ml4dynamics.dynamics import KS
+from ml4dynamics.types import Batch, OptState, PRNGKey
+from ml4dynamics.utils import plot_with_horizontal_colorbar
 
 
 def main(config_dict: ml_collections.ConfigDict):

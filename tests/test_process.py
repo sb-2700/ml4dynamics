@@ -1,1 +1,1 @@
-from src.process import *
+from ml4dynamics.process import *

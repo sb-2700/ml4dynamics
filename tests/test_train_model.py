@@ -1,1 +1,1 @@
-from src.train_model import *
+from ml4dynamics.train_model import *

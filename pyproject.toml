@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "src"
+name = "ml4dynamics"
 version = "0.1.0"
 description = ""
 authors = ["jiaxi"]

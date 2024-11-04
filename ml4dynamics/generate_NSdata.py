@@ -1,7 +1,6 @@
 ###################################################
 #                   finished                      #
 ###################################################
-import argparse
 import copy
 
 import hydra
@@ -9,7 +8,7 @@ import ml_collections
 import numpy as np
 import numpy.random as r
 
-import utils
+import ml4dynamics.utils as utils
 
 
 def generate_NS_data(config: ml_collections.ConfigDict):
@@ -104,7 +103,7 @@ def main(config: ml_collections.ConfigDict):
         config: This function uses hydra configuration for all parameters.
     """
 
-  from src import sim_ns_incomp_2d
+  from ml4dynamics import sim_ns_incomp_2d
   sim_ns_incomp_2d.ns_sim(config=config, **config)
 
 

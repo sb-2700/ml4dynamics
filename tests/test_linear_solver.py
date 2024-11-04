@@ -1,6 +1,6 @@
 import jax
 
-import src.utils as utils
+import ml4dynamics.utils as utils
 
 jax.config.update('jax_enable_x64', True)
 

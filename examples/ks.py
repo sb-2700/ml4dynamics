@@ -24,26 +24,13 @@ reference:
 1. https://arxiv.org/pdf/1307.8197
 """
 
-from functools import partial
-from typing import Iterator, Optional, Tuple
-
-import jax
 import jax.numpy as jnp
-import numpy as np
-import optax
 import yaml
 from box import Box
 from jax import random as random
-from jaxtyping import Array
 from matplotlib import pyplot as plt
-from matplotlib.colors import Normalize
-from mpl_toolkits.mplot3d import Axes3D
-from sklearn.model_selection import train_test_split
-from tqdm import tqdm
 
-from src.dynamics import KS
-from src.types import Batch, OptState, PRNGKey
-from src.utils import plot_with_horizontal_colorbar
+from ml4dynamics.dynamics import KS
 
 
 with open("config/simulation.yaml", "r") as file:
@@ -58,7 +45,7 @@ init_scale = config.ks.init_scale
 # solver parameters
 N = config.ks.nx
 dt = config.ks.dt
-n_sample = 5
+n_sample = 10
 key = random.PRNGKey(config.sim.seed)
 
 # KS simulator with Dirichlet Neumann BC
@@ -97,7 +84,7 @@ ks3 = KS(
 )
 ks_models = [ks1, ks2, ks3]
 
-c_array = jnp.linspace(0.0, 2.0, 20)
+c_array = jnp.linspace(0.0, 2.0, 21)
 dx = L / N
 x = jnp.linspace(dx, L - dx, N - 1)
 ubar = jnp.zeros((3, c_array.shape[0]))
