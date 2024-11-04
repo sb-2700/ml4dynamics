@@ -38,6 +38,9 @@ class dynamics(object):
   TODO: need to do function programming for this class, i.e.
   write make function for this and package all the params outside
   the class
+
+  NOTE: N denotes the dimension of the state variable of the dynamics and
+  will change according to the boundary condition.
   """
   __metaclass__ = ABCMeta
 

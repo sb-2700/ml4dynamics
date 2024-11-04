@@ -42,7 +42,7 @@ def main(config_dict: ml_collections.ConfigDict):
 
   # fine simulation
   ks_fine = KS(
-    N=N1,
+    N=N1 - 1,
     T=T,
     dt=dt,
     init_scale=init_scale,
@@ -54,7 +54,7 @@ def main(config_dict: ml_collections.ConfigDict):
   )
   # coarse simulator
   ks_coarse = KS(
-    N=N2,
+    N=N2 - 1,
     T=T,
     dt=dt,
     init_scale=init_scale,
@@ -68,12 +68,12 @@ def main(config_dict: ml_collections.ConfigDict):
   # define the restriction and interpolation operator
   # TODO: try to change the restriction and projection operator to test the
   # results, these operator should have test file
-  res_op = jnp.zeros((N2, N1))
-  int_op = jnp.zeros((N1, N2))
-  res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r].set(1)
-  int_op = int_op.at[jnp.arange(N2) * r, jnp.arange(N2)].set(1)
+  res_op = jnp.zeros((N2 - 1, N1 - 1))
+  int_op = jnp.zeros((N1 - 1, N2 - 1))
+  res_op = res_op.at[jnp.arange(N2 - 1), jnp.arange(N2 - 1) * r + 1].set(1)
+  int_op = int_op.at[jnp.arange(N2 - 1) * r + 1, jnp.arange(N2 - 1)].set(1)
 
-  assert jnp.allclose(res_op @ int_op, jnp.eye(N2))
+  assert jnp.allclose(res_op @ int_op, jnp.eye(N2 - 1))
 
   # prepare the training data
   if os.path.isfile(
@@ -92,9 +92,14 @@ def main(config_dict: ml_collections.ConfigDict):
       key, subkey = random.split(key)
       # NOTE: the initialization here is important, DO NOT use the random
       # i.i.d. Gaussian noise as the initial condition
-      x = ks_fine.attractor + init_scale * random.normal(subkey) *\
-        jnp.sin(5 * jnp.linspace(0, L - L/N1, N1))
-      ks_fine.run_simulation(x, ks_fine.CN_FEM)
+      # x = ks_fine.attractor + init_scale * random.normal(subkey) *\
+      #   jnp.sin(5 * jnp.linspace(0, L - L/N1, N1))
+      dx = L / N1
+      x = jnp.linspace(dx, L - dx, N1 - 1)
+      u0 = random.uniform(subkey) * jnp.sin(8 * jnp.pi * x / 128) +\
+        random.uniform(key) * jnp.sin(16 * jnp.pi * x / 128)
+      ks_fine.run_simulation(u0, ks_fine.CN_FEM)
+      breakpoint()
       input = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
       output = jnp.zeros_like(input)
       for j in range(ks_fine.step_num):
