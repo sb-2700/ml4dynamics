@@ -36,17 +36,19 @@ react_diff:
   n: 2              # number of components
 
 ks:
-  nu: .1
-  c: .1
-  L: 31.41592653589793
-  T: 10
+  nu: 1
+  c: 0.8
+  # L: 31.41592653589793
+  L: 128
+  T: 200
   init_scale: 1.
-  nx: 512
-  dt: .01
+  nx: 1024
+  dt: .1
+  BC: Dirichlet-Neumann
 
 sim:
   seed: 42
-  case_num: 100     # number of simulations to perform
+  case_num: 1     # number of simulations to perform
   warm_up: 200      # warm up step for simulation
   patience: 5       # patience for NaN simulation
   writeInterval: 2
@@ -56,6 +58,13 @@ plot:
   dim: 2            # Spatial dimension
   channel_idx: 0    # Index of the variable to be plotted
 
+train:
+  mode: gaussian
+  input: uxx # uglobal, u, ux, uxx, uxxxx
+  epochs: 20
+  batch_size: 10000
+  vae:
+    latents: 128
 
 dataverse:
   lib_name: NA
@@ -69,7 +78,7 @@ dataverse:
           identifier: 0009-0007-2110-6006
       description:
         - text: 2D diffusion-reaction dataset
-          date: '2024'
+          date: 2024
       contact:
         - name: Jiaxi Zhao
           affiliation: National University of Singapore

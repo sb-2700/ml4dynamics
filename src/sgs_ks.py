@@ -266,9 +266,9 @@ def main(config_dict: ml_collections.ConfigDict):
       mlp = hk.Sequential(
         [
           hk.Flatten(),
-          hk.Linear(512),
+          hk.Linear(16),
           jax.nn.relu,
-          hk.Linear(512),
+          hk.Linear(16),
           jax.nn.relu,
           hk.Linear(output_dim * 2),
         ]
@@ -349,21 +349,37 @@ def main(config_dict: ml_collections.ConfigDict):
     plt.plot(np.arange(ks_fine.step_num) * ks_fine.dt, err)
     plt.xlabel(r"$T$")
     plt.ylabel("error")
-  elif config.train.mode == "regression":
+  elif config.train.mode == "regression" or config.train.mode == "gaussian":
     err = correction_nn.apply(params, inputs) - outputs
+    err = err[:, 0]
     from src.visualize import plot_error_cloudmap
     plot_error_cloudmap(
       inputs.reshape(1000, 256).T,
       err.reshape(1000, 256).T, u_x.T, u_xx.T, u_xxxx.T
     )
+    t = jnp.linspace(0, T, ks_fine.step_num).reshape(-1, 1)
+    t = jnp.tile(t, (1, N2))
+    plt.figure(figsize=(8, 4))
     if config.train.input == "u":
+      plt.subplot(121)
       plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=err)
+      plt.subplot(122)
+      plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=t)
     elif config.train.input == "ux":
+      plt.subplot(121)
       plt.scatter(u_x.reshape(-1, 1), outputs, s=.2, c=err)
+      plt.subplot(122)
+      plt.scatter(u_x.reshape(-1, 1), outputs, s=.2, c=t)
     elif config.train.input == "uxx":
+      plt.subplot(121)
       plt.scatter(u_xx.reshape(-1, 1), outputs, s=.2, c=err)
+      plt.subplot(122)
+      plt.scatter(u_xx.reshape(-1, 1), outputs, s=.2, c=t)
     elif config.train.input == "uxxxx":
+      plt.subplot(121)
       plt.scatter(u_xxxx.reshape(-1, 1), outputs, s=.2, c=err)
+      plt.subplot(122)
+      plt.scatter(u_xxxx.reshape(-1, 1), outputs, s=.2, c=t)
   plt.savefig(f"results/fig/{config.train.input}_tau_err_scatter.pdf")
   plt.clf()
 

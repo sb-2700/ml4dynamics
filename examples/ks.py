@@ -58,7 +58,7 @@ init_scale = config.ks.init_scale
 # solver parameters
 N = config.ks.nx
 dt = config.ks.dt
-n_sample = 10
+n_sample = 5
 key = random.PRNGKey(config.sim.seed)
 
 # KS simulator with Dirichlet Neumann BC
@@ -106,10 +106,13 @@ fig, axs = plt.subplots(1, 2, figsize=(10, 4))
 color_array = ["r", "b", "g"]
 
 for i in range(c_array.shape[0]):
+  print(f"{c_array[i]:.2f}")
   for _ in range(n_sample):
     key, subkey = random.split(key)
-    r = random.uniform(subkey) * 20 + 44
-    u0 = jnp.exp(-(x - r)**2 / r**2 * 4)
+    # r = random.uniform(subkey) * 20 + 44
+    # u0 = jnp.exp(-(x - r)**2 / r**2 * 4)
+    u0 = random.uniform(subkey) * jnp.sin(8 * jnp.pi * x / 128) +\
+      random.uniform(key) * jnp.sin(16 * jnp.pi * x / 128)
     for ks in ks_models:
       ks.c = c_array[i]
       ks.assembly_matrix()
