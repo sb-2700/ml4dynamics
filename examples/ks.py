@@ -7,7 +7,18 @@ $$
 
 We perform sensitivity analysis of several statistics of the KS equation
 w.r.t. the parameter c. We reproduce the fig. 1 in reference [1]. This
-statistics can also be used to evaluate the ROM we proposed.
+statistics can also be used to evaluate the ROM we proposed. To reproduce the
+figure, we use the following parameters in config file:
+
+ks:
+  nu: 1
+  c: 0.8
+  L: 128
+  T: 200
+  init_scale: 1.
+  nx: 1024
+  dt: .1
+  BC: Dirichlet-Neumann
 
 reference:
 1. https://arxiv.org/pdf/1307.8197
@@ -51,7 +62,7 @@ n_sample = 10
 key = random.PRNGKey(config.sim.seed)
 
 # KS simulator with Dirichlet Neumann BC
-ks512 = KS(
+ks1 = KS(
   N=N - 1,
   T=T,
   dt=dt,
@@ -62,7 +73,7 @@ ks512 = KS(
   BC="Dirichlet-Neumann",
   key=key,
 )
-ks256 = KS(
+ks2 = KS(
   N=N // 2 - 1,
   T=T,
   dt=dt,
@@ -73,7 +84,7 @@ ks256 = KS(
   BC="Dirichlet-Neumann",
   key=key,
 )
-ks128 = KS(
+ks3 = KS(
   N=N // 4 - 1,
   T=T,
   dt=dt,
@@ -84,7 +95,7 @@ ks128 = KS(
   BC="Dirichlet-Neumann",
   key=key,
 )
-ks_models = [ks512, ks256] # , ks128]
+ks_models = [ks1, ks2, ks3]
 
 c_array = jnp.linspace(0.0, 2.0, 20)
 dx = L / N
@@ -105,7 +116,7 @@ for i in range(c_array.shape[0]):
 
     ks_models[0].run_simulation(u0, ks_models[0].CN_FEM)
     ks_models[1].run_simulation(u0[1::2], ks_models[1].CN_FEM)
-    # ks_models[2].run_simulation(u0[3::4], ks_models[2].CN_FEM)
+    ks_models[2].run_simulation(u0[3::4], ks_models[2].CN_FEM)
 
     for j in range(len(ks_models)):
       umean = jnp.mean(ks_models[j].x_hist[-500:])
@@ -117,12 +128,12 @@ for i in range(c_array.shape[0]):
 
 ubar /= n_sample
 u2bar /= n_sample
-axs[0].plot(c_array, ubar[0], label=r"$N = 512$", c="r")
-axs[1].plot(c_array, u2bar[0], label=r"$N = 512$", c="r")
-axs[0].plot(c_array, ubar[1], label=r"$N = 256$", c="b")
-axs[1].plot(c_array, u2bar[1], label=r"$N = 256$", c="b")
-# axs[0].plot(c_array, ubar[2], label=r"$N = 128$", c="g")
-# axs[1].plot(c_array, u2bar[2], label=r"$N = 128$", c="g")
+axs[0].plot(c_array, ubar[0], label=r"$N = {}$".format(N), c="r")
+axs[1].plot(c_array, u2bar[0], label=r"$N = {}$".format(N), c="r")
+axs[0].plot(c_array, ubar[1], label=r"$N = {}$".format(N//2), c="b")
+axs[1].plot(c_array, u2bar[1], label=r"$N = {}$".format(N//2), c="b")
+axs[0].plot(c_array, ubar[2], label=r"$N = {}$".format(N//4), c="g")
+axs[1].plot(c_array, u2bar[2], label=r"$N = {}$".format(N//4), c="g")
 axs[0].set_xlabel(r"$c$")
 axs[1].set_xlabel(r"$c$")
 axs[0].set_ylabel(r"$\langle \overline{u} \rangle$")
