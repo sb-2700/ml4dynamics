@@ -34,15 +34,18 @@ def main(config_dict: ml_collections.ConfigDict):
   init_scale = config.ks.init_scale
   BC = config.ks.BC
   # solver parameters
-  N1 = config.ks.nx
+  if BC == "periodic":
+    N1 = config.ks.nx
+  elif BC == "Dirichlet-Neumann":
+    N1 = config.ks.nx - 1
   N2 = N1 // 2
   dt = config.ks.dt
-  r = N1 // N2
+  r = 2
   key = random.PRNGKey(config.sim.seed)
 
   # fine simulation
   ks_fine = KS(
-    N=N1 - 1,
+    N=N1,
     T=T,
     dt=dt,
     init_scale=init_scale,
@@ -54,7 +57,7 @@ def main(config_dict: ml_collections.ConfigDict):
   )
   # coarse simulator
   ks_coarse = KS(
-    N=N2 - 1,
+    N=N2,
     T=T,
     dt=dt,
     init_scale=init_scale,
@@ -68,12 +71,12 @@ def main(config_dict: ml_collections.ConfigDict):
   # define the restriction and interpolation operator
   # TODO: try to change the restriction and projection operator to test the
   # results, these operator should have test file
-  res_op = jnp.zeros((N2 - 1, N1 - 1))
-  int_op = jnp.zeros((N1 - 1, N2 - 1))
-  res_op = res_op.at[jnp.arange(N2 - 1), jnp.arange(N2 - 1) * r + 1].set(1)
-  int_op = int_op.at[jnp.arange(N2 - 1) * r + 1, jnp.arange(N2 - 1)].set(1)
+  res_op = jnp.zeros((N2, N1))
+  int_op = jnp.zeros((N1, N2))
+  res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 1].set(1)
+  int_op = int_op.at[jnp.arange(N2) * r + 1, jnp.arange(N2)].set(1)
 
-  assert jnp.allclose(res_op @ int_op, jnp.eye(N2 - 1))
+  assert jnp.allclose(res_op @ int_op, jnp.eye(N2))
 
   # prepare the training data
   if os.path.isfile(
@@ -92,12 +95,19 @@ def main(config_dict: ml_collections.ConfigDict):
       key, subkey = random.split(key)
       # NOTE: the initialization here is important, DO NOT use the random
       # i.i.d. Gaussian noise as the initial condition
-      # x = ks_fine.attractor + init_scale * random.normal(subkey) *\
-      #   jnp.sin(5 * jnp.linspace(0, L - L/N1, N1))
-      dx = L / N1
-      x = jnp.linspace(dx, L - dx, N1 - 1)
-      u0 = random.uniform(subkey) * jnp.sin(8 * jnp.pi * x / 128) +\
-        random.uniform(key) * jnp.sin(16 * jnp.pi * x / 128)
+      if BC == "periodic":
+        dx = L / N1
+        u0 = ks_fine.attractor + init_scale * random.normal(subkey) *\
+          jnp.sin(10 * jnp.pi * jnp.linspace(0, L - L/N1, N1) / L)
+      elif BC == "Dirichlet-Neumann":
+        dx = L / (N1 + 1)
+        x = jnp.linspace(dx, L - dx, N1)
+        u0 = ks_fine.attractor + init_scale * random.normal(subkey) *\
+          jnp.sin(10 * jnp.pi * jnp.linspace(L/(N1+1), L - L/(N1+1), N1) / L)
+        # u0 = random.uniform(subkey) * jnp.sin(2 * jnp.pi * x / 128) +\
+        #   random.uniform(key) * jnp.sin(4 * jnp.pi * x / 128)
+        # r0 = random.uniform(subkey) * 20 + 44
+        # u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
       ks_fine.run_simulation(u0, ks_fine.CN_FEM)
       breakpoint()
       input = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
@@ -131,7 +141,10 @@ def main(config_dict: ml_collections.ConfigDict):
   else:
     # training local ROM with local input
     input_dim = output_dim = 1
-    dx = L / N2
+    if BC == "periodic":
+      dx = L / N2
+    elif BC == "Dirichlet-Neumann":
+      dx = L / (N2 + 1)
     u_x = (jnp.roll(inputs, 1, axis=1) - jnp.roll(inputs, -1, axis=1)) / dx / 2
     u_xx = (
       (jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) - 2 * inputs
@@ -359,8 +372,8 @@ def main(config_dict: ml_collections.ConfigDict):
     err = err[:, 0]
     from ml4dynamics.visualize import plot_error_cloudmap
     plot_error_cloudmap(
-      inputs.reshape(1000, 256).T,
-      err.reshape(1000, 256).T, u_x.T, u_xx.T, u_xxxx.T
+      inputs.reshape(1000, N2).T,
+      err.reshape(1000, N2).T, u_x.T, u_xx.T, u_xxxx.T
     )
     t = jnp.linspace(0, T, ks_fine.step_num).reshape(-1, 1)
     t = jnp.tile(t, (1, N2))
@@ -390,17 +403,27 @@ def main(config_dict: ml_collections.ConfigDict):
 
   # a posteriori analysis
   key, subkey = random.split(key)
-  x = ks_fine.attractor + init_scale * random.normal(subkey) *\
-        jnp.sin(5 * jnp.linspace(0, L - L/N1, N1))
-  ks_fine.run_simulation(x, ks_fine.CN_FEM)
-  ks_coarse.run_simulation(x[::r], ks_coarse.CN_FEM)
+  if BC == "periodic":
+    u0 = ks_fine.attractor + init_scale * random.normal(subkey) *\
+      jnp.sin(10 * jnp.pi * jnp.linspace(0, L - L/N1, N1) / L)
+  elif BC == "Dirichlet-Neumann":
+    dx = L / (N1 + 1)
+    x = jnp.linspace(dx, L - dx, N1)
+    u0 = ks_fine.attractor + init_scale * random.normal(subkey) *\
+      jnp.sin(10 * jnp.pi * jnp.linspace(L/(N1+1), L - L/(N1+1), N1) / L)
+    # u0 = random.uniform(subkey) * jnp.sin(2 * jnp.pi * x / 128) +\
+    #   random.uniform(key) * jnp.sin(4 * jnp.pi * x / 128)
+    # r0 = random.uniform(subkey) * 20 + 44
+    # u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
+  ks_fine.run_simulation(u0, ks_fine.CN_FEM)
+  ks_coarse.run_simulation(u0[1::r], ks_coarse.CN_FEM)
   im_array = jnp.zeros(
     (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
   )
-  im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, ::r].T)
+  im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, 1::r].T)
   im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
   im_array = im_array.at[2,
-                         0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, ::r].T)
+                         0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, 1::r].T)
   title_array = [f"{N1}", f"{N2}", "diff"]
   plot_with_horizontal_colorbar(
     im_array,
@@ -411,7 +434,7 @@ def main(config_dict: ml_collections.ConfigDict):
   )
   print(
     "rmse without correction: {:.4f}".format(
-      jnp.sqrt(jnp.mean((ks_coarse.x_hist.T - ks_fine.x_hist[:, ::r].T)**2))
+      jnp.sqrt(jnp.mean((ks_coarse.x_hist.T - ks_fine.x_hist[:, 1::r].T)**2))
     )
   )
   baseline = ks_coarse.x_hist
@@ -460,14 +483,14 @@ def main(config_dict: ml_collections.ConfigDict):
       tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
       return (tmp[:, 0] + tmp[:, 1] * z).reshape(-1)
 
-  ks_coarse.run_simulation_with_correction(x[::r], ks_coarse.CN_FEM, corrector)
+  ks_coarse.run_simulation_with_correction(u0[1::r], ks_coarse.CN_FEM, corrector)
   im_array = jnp.zeros(
     (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
   )
-  im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, ::r].T)
+  im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, 1::r].T)
   im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
   im_array = im_array.at[2,
-                         0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, ::r].T)
+                         0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, 1::r].T)
   plot_with_horizontal_colorbar(
     im_array,
     fig_size=(4, 6),
@@ -477,7 +500,7 @@ def main(config_dict: ml_collections.ConfigDict):
   )
   print(
     "rmse with correction: {:.4f}".format(
-      jnp.sqrt(jnp.mean((ks_coarse.x_hist.T - ks_fine.x_hist[:, ::r].T)**2))
+      jnp.sqrt(jnp.mean((ks_coarse.x_hist.T - ks_fine.x_hist[:, 1::r].T)**2))
     )
   )
 
