@@ -101,6 +101,7 @@ def plot_error_cloudmap(
   u_x: np.ndarray,
   u_xx: np.ndarray,
   u_xxxx: np.ndarray,
+  name: str,
 ):
 
   plt.subplot(511)
@@ -128,5 +129,5 @@ def plot_error_cloudmap(
   plt.colorbar()
   plt.axis("off")
   plt.ylabel(r"$u_{xxxx}$")
-  plt.savefig("results/fig/err_dist.pdf")
+  plt.savefig(f"results/fig/{name}_err_dist.pdf")
   plt.clf()

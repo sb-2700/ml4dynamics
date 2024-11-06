@@ -1,6 +1,6 @@
 import os
 from functools import partial
-from typing import Iterator, Optional, Tuple
+from typing import Tuple
 
 import haiku as hk
 import jax
@@ -8,18 +8,18 @@ import jax.numpy as jnp
 import ml_collections
 import numpy as np
 import optax
+import seaborn as sns
 import yaml
 from box import Box
 from jax import random as random
 from jaxtyping import Array
 from matplotlib import pyplot as plt
-from matplotlib.colors import Normalize
-from mpl_toolkits.mplot3d import Axes3D
 from sklearn.model_selection import train_test_split
+from time import time
 from tqdm import tqdm
 
 from ml4dynamics.dynamics import KS
-from ml4dynamics.types import Batch, OptState, PRNGKey
+from ml4dynamics.types import OptState, PRNGKey
 from ml4dynamics.utils import plot_with_horizontal_colorbar
 
 
@@ -235,9 +235,9 @@ def main(config_dict: ml_collections.ConfigDict):
       mlp = hk.Sequential(
         [
           hk.Flatten(),
-          hk.Linear(16),
+          hk.Linear(64),
           jax.nn.relu,
-          hk.Linear(16),
+          hk.Linear(64),
           jax.nn.relu,
           hk.Linear(output_dim * 2),
         ]
@@ -362,29 +362,35 @@ def main(config_dict: ml_collections.ConfigDict):
   elif train_mode == "regression" or train_mode == "gaussian":
     err = correction_nn.apply(params, inputs) - outputs
     err = err[:, 0]
-    from ml4dynamics.visualize import plot_error_cloudmap
-    plot_error_cloudmap(
-      err.reshape(ks_fine.step_num, N2).T, u.reshape(ks_fine.step_num, N2).T,
-      u_x.T, u_xx.T, u_xxxx.T
-    )
-    t = jnp.linspace(0, T, ks_fine.step_num).reshape(-1, 1)
-    t = jnp.tile(t, (1, N2))
+    if config.sim.case_num == 1:
+      from ml4dynamics.visualize import plot_error_cloudmap
+      plot_error_cloudmap(
+        err.reshape(ks_fine.step_num, N2).T, u.reshape(ks_fine.step_num, N2).T,
+        u_x.T, u_xx.T, u_xxxx.T, train_mode
+      )
+    t = jnp.linspace(0, T, ks_fine.step_num).reshape(1, -1, 1)
+    t = jnp.tile(t, (config.sim.case_num, 1, N2)).reshape(-1)
     plt.figure(figsize=(8, 4))
     plt.subplot(121)
     plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=err)
     plt.subplot(122)
     plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=t)
+    # sns kde plot is tooooo slow!!!
+    # start = time()
+    # sns.kdeplot(x=inputs.reshape(-1), y=outputs.reshape(-1), fill=True)
+    # print(f"sns plot time collapsed: {time() - start}")
     tmp_input = jnp.linspace(jnp.min(inputs), jnp.max(inputs), 20)
     tmp_output = correction_nn.apply(params, tmp_input.reshape(-1, 1))
     if train_mode == "regression":
       plt.plot(tmp_input, tmp_output, label="learned", c="r")
     elif train_mode == "gaussian":
+      print("std: ", tmp_output[:, 1])
       plt.errorbar(
         tmp_input, tmp_output[:, 0], yerr=jnp.abs(tmp_output[:, 1]),
         fmt='o-', color='r', markersize = .5, label="learned"
       )
   plt.legend()
-  plt.savefig(f"results/fig/{config.train.input}_tau_err_scatter.pdf")
+  plt.savefig(f"results/fig/{train_mode}_{config.train.input}_tau_err_scatter.png")
   plt.clf()
 
   # a posteriori analysis
