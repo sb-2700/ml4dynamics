@@ -102,14 +102,14 @@ def main(config_dict: ml_collections.ConfigDict):
       elif BC == "Dirichlet-Neumann":
         dx = L / (N1 + 1)
         x = jnp.linspace(dx, L - dx, N1)
-        u0 = ks_fine.attractor + init_scale * random.normal(subkey) *\
-          jnp.sin(10 * jnp.pi * jnp.linspace(L/(N1+1), L - L/(N1+1), N1) / L)
-        # u0 = random.uniform(subkey) * jnp.sin(2 * jnp.pi * x / 128) +\
-        #   random.uniform(key) * jnp.sin(4 * jnp.pi * x / 128)
-        # r0 = random.uniform(subkey) * 20 + 44
-        # u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
+        # different choices of initial conditions
+        # u0 = ks_fine.attractor + init_scale * random.normal(subkey) *\
+        #   jnp.sin(10 * jnp.pi * x / L)
+        # u0 = random.uniform(subkey) * jnp.sin(8 * jnp.pi * x / 128) +\
+        #   random.uniform(key) * jnp.sin(16 * jnp.pi * x / 128)
+        r0 = random.uniform(subkey) * 20 + 44
+        u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
       ks_fine.run_simulation(u0, ks_fine.CN_FEM)
-      breakpoint()
       input = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
       output = jnp.zeros_like(input)
       for j in range(ks_fine.step_num):
@@ -145,6 +145,7 @@ def main(config_dict: ml_collections.ConfigDict):
       dx = L / N2
     elif BC == "Dirichlet-Neumann":
       dx = L / (N2 + 1)
+    u = jnp.array(inputs)
     u_x = (jnp.roll(inputs, 1, axis=1) - jnp.roll(inputs, -1, axis=1)) / dx / 2
     u_xx = (
       (jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) - 2 * inputs
@@ -160,9 +161,8 @@ def main(config_dict: ml_collections.ConfigDict):
     elif config.train.input == "uxxxx":
       inputs = u_xxxx.reshape(-1, input_dim)
     else:
-      inputs = inputs.reshape(-1, input_dim)
+      inputs = u.reshape(-1, input_dim)
 
-  # train test split
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=42
   )
@@ -184,9 +184,9 @@ def main(config_dict: ml_collections.ConfigDict):
       mlp = hk.Sequential(
         [
           hk.Flatten(),
-          hk.Linear(512),
+          hk.Linear(16),
           jax.nn.relu,
-          hk.Linear(512),
+          hk.Linear(16),
           jax.nn.relu,
           hk.Linear(output_dim),
         ]
@@ -201,7 +201,6 @@ def main(config_dict: ml_collections.ConfigDict):
     params = correction_nn.init(random.PRNGKey(0), np.zeros((1, input_dim)))
     opt_state = optimizer.init(params)
 
-    @jax.jit
     def loss_fn(
       params: hk.Params,
       input: jnp.ndarray,
@@ -210,6 +209,60 @@ def main(config_dict: ml_collections.ConfigDict):
     ) -> float:
       predict = correction_nn.apply(params, input)
       return jnp.mean((output - predict)**2)
+
+    @jax.jit
+    def update(
+      params: hk.Params, input: jnp.ndarray, output: jnp.ndarray, rng: PRNGKey,
+      opt_state: OptState
+    ) -> Tuple[Array, hk.Params, OptState]:
+      """Single SGD update step."""
+      loss, grads = jax.value_and_grad(
+        partial(loss_fn, input=input, output=output, rng=rng)
+      )(params)
+      # loss, grads = jax.value_and_grad(loss_fn)(params, input, output)
+      updates, new_opt_state = optimizer.update(grads, opt_state)
+      new_params = optax.apply_updates(params, updates)
+      return loss, new_params, new_opt_state
+
+  elif train_mode == "gaussian":
+    # training a fully connected neural network to do the closure modeling
+    # by gaussian process
+    if config.train.input == "uglobal":
+      raise Exception("Gaussian process only supports local modeling!")
+
+    def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
+
+      mlp = hk.Sequential(
+        [
+          hk.Flatten(),
+          hk.Linear(16),
+          jax.nn.relu,
+          hk.Linear(16),
+          jax.nn.relu,
+          hk.Linear(output_dim * 2),
+        ]
+      )
+      # linear_residue = hk.Linear(output_dim * 2)
+      return mlp(features)  # + linear_residue(features)
+
+    correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
+    # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
+    lr = 1e-4
+    optimizer = optax.adam(lr)
+    params = correction_nn.init(random.PRNGKey(0), np.zeros((1, input_dim)))
+    opt_state = optimizer.init(params)
+
+    def loss_fn(
+      params: hk.Params,
+      input: jnp.ndarray,
+      output: jnp.ndarray,
+      rng: PRNGKey,
+    ) -> float:
+      predict = correction_nn.apply(params, input)
+      return jnp.mean(
+        (output - predict[..., 0:1])**2 / predict[..., 1:]**2 / 2 +\
+        jnp.log(jnp.abs(predict[..., 1:]))
+      )
 
     @jax.jit
     def update(
@@ -243,7 +296,6 @@ def main(config_dict: ml_collections.ConfigDict):
     optimizer = optax.adam(lr)
     opt_state = optimizer.init(params)
 
-    @jax.jit
     def loss_fn(
       params: hk.Params, input: jnp.ndarray, output: jnp.ndarray, rng: PRNGKey
     ) -> float:
@@ -253,65 +305,6 @@ def main(config_dict: ml_collections.ConfigDict):
       # NOTE: lots of code are using BCE, we may also try
       return jnp.sum((input - recon_x)**2) +\
         -0.5 * jnp.sum(1 + logvar - jnp.power(mean, 2) - jnp.exp(logvar))
-
-    @jax.jit
-    def update(
-      params: hk.Params, input: jnp.ndarray, output: jnp.ndarray, rng: PRNGKey,
-      opt_state: OptState
-    ) -> Tuple[Array, hk.Params, OptState]:
-      """Single SGD update step."""
-      loss, grads = jax.value_and_grad(
-        partial(loss_fn, input=input, output=output, rng=rng)
-      )(params)
-      # loss, grads = jax.value_and_grad(loss_fn)(params, input, output)
-      updates, new_opt_state = optimizer.update(grads, opt_state)
-      new_params = optax.apply_updates(params, updates)
-      return loss, new_params, new_opt_state
-
-  elif train_mode == "gaussian":
-    # training a fully connected neural network to do the closure modeling
-    # by gaussian process regression
-    if config.train.input == "uglobal":
-      raise Exception("GPR only supports local modeling!")
-
-    def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
-      """
-      NOTE: an example to show the inconsistency of a priori and a posteriori
-      error. Fix the network architecture to be the same, compare the results
-      where the lr is chosen to be 1e-3 and 1e-4.
-      """
-
-      mlp = hk.Sequential(
-        [
-          hk.Flatten(),
-          hk.Linear(16),
-          jax.nn.relu,
-          hk.Linear(16),
-          jax.nn.relu,
-          hk.Linear(output_dim * 2),
-        ]
-      )
-      # linear_residue = hk.Linear(output_dim * 2)
-      return mlp(features)  # + linear_residue(features)
-
-    correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
-    # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
-    lr = 5e-4
-    optimizer = optax.adam(lr)
-    params = correction_nn.init(random.PRNGKey(0), np.zeros((1, input_dim)))
-    opt_state = optimizer.init(params)
-
-    @jax.jit
-    def loss_fn(
-      params: hk.Params,
-      input: jnp.ndarray,
-      output: jnp.ndarray,
-      rng: PRNGKey,
-    ) -> float:
-      predict = correction_nn.apply(params, input)
-      return jnp.mean(
-        (output - predict[0])**2 / predict[1]**2 / 2 + jnp.log(predict[1])
-      )
 
     @jax.jit
     def update(
@@ -358,46 +351,39 @@ def main(config_dict: ml_collections.ConfigDict):
   print("lr: {:.2e}".format(lr))
   print("validation loss: {:.4e}".format(valid_loss))
 
-  # A priori analysis
-  # visualize the error distribution
+  # A priori analysis: visualize the error distribution
   if config.train.input == "uglobal":
     err = jnp.linalg.norm(correction_nn.apply(params, inputs) - outputs, axis=1)
-    err = err.reshape(1000, -1)
+    err = err.reshape(ks_fine.step_num, -1)
     err = jnp.mean(err, axis=1)
     plt.plot(np.arange(ks_fine.step_num) * ks_fine.dt, err)
     plt.xlabel(r"$T$")
     plt.ylabel("error")
-  elif config.train.mode == "regression" or config.train.mode == "gaussian":
+  elif train_mode == "regression" or train_mode == "gaussian":
     err = correction_nn.apply(params, inputs) - outputs
     err = err[:, 0]
     from ml4dynamics.visualize import plot_error_cloudmap
     plot_error_cloudmap(
-      inputs.reshape(1000, N2).T,
-      err.reshape(1000, N2).T, u_x.T, u_xx.T, u_xxxx.T
+      err.reshape(ks_fine.step_num, N2).T, u.reshape(ks_fine.step_num, N2).T,
+      u_x.T, u_xx.T, u_xxxx.T
     )
     t = jnp.linspace(0, T, ks_fine.step_num).reshape(-1, 1)
     t = jnp.tile(t, (1, N2))
     plt.figure(figsize=(8, 4))
-    if config.train.input == "u":
-      plt.subplot(121)
-      plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=err)
-      plt.subplot(122)
-      plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=t)
-    elif config.train.input == "ux":
-      plt.subplot(121)
-      plt.scatter(u_x.reshape(-1, 1), outputs, s=.2, c=err)
-      plt.subplot(122)
-      plt.scatter(u_x.reshape(-1, 1), outputs, s=.2, c=t)
-    elif config.train.input == "uxx":
-      plt.subplot(121)
-      plt.scatter(u_xx.reshape(-1, 1), outputs, s=.2, c=err)
-      plt.subplot(122)
-      plt.scatter(u_xx.reshape(-1, 1), outputs, s=.2, c=t)
-    elif config.train.input == "uxxxx":
-      plt.subplot(121)
-      plt.scatter(u_xxxx.reshape(-1, 1), outputs, s=.2, c=err)
-      plt.subplot(122)
-      plt.scatter(u_xxxx.reshape(-1, 1), outputs, s=.2, c=t)
+    plt.subplot(121)
+    plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=err)
+    plt.subplot(122)
+    plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=t)
+    tmp_input = jnp.linspace(jnp.min(inputs), jnp.max(inputs), 20)
+    tmp_output = correction_nn.apply(params, tmp_input.reshape(-1, 1))
+    if train_mode == "regression":
+      plt.plot(tmp_input, tmp_output, label="learned", c="r")
+    elif train_mode == "gaussian":
+      plt.errorbar(
+        tmp_input, tmp_output[:, 0], yerr=jnp.abs(tmp_output[:, 1]),
+        fmt='o-', color='r', markersize = .5, label="learned"
+      )
+  plt.legend()
   plt.savefig(f"results/fig/{config.train.input}_tau_err_scatter.pdf")
   plt.clf()
 
@@ -409,12 +395,12 @@ def main(config_dict: ml_collections.ConfigDict):
   elif BC == "Dirichlet-Neumann":
     dx = L / (N1 + 1)
     x = jnp.linspace(dx, L - dx, N1)
-    u0 = ks_fine.attractor + init_scale * random.normal(subkey) *\
-      jnp.sin(10 * jnp.pi * jnp.linspace(L/(N1+1), L - L/(N1+1), N1) / L)
-    # u0 = random.uniform(subkey) * jnp.sin(2 * jnp.pi * x / 128) +\
-    #   random.uniform(key) * jnp.sin(4 * jnp.pi * x / 128)
-    # r0 = random.uniform(subkey) * 20 + 44
-    # u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
+    # u0 = ks_fine.attractor + init_scale * random.normal(subkey) *\
+    #   jnp.sin(10 * jnp.pi * x / L)
+    # u0 = random.uniform(subkey) * jnp.sin(8 * jnp.pi * x / 128) +\
+    #   random.uniform(key) * jnp.sin(16 * jnp.pi * x / 128)
+    r0 = random.uniform(subkey) * 20 + 44
+    u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
   ks_fine.run_simulation(u0, ks_fine.CN_FEM)
   ks_coarse.run_simulation(u0[1::r], ks_coarse.CN_FEM)
   im_array = jnp.zeros(
@@ -447,18 +433,18 @@ def main(config_dict: ml_collections.ConfigDict):
       output.shape = (N, )
       """
 
-      # dx = L / N2
-      # u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) /dx/2
-      # u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
-      # u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
-      #     4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
-      #     dx**4
-      # # local model: [1] to [1]
-      # return partial(correction_nn.apply, params)(input.reshape(-1,
-      #                                                          1)).reshape(-1)
+      dx = L / N2
+      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) /dx/2
+      u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
+      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
+          4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
+          dx**4
+      # local model: [1] to [1]
+      return partial(correction_nn.apply, params)(u_xx.reshape(-1,
+                                                               1)).reshape(-1)
       # global model: [N] to [N]
-      return partial(correction_nn.apply,
-                     params)(input.reshape(1, -1)).reshape(-1)
+      # return partial(correction_nn.apply,
+      #                params)(input.reshape(1, -1)).reshape(-1)
 
   elif train_mode == "generative":
     vae_bind = vae.bind({"params": params})
@@ -481,7 +467,7 @@ def main(config_dict: ml_collections.ConfigDict):
           dx**4
       # local model: [1] to [1]
       tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
-      return (tmp[:, 0] + tmp[:, 1] * z).reshape(-1)
+      return (tmp[:, 0:1] + tmp[:, 1:] * z).reshape(-1)
 
   ks_coarse.run_simulation_with_correction(u0[1::r], ks_coarse.CN_FEM, corrector)
   im_array = jnp.zeros(

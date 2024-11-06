@@ -96,8 +96,8 @@ def plot_stats(
 
 
 def plot_error_cloudmap(
-  u: np.ndarray,
   err: np.ndarray,
+  u: np.ndarray,
   u_x: np.ndarray,
   u_xx: np.ndarray,
   u_xxxx: np.ndarray,
@@ -107,12 +107,12 @@ def plot_error_cloudmap(
   plt.imshow(u)
   plt.colorbar()
   plt.axis("off")
-  plt.ylabel(r"$u$")
+  plt.ylabel(r"$\Delta \tau$")
   plt.subplot(512)
   plt.imshow(err)
   plt.colorbar()
   plt.axis("off")
-  plt.ylabel(r"$\Delta \tau$")
+  plt.ylabel(r"$u$")
   plt.subplot(513)
   plt.imshow(u_x)
   plt.colorbar()
