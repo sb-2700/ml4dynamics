@@ -360,20 +360,19 @@ def main(config_dict: ml_collections.ConfigDict):
     plt.xlabel(r"$T$")
     plt.ylabel("error")
   elif train_mode == "regression" or train_mode == "gaussian":
-    err = correction_nn.apply(params, inputs) - outputs
-    err = err[:, 0]
     if config.sim.case_num == 1:
       from ml4dynamics.visualize import plot_error_cloudmap
+      err = correction_nn.apply(params, inputs) - outputs
+      err = err[:, 0]
       plot_error_cloudmap(
         err.reshape(ks_fine.step_num, N2).T, u.reshape(ks_fine.step_num, N2).T,
         u_x.T, u_xx.T, u_xxxx.T, train_mode
       )
+    
     t = jnp.linspace(0, T, ks_fine.step_num).reshape(1, -1, 1)
     t = jnp.tile(t, (config.sim.case_num, 1, N2)).reshape(-1)
-    plt.figure(figsize=(8, 4))
-    plt.subplot(121)
-    plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=err)
-    plt.subplot(122)
+    plt.figure(figsize=(12, 4))
+    plt.subplot(131)
     plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=t)
     # sns kde plot is tooooo slow!!!
     # start = time()
@@ -389,8 +388,18 @@ def main(config_dict: ml_collections.ConfigDict):
         tmp_input, tmp_output[:, 0], yerr=jnp.abs(tmp_output[:, 1]),
         fmt='o-', color='r', markersize = .5, label="learned"
       )
+    plt.subplot(132)
+    plt.hist(inputs, bins=200, label=config.train.input, density=True)
+    plt.yscale("log")
+    plt.legend()
+    plt.subplot(133)
+    plt.hist(outputs, bins=200, label=r"$\tau$", density=True)
+    plt.yscale("log")
   plt.legend()
-  plt.savefig(f"results/fig/{train_mode}_{config.train.input}_tau_err_scatter.png")
+  plt.savefig(
+    f"results/fig/{train_mode}_{config.train.input}_tau_err_scatter.png",
+    dpi=500
+  )
   plt.clf()
 
   # a posteriori analysis
@@ -495,6 +504,7 @@ def main(config_dict: ml_collections.ConfigDict):
       jnp.sqrt(jnp.mean((ks_coarse.x_hist.T - ks_fine.x_hist[:, 1::r].T)**2))
     )
   )
+  breakpoint()
 
   # compare the simulation statistics (A posteriori analysis)
   from ml4dynamics.visualize import plot_stats
