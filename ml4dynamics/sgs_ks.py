@@ -229,6 +229,8 @@ def main(config_dict: ml_collections.ConfigDict):
     # by gaussian process
     if config.train.input == "uglobal":
       raise Exception("Gaussian process only supports local modeling!")
+    
+    n_g = config.train.n_g
 
     def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
 
@@ -239,7 +241,7 @@ def main(config_dict: ml_collections.ConfigDict):
           jax.nn.relu,
           hk.Linear(64),
           jax.nn.relu,
-          hk.Linear(output_dim * 2),
+          hk.Linear(output_dim * n_g * 3),
         ]
       )
       # linear_residue = hk.Linear(output_dim * 2)
@@ -259,12 +261,19 @@ def main(config_dict: ml_collections.ConfigDict):
       rng: PRNGKey,
     ) -> float:
       predict = correction_nn.apply(params, input)
-      return jnp.mean(
-        (output - predict[..., 0:1])**2 / predict[..., 1:]**2 / 2 +\
-        jnp.log(jnp.abs(predict[..., 1:]))
-      )
+      # gaussian p.d.f.
+      # return jnp.mean(
+      #   (output - predict[..., 0:1])**2 / predict[..., 1:]**2 / 2 +\
+      #   jnp.log(jnp.abs(predict[..., 1:]))
+      # )
+      # gaussian mixture model p.d.f.
+      c = jax.nn.softmax(predict[..., :n_g]) # coeff of the GMM
+      mean = predict[..., n_g: 2 * n_g]
+      std = jnp.abs(predict[..., 2 * n_g:]) + 0.01
+      # breakpoint()
+      return -jnp.mean(jnp.log(jnp.sum(c / std * jnp.exp(-((output - mean)/std)**2/2), axis=1)))
 
-    @jax.jit
+    # @jax.jit
     def update(
       params: hk.Params, input: jnp.ndarray, output: jnp.ndarray, rng: PRNGKey,
       opt_state: OptState
@@ -333,6 +342,7 @@ def main(config_dict: ml_collections.ConfigDict):
       rng, key = random.split(key)
       input = train_ds["input"][i:i + batch_size]
       output = train_ds["output"][i:i + batch_size]
+      # breakpoint()
       loss, params, opt_state = update(params, input, output, rng, opt_state)
       loss_hist.append(loss)
       if train_mode == "regression":
@@ -382,7 +392,7 @@ def main(config_dict: ml_collections.ConfigDict):
     tmp_output = correction_nn.apply(params, tmp_input.reshape(-1, 1))
     if train_mode == "regression":
       plt.plot(tmp_input, tmp_output, label="learned", c="r")
-    elif train_mode == "gaussian":
+    elif train_mode == "gaussian" and n_g == 1:
       print("std: ", tmp_output[:, 1])
       plt.errorbar(
         tmp_input, tmp_output[:, 0], yerr=jnp.abs(tmp_output[:, 1]),
