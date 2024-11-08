@@ -7,11 +7,10 @@ import numpy.random as random
 import torch as torch
 import yaml
 from box import Box
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from tqdm import tqdm
-
 from models import EDNet, UNet
 from simulator import *
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from tqdm import tqdm
 from utils import read_and_preprocess
 
 np.set_printoptions(precision=15)

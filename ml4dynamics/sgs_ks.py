@@ -1,5 +1,6 @@
 import os
 from functools import partial
+from time import time
 from typing import Tuple
 
 import haiku as hk
@@ -15,7 +16,6 @@ from jax import random as random
 from jaxtyping import Array
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
-from time import time
 from tqdm import tqdm
 
 from ml4dynamics.dynamics import KS
@@ -229,7 +229,7 @@ def main(config_dict: ml_collections.ConfigDict):
     # by gaussian process
     if config.train.input == "uglobal":
       raise Exception("Gaussian process only supports local modeling!")
-    
+
     n_g = config.train.n_g
 
     def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
@@ -267,11 +267,15 @@ def main(config_dict: ml_collections.ConfigDict):
       #   jnp.log(jnp.abs(predict[..., 1:]))
       # )
       # gaussian mixture model p.d.f.
-      c = jax.nn.softmax(predict[..., :n_g]) # coeff of the GMM
-      mean = predict[..., n_g: 2 * n_g]
+      c = jax.nn.softmax(predict[..., :n_g])  # coeff of the GMM
+      mean = predict[..., n_g:2 * n_g]
       std = jnp.abs(predict[..., 2 * n_g:]) + 0.01
       # breakpoint()
-      return -jnp.mean(jnp.log(jnp.sum(c / std * jnp.exp(-((output - mean)/std)**2/2), axis=1)))
+      return -jnp.mean(
+        jnp.log(
+          jnp.sum(c / std * jnp.exp(-((output - mean) / std)**2 / 2), axis=1)
+        )
+      )
 
     # @jax.jit
     def update(
@@ -375,10 +379,10 @@ def main(config_dict: ml_collections.ConfigDict):
       err = correction_nn.apply(params, inputs) - outputs
       err = err[:, 0]
       plot_error_cloudmap(
-        err.reshape(ks_fine.step_num, N2).T, u.reshape(ks_fine.step_num, N2).T,
-        u_x.T, u_xx.T, u_xxxx.T, train_mode
+        err.reshape(ks_fine.step_num, N2).T,
+        u.reshape(ks_fine.step_num, N2).T, u_x.T, u_xx.T, u_xxxx.T, train_mode
       )
-    
+
     t = jnp.linspace(0, T, ks_fine.step_num).reshape(1, -1, 1)
     t = jnp.tile(t, (config.sim.case_num, 1, N2)).reshape(-1)
     plt.figure(figsize=(12, 4))
@@ -395,8 +399,13 @@ def main(config_dict: ml_collections.ConfigDict):
     elif train_mode == "gaussian" and n_g == 1:
       print("std: ", tmp_output[:, 1])
       plt.errorbar(
-        tmp_input, tmp_output[:, 0], yerr=jnp.abs(tmp_output[:, 1]),
-        fmt='o-', color='r', markersize = .5, label="learned"
+        tmp_input,
+        tmp_output[:, 0],
+        yerr=jnp.abs(tmp_output[:, 1]),
+        fmt='o-',
+        color='r',
+        markersize=.5,
+        label="learned"
       )
     plt.subplot(132)
     plt.hist(inputs, bins=200, label=config.train.input, density=True)
@@ -459,7 +468,7 @@ def main(config_dict: ml_collections.ConfigDict):
       """
 
       dx = L / N2
-      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) /dx/2
+      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) / dx / 2
       u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
       u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
@@ -494,7 +503,9 @@ def main(config_dict: ml_collections.ConfigDict):
       tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
       return (tmp[:, 0:1] + tmp[:, 1:] * z).reshape(-1)
 
-  ks_coarse.run_simulation_with_correction(u0[1::r], ks_coarse.CN_FEM, corrector)
+  ks_coarse.run_simulation_with_correction(
+    u0[1::r], ks_coarse.CN_FEM, corrector
+  )
   im_array = jnp.zeros(
     (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
   )

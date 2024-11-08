@@ -13,10 +13,9 @@ import h5py
 import jax
 import ml_collections
 import numpy as np
+import utils
 import yaml
 from box import Box
-
-import utils
 
 np.set_printoptions(precision=15)
 jax.config.update("jax_enable_x64", True)
