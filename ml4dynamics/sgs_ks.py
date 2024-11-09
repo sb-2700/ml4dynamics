@@ -252,6 +252,7 @@ def main(config_dict: ml_collections.ConfigDict):
     lr = 1e-4
     optimizer = optax.adam(lr)
     params = correction_nn.init(random.PRNGKey(0), np.zeros((1, input_dim)))
+    params['linear']['b'] = jnp.ones((64, ))
     opt_state = optimizer.init(params)
 
     def loss_fn(
@@ -346,7 +347,6 @@ def main(config_dict: ml_collections.ConfigDict):
       rng, key = random.split(key)
       input = train_ds["input"][i:i + batch_size]
       output = train_ds["output"][i:i + batch_size]
-      # breakpoint()
       loss, params, opt_state = update(params, input, output, rng, opt_state)
       loss_hist.append(loss)
       if train_mode == "regression":
@@ -543,3 +543,5 @@ if __name__ == "__main__":
   with open("config/simulation.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
   main(config_dict)
+
+  breakpoint()
