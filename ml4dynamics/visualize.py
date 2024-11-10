@@ -5,11 +5,11 @@ from matplotlib import cm
 
 
 def plot_from_h5py(case: str):
-  '''Plot the fluid field from the h5py file'''
+  """Plot the fluid field from the h5py file"""
 
-  path = 'data/RD/' + case + '.h5'
-  with h5py.File(path, 'r') as file:
-    U = file['input'][:]
+  path = "data/RD/" + case + ".h5"
+  with h5py.File(path, "r") as file:
+    U = file["input"][:]
     case_num, nt, dim, nx, ny = U.shape
     T = file["end_time"][()]
     dt = T / nt
@@ -25,20 +25,20 @@ def plot_from_h5py(case: str):
       for j in range(n2):
         plt.subplot(n2, n1, i * n2 + j + 1)
         plt.imshow(U[random_integer, (i * n2 + j) * 30, 0, :, :], cmap=cm.jet)
-        plt.axis('off')
-    plt.savefig('results/fig/traj_' + str(random_integer) + '.pdf')
+        plt.axis("off")
+    plt.savefig("results/fig/traj_" + str(random_integer) + ".pdf")
 
 
 def plot_from_h5py_cmp():
-  '''Plot the fluid field from the h5py file'''
+  """Plot the fluid field from the h5py file"""
 
-  path = 'data/RD/128-100.h5'
-  with h5py.File(path, 'r') as file:
-    U128 = file['input'][:]
+  path = "data/RD/128-100.h5"
+  with h5py.File(path, "r") as file:
+    U128 = file["input"][:]
 
-  path = 'data/RD/64-100.h5'
-  with h5py.File(path, 'r') as file:
-    U64 = file['input'][:]
+  path = "data/RD/64-100.h5"
+  with h5py.File(path, "r") as file:
+    U64 = file["input"][:]
 
   n1 = 5
   n2 = 5
@@ -53,8 +53,8 @@ def plot_from_h5py_cmp():
         plt.imshow(
           U128[random_integer, (i * n2 + j) * 30, 0, :, :], cmap=cm.viridis
         )
-        plt.axis('off')
-    plt.savefig('results/fig/traj_128_' + str(random_integer) + '.pdf')
+        plt.axis("off")
+    plt.savefig("results/fig/traj_128_" + str(random_integer) + ".pdf")
     plt.clf()
 
     plt.figure(figsize=(20, 20))
@@ -64,8 +64,8 @@ def plot_from_h5py_cmp():
         plt.imshow(
           U64[random_integer, (i * n2 + j) * 30, 0, :, :], cmap=cm.viridis
         )
-        plt.axis('off')
-    plt.savefig('results/fig/traj_64_' + str(random_integer) + '.pdf')
+        plt.axis("off")
+    plt.savefig("results/fig/traj_64_" + str(random_integer) + ".pdf")
 
 
 def plot_stats(
@@ -76,20 +76,53 @@ def plot_stats(
   fig_name: str,
 ):
 
+  plt.figure(figsize=(6, 6))
   plt.subplot(211)
-  plt.plot(t_array, np.mean(fine_traj, axis=1), label='truth')
-  plt.plot(t_array, np.mean(coarse_traj1, axis=1), label='baseline')
-  plt.plot(t_array, np.mean(coarse_traj2, axis=1), label='correction')
+  plt.plot(t_array, np.mean(fine_traj, axis=1), label="truth")
+  plt.plot(
+    t_array, np.mean(coarse_traj1, axis=1),
+    label="baseline, err={:.3f}".format(
+      np.linalg.norm(
+        np.mean(fine_traj, axis=1) - np.mean(coarse_traj1, axis=1)
+      )
+    )
+  )
+  plt.plot(
+    t_array, np.mean(coarse_traj2, axis=1),
+    label="correction, err={:.3f}".format(
+      np.linalg.norm(
+        np.mean(fine_traj, axis=1) - np.mean(coarse_traj2, axis=1)
+      )
+    )
+  )
   plt.legend()
-  plt.axis("on")
   plt.xlabel(r"$T$")
   plt.ylabel(r"$\overline{u}$")
+  plt.title("baseline traj RMSE: {:.3f}".format(
+    np.sqrt(np.mean((coarse_traj1.T - fine_traj[:, 1::2].T)**2))
+  ))
   plt.subplot(212)
-  plt.plot(t_array, np.mean(fine_traj**2, axis=1), label='truth')
-  plt.plot(t_array, np.mean(coarse_traj1**2, axis=1), label='baseline')
-  plt.plot(t_array, np.mean(coarse_traj2**2, axis=1), label='correction')
+  plt.plot(t_array, np.mean(fine_traj**2, axis=1), label="truth")
+  plt.plot(
+    t_array, np.mean(coarse_traj1**2, axis=1),
+    label="baseline, err={:.3f}".format(
+      np.linalg.norm(
+        np.mean(fine_traj**2, axis=1) - np.mean(coarse_traj1**2, axis=1)
+      )
+    )
+  )
+  plt.plot(
+    t_array, np.mean(coarse_traj2**2, axis=1),
+    label="correction, err={:.3f}".format(
+      np.linalg.norm(
+        np.mean(fine_traj**2, axis=1) - np.mean(coarse_traj2**2, axis=1)
+      )
+    )
+  )
+  plt.title("corrected traj RMSE: {:.3f}".format(
+    np.sqrt(np.mean((coarse_traj2.T - fine_traj[:, 1::2].T)**2))
+  ))
   plt.legend()
-  plt.axis("on")
   plt.xlabel(r"$T$")
   plt.ylabel(r"$\overline{u^2}$")
   plt.savefig(fig_name)
