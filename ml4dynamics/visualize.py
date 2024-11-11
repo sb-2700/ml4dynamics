@@ -71,61 +71,100 @@ def plot_from_h5py_cmp():
 def plot_stats(
   t_array: np.array,
   fine_traj: np.ndarray,
-  coarse_traj1: np.ndarray,
-  coarse_traj2: np.ndarray,
+  baseline: np.ndarray,
+  correction1: np.ndarray,
+  correction2: np.ndarray,
   fig_name: str,
 ):
 
+  r = fine_traj.shape[1] // baseline.shape[1]
   plt.figure(figsize=(6, 6))
   plt.subplot(211)
   plt.plot(t_array, np.mean(fine_traj, axis=1), label="truth")
   plt.plot(
-    t_array, np.mean(coarse_traj1, axis=1),
-    label="baseline, err={:.3f}".format(
-      np.linalg.norm(
-        np.mean(fine_traj, axis=1) - np.mean(coarse_traj1, axis=1)
-      )
+    t_array, np.mean(baseline, axis=1),
+    label="baseline={:.3e}|MSE={:.3e}".format(
+      # np.linalg.norm(
+      #   np.mean(fine_traj, axis=1) - np.mean(baseline, axis=1)
+      # )
+      np.mean(fine_traj) - np.mean(baseline),
+      np.mean((fine_traj[:,r-1::r] - baseline)**2)
     )
   )
   plt.plot(
-    t_array, np.mean(coarse_traj2, axis=1),
-    label="correction, err={:.3f}".format(
-      np.linalg.norm(
-        np.mean(fine_traj, axis=1) - np.mean(coarse_traj2, axis=1)
-      )
+    t_array, np.mean(correction1, axis=1),
+    label="err2={:.3e}|MSE={:.3e}".format(
+      # np.linalg.norm(
+      #   np.mean(fine_traj, axis=1) - np.mean(correction1, axis=1)
+      # )
+      np.mean(fine_traj) - np.mean(correction1),
+      np.mean((fine_traj[:,r-1::r] - correction1)**2)
     )
   )
+  if correction2 is not None:
+    plt.plot(
+      t_array, np.mean(correction2, axis=1),
+      label="err3={:.3e}|MSE={:.3e}".format(
+        # np.linalg.norm(
+        #   np.mean(fine_traj, axis=1) - np.mean(correction2, axis=1)
+        # )
+        np.mean(fine_traj) - np.mean(correction2),
+        np.mean((fine_traj[:,r-1::r] - correction2)**2)
+      )
+    )
   plt.legend()
   plt.xlabel(r"$T$")
   plt.ylabel(r"$\overline{u}$")
-  plt.title("baseline traj RMSE: {:.3f}".format(
-    np.sqrt(np.mean((coarse_traj1.T - fine_traj[:, 1::2].T)**2))
-  ))
   plt.subplot(212)
   plt.plot(t_array, np.mean(fine_traj**2, axis=1), label="truth")
   plt.plot(
-    t_array, np.mean(coarse_traj1**2, axis=1),
-    label="baseline, err={:.3f}".format(
-      np.linalg.norm(
-        np.mean(fine_traj**2, axis=1) - np.mean(coarse_traj1**2, axis=1)
-      )
+    t_array, np.mean(baseline**2, axis=1),
+    label="baseline={:.3e}".format(
+      # np.linalg.norm(
+      #   np.mean(fine_traj**2, axis=1) - np.mean(baseline**2, axis=1)
+      # )
+      np.mean(fine_traj**2) - np.mean(baseline**2),
     )
   )
   plt.plot(
-    t_array, np.mean(coarse_traj2**2, axis=1),
-    label="correction, err={:.3f}".format(
-      np.linalg.norm(
-        np.mean(fine_traj**2, axis=1) - np.mean(coarse_traj2**2, axis=1)
-      )
+    t_array, np.mean(correction1**2, axis=1),
+    label="err2={:.3e}".format(
+      # np.linalg.norm(
+      #   np.mean(fine_traj**2, axis=1) - np.mean(correction1**2, axis=1)
+      # )
+      np.mean(fine_traj**2) - np.mean(correction1**2),
     )
   )
-  plt.title("corrected traj RMSE: {:.3f}".format(
-    np.sqrt(np.mean((coarse_traj2.T - fine_traj[:, 1::2].T)**2))
-  ))
+  if correction2 is not None:
+    plt.plot(
+      t_array, np.mean(correction2**2, axis=1),
+      label="err3={:.3e}".format(
+        # np.linalg.norm(
+        #   np.mean(fine_traj**2, axis=1) - np.mean(correction2**2, axis=1)
+        # )
+        np.mean(fine_traj**2) - np.mean(correction2**2),
+      )
+    )
   plt.legend()
   plt.xlabel(r"$T$")
   plt.ylabel(r"$\overline{u^2}$")
   plt.savefig(fig_name)
+  print(
+    "rmse without correction: {:.3e}".format(
+      np.sqrt(np.mean((baseline.T - fine_traj[:, r-1::r].T)**2))
+    )
+  )
+  print(
+    "rmse with correction1: {:.3e}".format(
+      np.sqrt(np.mean((correction1.T - fine_traj[:, r-1::r].T)**2))
+    )
+  )
+  if correction2 is not None:
+    print(
+      "rmse with correction2: {:.3e}".format(
+        np.sqrt(np.mean((correction2.T - fine_traj[:, r-1::r].T)**2))
+      )
+    )
 
 
 def plot_error_cloudmap(

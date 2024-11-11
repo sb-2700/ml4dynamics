@@ -180,6 +180,20 @@ class dynamics(object):
     self.x_hist = jnp.where(self.x_hist > -20, self.x_hist, -20)
     # self.check_simulation()
 
+  def run_simulation_with_probabilistic_correction(self, x, iter, corrector):
+    step_num = self.step_num
+    self.x_hist = jnp.zeros([step_num, self.N])
+    key = self.key
+    for i in range(step_num):
+      key, subkey = random.split(key)
+      self.x_hist = self.x_hist.at[i].set(x)
+      x = iter(x) + corrector(x, subkey) * self.dt
+
+    # postprocess for visualization
+    self.x_hist = jnp.where(self.x_hist < 20, self.x_hist, 20)
+    self.x_hist = jnp.where(self.x_hist > -20, self.x_hist, -20)
+    # self.check_simulation()
+
   def check_simulation(self):
     if jnp.any(jnp.isnan(self.x_hist)) or jnp.any(jnp.isinf(self.x_hist)):
       raise Exception("The simulation contains Inf or NaN")

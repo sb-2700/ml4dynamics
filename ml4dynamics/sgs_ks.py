@@ -38,9 +38,9 @@ def main(config_dict: ml_collections.ConfigDict):
     N1 = config.ks.nx
   elif BC == "Dirichlet-Neumann":
     N1 = config.ks.nx - 1
-  N2 = N1 // 2
+  r = config.ks.r
+  N2 = N1 // r
   dt = config.ks.dt
-  r = 2
   key = random.PRNGKey(config.sim.seed)
 
   # fine simulation
@@ -174,6 +174,7 @@ def main(config_dict: ml_collections.ConfigDict):
   if train_mode == "regression":
     # training a fully connected neural network to do the closure modeling
     # via regression
+    print(f"Fit the SGS model with regression...")
     def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
       """
       NOTE: an example to show the inconsistency of a priori and a posteriori
@@ -231,6 +232,7 @@ def main(config_dict: ml_collections.ConfigDict):
       raise Exception("Gaussian process only supports local modeling!")
 
     n_g = config.train.n_g
+    print(f"Fit the SGS model with {n_g} Gaussian modes...")
 
     def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
 
@@ -262,23 +264,24 @@ def main(config_dict: ml_collections.ConfigDict):
       rng: PRNGKey,
     ) -> float:
       predict = correction_nn.apply(params, input)
-      # gaussian p.d.f.
-      # return jnp.mean(
-      #   (output - predict[..., 0:1])**2 / predict[..., 1:]**2 / 2 +\
-      #   jnp.log(jnp.abs(predict[..., 1:]))
-      # )
-      # gaussian mixture model p.d.f.
-      c = jax.nn.softmax(predict[..., :n_g])  # coeff of the GMM
-      mean = predict[..., n_g:2 * n_g]
-      std = jnp.abs(predict[..., 2 * n_g:]) + 0.01
-      # breakpoint()
-      return -jnp.mean(
-        jnp.log(
-          jnp.sum(c / std * jnp.exp(-((output - mean) / std)**2 / 2), axis=1)
+      if n_g == 1:
+        # gaussian p.d.f.
+        return jnp.mean(
+          (output - predict[..., 1:2])**2 / predict[..., 2:]**2 / 2 +\
+          jnp.log(jnp.abs(predict[..., 2:]))
         )
-      )
+      else:
+        # gaussian mixture model p.d.f.
+        c = jax.nn.softmax(predict[..., :n_g])  # coeff of the GMM
+        mean = predict[..., n_g:2 * n_g]
+        std = jnp.abs(predict[..., 2 * n_g:]) + 0.01
+        return -jnp.mean(
+          jnp.log(
+            jnp.sum(c / std * jnp.exp(-((output - mean) / std)**2 / 2), axis=1)
+          )
+        )
 
-    # @jax.jit
+    @jax.jit
     def update(
       params: hk.Params, input: jnp.ndarray, output: jnp.ndarray, rng: PRNGKey,
       opt_state: OptState
@@ -348,13 +351,20 @@ def main(config_dict: ml_collections.ConfigDict):
       input = train_ds["input"][i:i + batch_size]
       output = train_ds["output"][i:i + batch_size]
       loss, params, opt_state = update(params, input, output, rng, opt_state)
-      loss_hist.append(loss)
       if train_mode == "regression":
         relative_loss = loss / jnp.mean(output**2)
         desc_str = f"{relative_loss=:.4e}"
+        loss_hist.append(relative_loss)
       elif train_mode == "generative" or train_mode == "gaussian":
         desc_str = f"{loss=:.4e}"
+        loss_hist.append(loss)
       iters.set_description_str(desc_str)
+  loss_hist = jnp.array(loss_hist)
+  loss_hist = jnp.where(loss_hist > 5, 5, loss_hist)
+  plt.plot(loss_hist, label="Loss")
+  plt.xlabel("iter")
+  plt.savefig("results/fig/loss.pdf")
+  plt.clf()
 
   valid_loss = 0
   for i in range(0, len(test_ds["input"]), batch_size):
@@ -383,7 +393,9 @@ def main(config_dict: ml_collections.ConfigDict):
         u.reshape(ks_fine.step_num, N2).T, u_x.T, u_xx.T, u_xxxx.T, train_mode
       )
 
-    t = jnp.linspace(0, T, ks_fine.step_num).reshape(1, -1, 1)
+    # TODO: the treatment here is temporary
+    step = jnp.prod(jnp.array(inputs.shape)) // N2 // config.sim.case_num
+    t = jnp.linspace(0, T, step).reshape(1, -1, 1)
     t = jnp.tile(t, (config.sim.case_num, 1, N2)).reshape(-1)
     plt.figure(figsize=(12, 4))
     plt.subplot(131)
@@ -396,17 +408,17 @@ def main(config_dict: ml_collections.ConfigDict):
     tmp_output = correction_nn.apply(params, tmp_input.reshape(-1, 1))
     if train_mode == "regression":
       plt.plot(tmp_input, tmp_output, label="learned", c="r")
-    elif train_mode == "gaussian" and n_g == 1:
-      print("std: ", tmp_output[:, 1])
-      plt.errorbar(
-        tmp_input,
-        tmp_output[:, 0],
-        yerr=jnp.abs(tmp_output[:, 1]),
-        fmt='o-',
-        color='r',
-        markersize=.5,
-        label="learned"
-      )
+    elif train_mode == "gaussian":
+      for _ in range(n_g):
+        plt.errorbar(
+          tmp_input,
+          tmp_output[:, n_g + _],
+          yerr=jnp.abs(tmp_output[:, 2 * n_g + _]),
+          fmt='o-',
+          markersize=.5,
+          label="learned"
+        )
+      plt.title("loss = {:.4e}".format(loss_hist[-1]))
     plt.subplot(132)
     plt.hist(inputs, bins=200, label=config.train.input, density=True)
     plt.yscale("log")
@@ -417,7 +429,7 @@ def main(config_dict: ml_collections.ConfigDict):
   plt.legend()
   plt.savefig(
     f"results/fig/{train_mode}_{config.train.input}_tau_err_scatter.png",
-    dpi=500
+    dpi=1000
   )
   plt.clf()
 
@@ -436,27 +448,15 @@ def main(config_dict: ml_collections.ConfigDict):
     r0 = random.uniform(subkey) * 20 + 44
     u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
   ks_fine.run_simulation(u0, ks_fine.CN_FEM)
-  ks_coarse.run_simulation(u0[1::r], ks_coarse.CN_FEM)
+  ks_coarse.run_simulation(u0[r-1::r], ks_coarse.CN_FEM)
   im_array = jnp.zeros(
     (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
   )
-  im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, 1::r].T)
+  im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, r-1::r].T)
   im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
   im_array = im_array.at[2,
-                         0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, 1::r].T)
+                         0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, r-1::r].T)
   title_array = [f"{N1}", f"{N2}", "diff"]
-  plot_with_horizontal_colorbar(
-    im_array,
-    fig_size=(4, 6),
-    title_array=title_array,
-    file_path=
-    f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_cmp.pdf"
-  )
-  print(
-    "rmse without correction: {:.4f}".format(
-      jnp.sqrt(jnp.mean((ks_coarse.x_hist.T - ks_fine.x_hist[:, 1::r].T)**2))
-    )
-  )
   baseline = ks_coarse.x_hist
 
   if train_mode == "regression":
@@ -474,8 +474,14 @@ def main(config_dict: ml_collections.ConfigDict):
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
           dx**4
       # local model: [1] to [1]
-      return partial(correction_nn.apply, params)(u_xx.reshape(-1,
-                                                               1)).reshape(-1)
+      if config.train.input == "u":
+        return partial(correction_nn.apply, params)(input.reshape(-1, 1)).reshape(-1)
+      elif config.train.input == "ux":
+        return partial(correction_nn.apply, params)(u_x.reshape(-1, 1)).reshape(-1)
+      elif config.train.input == "uxx":
+        return partial(correction_nn.apply, params)(u_xx.reshape(-1, 1)).reshape(-1)
+      elif config.train.input == "uxxxx":
+        return partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1)).reshape(-1)
       # global model: [N] to [N]
       # return partial(correction_nn.apply,
       #                params)(input.reshape(1, -1)).reshape(-1)
@@ -486,8 +492,7 @@ def main(config_dict: ml_collections.ConfigDict):
     corrector = partial(vae_bind.generate, z)
   elif train_mode == "gaussian":
     z = random.normal(key)
-
-    def corrector(input):
+    def corrector(input: jnp.array):
       """
       input.shape = (N, )
       output.shape = (N, )
@@ -500,32 +505,56 @@ def main(config_dict: ml_collections.ConfigDict):
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
           dx**4
       # local model: [1] to [1]
-      tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
-      return (tmp[:, 0:1] + tmp[:, 1:] * z).reshape(-1)
+      if config.train.input == "u":
+        tmp = partial(correction_nn.apply, params)(input.reshape(-1, 1))
+      elif config.train.input == "ux":
+        tmp = partial(correction_nn.apply, params)(u_x.reshape(-1, 1))
+      elif config.train.input == "uxx":
+        tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
+      elif config.train.input == "uxxxx":
+        tmp = partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1))
+      p = jax.nn.sigmoid(tmp[..., :n_g])
+      index = jax.vmap(
+        partial(jax.random.choice, key=key, a=n_g, shape=(1, ))
+      )(p=p).reshape(-1)
+      return (tmp[np.arange(N2), n_g + index] +
+              tmp[np.arange(N2), n_g + index] * z).reshape(-1)
+    
+    def corrector_sample(input: jnp.array, key: PRNGKey):
+
+      dx = L / N2
+      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) / dx / 2
+      u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
+      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
+          4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
+          dx**4
+      # local model: [1] to [1]
+      if config.train.input == "u":
+        tmp = partial(correction_nn.apply, params)(input.reshape(-1, 1))
+      elif config.train.input == "ux":
+        tmp = partial(correction_nn.apply, params)(u_x.reshape(-1, 1))
+      elif config.train.input == "uxx":
+        tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
+      elif config.train.input == "uxxxx":
+        tmp = partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1))
+      p = jax.nn.sigmoid(tmp[..., :n_g])
+      index = jax.vmap(
+        partial(jax.random.choice, key=key, a=n_g, shape=(1, ))
+      )(p=p).reshape(-1)
+      z = random.normal(key)
+      return (tmp[np.arange(N2), n_g + index] +
+              tmp[np.arange(N2), n_g + index] * z).reshape(-1)
 
   ks_coarse.run_simulation_with_correction(
-    u0[1::r], ks_coarse.CN_FEM, corrector
+    u0[r-1::r], ks_coarse.CN_FEM, corrector
   )
-  im_array = jnp.zeros(
-    (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
-  )
-  im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, 1::r].T)
-  im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
-  im_array = im_array.at[2,
-                         0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, 1::r].T)
-  plot_with_horizontal_colorbar(
-    im_array,
-    fig_size=(4, 6),
-    title_array=title_array,
-    file_path=
-    f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_correct_cmp.pdf"
-  )
-  print(
-    "rmse with correction: {:.4f}".format(
-      jnp.sqrt(jnp.mean((ks_coarse.x_hist.T - ks_fine.x_hist[:, 1::r].T)**2))
+  correction1 = ks_coarse.x_hist
+  correction2 = None
+  if train_mode == "gaussian":
+    ks_coarse.run_simulation_with_probabilistic_correction(
+      u0[r-1::r], ks_coarse.CN_FEM, corrector_sample
     )
-  )
-  breakpoint()
+    correction2 = ks_coarse.x_hist
 
   # compare the simulation statistics (A posteriori analysis)
   from ml4dynamics.visualize import plot_stats
@@ -533,9 +562,32 @@ def main(config_dict: ml_collections.ConfigDict):
     np.arange(ks_fine.x_hist.shape[0]) * ks_fine.dt,
     ks_fine.x_hist,
     baseline,
-    ks_coarse.x_hist,
+    correction1,
+    correction2,
     f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_cmp_stats.pdf",
   )
+  # plot_with_horizontal_colorbar(
+  #   im_array,
+  #   fig_size=(4, 6),
+  #   title_array=title_array,
+  #   file_path=
+  #   f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_cmp.pdf"
+  # )
+  # im_array = jnp.zeros(
+  #   (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
+  # )
+  # im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, r-1::r].T)
+  # im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
+  # im_array = im_array.at[2,
+  #                        0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, r-1::r].T)
+  # plot_with_horizontal_colorbar(
+  #   im_array,
+  #   fig_size=(4, 6),
+  #   title_array=title_array,
+  #   file_path=
+  #   f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_correct_cmp.pdf"
+  # )
+  breakpoint()
 
 
 if __name__ == "__main__":
@@ -543,5 +595,3 @@ if __name__ == "__main__":
   with open("config/simulation.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
   main(config_dict)
-
-  breakpoint()
