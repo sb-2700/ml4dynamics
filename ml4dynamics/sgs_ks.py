@@ -80,10 +80,10 @@ def main(config_dict: ml_collections.ConfigDict):
 
   # prepare the training data
   if os.path.isfile(
-    'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num)
+    'data/ks/c{:.1f}_T{}_n{}.npz'.format(c, T, config.sim.case_num)
   ):
     data = np.load(
-      'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num)
+      'data/ks/c{:.1f}_T{}_n{}.npz'.format(c, T, config.sim.case_num)
     )
     inputs = data["input"]
     outputs = data["output"]
@@ -127,7 +127,7 @@ def main(config_dict: ml_collections.ConfigDict):
       jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs)):
       raise Exception("The data contains Inf or NaN")
     np.savez(
-      'data/ks/nu{:.1f}_c{:.1f}_n{}.npz'.format(nu, c, config.sim.case_num),
+      'data/ks/c{:.1f}_T{}_n{}.npz'.format(c, T, config.sim.case_num),
       input=inputs,
       output=outputs
     )
@@ -185,9 +185,9 @@ def main(config_dict: ml_collections.ConfigDict):
       mlp = hk.Sequential(
         [
           hk.Flatten(),
-          hk.Linear(16),
+          hk.Linear(64),
           jax.nn.relu,
-          hk.Linear(16),
+          hk.Linear(64),
           jax.nn.relu,
           hk.Linear(output_dim),
         ]
@@ -351,19 +351,19 @@ def main(config_dict: ml_collections.ConfigDict):
       input = train_ds["input"][i:i + batch_size]
       output = train_ds["output"][i:i + batch_size]
       loss, params, opt_state = update(params, input, output, rng, opt_state)
-      if train_mode == "regression":
-        relative_loss = loss / jnp.mean(output**2)
-        desc_str = f"{relative_loss=:.4e}"
-        loss_hist.append(relative_loss)
-      elif train_mode == "generative" or train_mode == "gaussian":
-        desc_str = f"{loss=:.4e}"
-        loss_hist.append(loss)
+    if train_mode == "regression":
+      relative_loss = loss / jnp.mean(output**2)
+      desc_str = f"{relative_loss=:.4e}"
+      loss_hist.append(relative_loss)
+    elif train_mode == "generative" or train_mode == "gaussian":
+      desc_str = f"{loss=:.4e}"
+      loss_hist.append(loss)
       iters.set_description_str(desc_str)
   loss_hist = jnp.array(loss_hist)
   loss_hist = jnp.where(loss_hist > 5, 5, loss_hist)
   plt.plot(loss_hist, label="Loss")
   plt.xlabel("iter")
-  plt.savefig("results/fig/loss.pdf")
+  plt.savefig(f"results/fig/ks_c{c}T{T}n{config.sim.case_num}_{train_mode}_loss.pdf")
   plt.clf()
 
   valid_loss = 0
@@ -418,7 +418,7 @@ def main(config_dict: ml_collections.ConfigDict):
           markersize=.5,
           label="learned"
         )
-      plt.title("loss = {:.4e}".format(loss_hist[-1]))
+    plt.title("loss = {:.4e}".format(loss_hist[-1]))
     plt.subplot(132)
     plt.hist(inputs, bins=200, label=config.train.input, density=True)
     plt.yscale("log")
@@ -428,7 +428,7 @@ def main(config_dict: ml_collections.ConfigDict):
     plt.yscale("log")
   plt.legend()
   plt.savefig(
-    f"results/fig/{train_mode}_{config.train.input}_tau_err_scatter.png",
+    f"results/fig/ks_c{c}T{T}n{config.sim.case_num}_{train_mode}_{config.train.input}_scatter.png",
     dpi=1000
   )
   plt.clf()
@@ -449,14 +449,14 @@ def main(config_dict: ml_collections.ConfigDict):
     u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
   ks_fine.run_simulation(u0, ks_fine.CN_FEM)
   ks_coarse.run_simulation(u0[r-1::r], ks_coarse.CN_FEM)
-  im_array = jnp.zeros(
-    (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
-  )
-  im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, r-1::r].T)
-  im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
-  im_array = im_array.at[2,
-                         0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, r-1::r].T)
-  title_array = [f"{N1}", f"{N2}", "diff"]
+  # im_array = jnp.zeros(
+  #   (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
+  # )
+  # im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, r-1::r].T)
+  # im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
+  # im_array = im_array.at[2,
+  #                        0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, r-1::r].T)
+  # title_array = [f"{N1}", f"{N2}", "diff"]
   baseline = ks_coarse.x_hist
 
   if train_mode == "regression":
@@ -564,7 +564,7 @@ def main(config_dict: ml_collections.ConfigDict):
     baseline,
     correction1,
     correction2,
-    f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_cmp_stats.pdf",
+    f"results/fig/ks_c{c}T{T}n{config.sim.case_num}_{train_mode}_stats.pdf",
   )
   # plot_with_horizontal_colorbar(
   #   im_array,

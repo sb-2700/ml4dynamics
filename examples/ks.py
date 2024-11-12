@@ -2,7 +2,7 @@
 Examples with Kuramoto–Sivashinsky equation
 
 $$
-  u_t + (c + u)u_c + uu_x + u_{xx} + \nu u_{xxxx} = 0.
+  u_t + (c + u)u_x + uu_x + u_{xx} + \nu u_{xxxx} = 0.
 $$
 
 We perform sensitivity analysis of several statistics of the KS equation
@@ -84,7 +84,10 @@ ks3 = KS(
 )
 ks_models = [ks1, ks2, ks3]
 
-c_array = jnp.linspace(0.0, 2.0, 21)
+# c_array = jnp.linspace(0.0, 2.0, 21)
+# NOTE: one can use this script to test the change of accuracy in grid
+# coarsening
+c_array = jnp.array([0.8])
 dx = L / N
 x = jnp.linspace(dx, L - dx, N - 1)
 ubar = jnp.zeros((3, c_array.shape[0]))
@@ -96,10 +99,10 @@ for i in range(c_array.shape[0]):
   print(f"{c_array[i]:.2f}")
   for _ in range(n_sample):
     key, subkey = random.split(key)
-    # r = random.uniform(subkey) * 20 + 44
-    # u0 = jnp.exp(-(x - r)**2 / r**2 * 4)
-    u0 = random.uniform(subkey) * jnp.sin(8 * jnp.pi * x / 128) +\
-      random.uniform(key) * jnp.sin(16 * jnp.pi * x / 128)
+    r = random.uniform(subkey) * 20 + 44
+    u0 = jnp.exp(-(x - r)**2 / r**2 * 4)
+    # u0 = random.uniform(subkey) * jnp.sin(8 * jnp.pi * x / 128) +\
+    #   random.uniform(key) * jnp.sin(16 * jnp.pi * x / 128)
     for ks in ks_models:
       ks.c = c_array[i]
       ks.assembly_matrix()
@@ -115,6 +118,8 @@ for i in range(c_array.shape[0]):
       axs[1].scatter(c_array[i], u2mean, c=color_array[j], s=2)
       ubar = ubar.at[j, i].add(umean)
       u2bar = u2bar.at[j, i].add(u2mean)
+      print(umean)
+      print(u2mean)
 
 ubar /= n_sample
 u2bar /= n_sample

@@ -77,6 +77,7 @@ def plot_stats(
   fig_name: str,
 ):
 
+  avg_length = 500
   r = fine_traj.shape[1] // baseline.shape[1]
   plt.figure(figsize=(6, 6))
   plt.subplot(211)
@@ -87,7 +88,7 @@ def plot_stats(
       # np.linalg.norm(
       #   np.mean(fine_traj, axis=1) - np.mean(baseline, axis=1)
       # )
-      np.mean(fine_traj) - np.mean(baseline),
+      np.mean(fine_traj[-avg_length:]) - np.mean(baseline[-avg_length:]),
       np.mean((fine_traj[:,r-1::r] - baseline)**2)
     )
   )
@@ -97,7 +98,7 @@ def plot_stats(
       # np.linalg.norm(
       #   np.mean(fine_traj, axis=1) - np.mean(correction1, axis=1)
       # )
-      np.mean(fine_traj) - np.mean(correction1),
+      np.mean(fine_traj[-avg_length:]) - np.mean(correction1[-avg_length:]),
       np.mean((fine_traj[:,r-1::r] - correction1)**2)
     )
   )
@@ -108,7 +109,7 @@ def plot_stats(
         # np.linalg.norm(
         #   np.mean(fine_traj, axis=1) - np.mean(correction2, axis=1)
         # )
-        np.mean(fine_traj) - np.mean(correction2),
+        np.mean(fine_traj[-avg_length:]) - np.mean(correction2[-avg_length:]),
         np.mean((fine_traj[:,r-1::r] - correction2)**2)
       )
     )
@@ -123,7 +124,7 @@ def plot_stats(
       # np.linalg.norm(
       #   np.mean(fine_traj**2, axis=1) - np.mean(baseline**2, axis=1)
       # )
-      np.mean(fine_traj**2) - np.mean(baseline**2),
+      np.mean(fine_traj[-avg_length:]**2) - np.mean(baseline[-avg_length:]**2),
     )
   )
   plt.plot(
@@ -132,7 +133,7 @@ def plot_stats(
       # np.linalg.norm(
       #   np.mean(fine_traj**2, axis=1) - np.mean(correction1**2, axis=1)
       # )
-      np.mean(fine_traj**2) - np.mean(correction1**2),
+      np.mean(fine_traj[-avg_length:]**2) - np.mean(correction1[-avg_length:]**2),
     )
   )
   if correction2 is not None:
@@ -142,7 +143,7 @@ def plot_stats(
         # np.linalg.norm(
         #   np.mean(fine_traj**2, axis=1) - np.mean(correction2**2, axis=1)
         # )
-        np.mean(fine_traj**2) - np.mean(correction2**2),
+        np.mean(fine_traj[-avg_length:]**2) - np.mean(correction2[-avg_length:]**2),
       )
     )
   plt.legend()
