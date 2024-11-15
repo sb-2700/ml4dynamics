@@ -88,14 +88,6 @@ class dynamics(object):
     raise NotImplementedError
 
   @abstractmethod
-  def CN(self, x):
-    # Crank-Nicolson scheme
-    # Maybe we could put Crank-Nicolson scheme into the same framework as Rk4
-    # But I have not figured this out
-    print("This is an abstract CN method!")
-    raise NotImplementedError
-
-  @abstractmethod
   def set_attractor(self):
     # Set the value of the attractor
     print("This is an abstract set_attractor method!")
@@ -113,8 +105,9 @@ class dynamics(object):
     x = x + dt * f(t, x)
     return x
 
-  def RK4(self, t, x):
+  def RK4(self, x):
     # fourth-order Runge-Kutta scheme
+    t = 0
     dt = self.dt
     f = self.f
     k1 = f(t, x)
@@ -565,9 +558,9 @@ class KS(dynamics):
     self.assembly_matrix()
     #print(jnp.max(jnp.abs(1 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))/(1 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))))
 
-  def f(self, x):
-    print("This is an abstract f method!")
-    raise NotImplementedError
+  def f(self, t, x):
+    return (jnp.eye(self.N) - 2 * self.L * self.dt) @ x -\
+      self.dt * self.L1 @ (x**2)
 
   def assembly_matrix(self):
 
