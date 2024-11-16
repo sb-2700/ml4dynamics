@@ -163,8 +163,14 @@ def main(config_dict: ml_collections.ConfigDict):
     else:
       inputs = u.reshape(-1, input_dim)
 
+  # stratify the data to balance it
+  hist, xedges, yedges = np.histogram2d(
+    inputs.reshape(-1), outputs.reshape(-1), bins=10
+  )
+  breakpoint()
+
   train_x, test_x, train_y, test_y = train_test_split(
-    inputs, outputs, test_size=0.2, random_state=42
+    inputs, outputs, test_size=0.2, random_state=42#, stratify=outputs
   )
   train_ds = {"input": jnp.array(train_x), "output": jnp.array(train_y)}
   test_ds = {"input": jnp.array(test_x), "output": jnp.array(test_y)}
@@ -275,6 +281,13 @@ def main(config_dict: ml_collections.ConfigDict):
         c = jax.nn.softmax(predict[..., :n_g])  # coeff of the GMM
         mean = predict[..., n_g:2 * n_g]
         std = jnp.abs(predict[..., 2 * n_g:]) + 0.01
+        return -jnp.mean(
+          jax.scipy.special.logsumexp(
+            a=-((output - mean) / std)**2 / 2,
+            axis=1,
+            b=c / std,
+          )
+        )
         return -jnp.mean(
           jnp.log(
             jnp.sum(c / std * jnp.exp(-((output - mean) / std)**2 / 2), axis=1)
@@ -398,7 +411,7 @@ def main(config_dict: ml_collections.ConfigDict):
     t = jnp.linspace(0, T, step).reshape(1, -1, 1)
     t = jnp.tile(t, (config.sim.case_num, 1, N2)).reshape(-1)
     plt.figure(figsize=(12, 4))
-    plt.subplot(131)
+    plt.subplot(141)
     plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=t)
     # sns kde plot is tooooo slow!!!
     # start = time()
@@ -419,11 +432,14 @@ def main(config_dict: ml_collections.ConfigDict):
           label="learned"
         )
     plt.title("loss = {:.4e}".format(loss_hist[-1]))
-    plt.subplot(132)
+    plt.subplot(142)
+    plt.hist2d(inputs.reshape(-1), outputs.reshape(-1), bins=50, density=True)
+    plt.colorbar()
+    plt.subplot(143)
     plt.hist(inputs, bins=200, label=config.train.input, density=True)
     plt.yscale("log")
     plt.legend()
-    plt.subplot(133)
+    plt.subplot(144)
     plt.hist(outputs, bins=200, label=r"$\tau$", density=True)
     plt.yscale("log")
   plt.legend()
@@ -448,7 +464,10 @@ def main(config_dict: ml_collections.ConfigDict):
     r0 = random.uniform(subkey) * 20 + 44
     u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
   ks_fine.run_simulation(u0, ks_fine.CN_FEM)
-  ks_coarse.run_simulation(u0[r-1::r], ks_coarse.CN_FEM)
+  if config.test.solver == "CN":
+    ks_coarse.run_simulation(u0[r-1::r], ks_coarse.CN_FEM)
+  elif config.test.solver == "RK4":
+    ks_coarse.run_simulation(u0[r-1::r], ks_coarse.RK4)
   # im_array = jnp.zeros(
   #   (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
   # )
@@ -545,15 +564,25 @@ def main(config_dict: ml_collections.ConfigDict):
       return (tmp[np.arange(N2), n_g + index] +
               tmp[np.arange(N2), n_g + index] * z).reshape(-1)
 
-  ks_coarse.run_simulation_with_correction(
-    u0[r-1::r], ks_coarse.CN_FEM, corrector
-  )
+  if config.test.solver == "CN":
+    ks_coarse.run_simulation_with_correction(
+      u0[r-1::r], ks_coarse.CN_FEM, corrector
+    )
+  elif config.test.solver == "RK4":
+    ks_coarse.run_simulation_with_correction(
+      u0[r-1::r], ks_coarse.RK4, corrector
+    )
   correction1 = ks_coarse.x_hist
   correction2 = None
   if train_mode == "gaussian":
-    ks_coarse.run_simulation_with_probabilistic_correction(
-      u0[r-1::r], ks_coarse.CN_FEM, corrector_sample
-    )
+    if config.test.solver == "CN":
+      ks_coarse.run_simulation_with_probabilistic_correction(
+        u0[r-1::r], ks_coarse.CN_FEM, corrector_sample
+      )
+    elif config.test.solver == "RK4":
+      ks_coarse.run_simulation_with_probabilistic_correction(
+        u0[r-1::r], ks_coarse.RK4, corrector_sample
+      )
     correction2 = ks_coarse.x_hist
 
   # compare the simulation statistics (A posteriori analysis)
