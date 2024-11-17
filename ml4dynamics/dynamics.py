@@ -53,7 +53,7 @@ class dynamics(object):
     tol=1e-8,
     init_scale=1e-2,
     tv_scale=1e-8,
-    key=random.PRNGKey(0),
+    rng=random.PRNGKey(0),
     plot=False
   ):
     super().__init__()
@@ -65,7 +65,7 @@ class dynamics(object):
     self.tol = tol
     self.init_scale = init_scale  # perturbation scale to calculate Lyapunov exp
     self.tv_scale = tv_scale  #
-    self.key = key
+    self.rng = rng
     self.attractor = jnp.zeros(N)
     self.attractor_flag = False
     self.plot = plot
@@ -148,11 +148,6 @@ class dynamics(object):
     self.x_hist = self.x_hist.at[0].set(self.x_targethist[0])
 
   def run_simulation(self, x, iter):
-    """
-    NOTE: One can write a run_simulation version with PRNGKey as input but it
-    seems that we also need a simulator with specified initial value for
-    the comparison of reduced order model
-    """
     step_num = self.step_num
     self.x_hist = jnp.zeros([step_num, self.N])
     for i in range(step_num):
@@ -176,11 +171,11 @@ class dynamics(object):
   def run_simulation_with_probabilistic_correction(self, x, iter, corrector):
     step_num = self.step_num
     self.x_hist = jnp.zeros([step_num, self.N])
-    key = self.key
+    rng = self.rng
     for i in range(step_num):
-      key, subkey = random.split(key)
+      rng, key = random.split(rng)
       self.x_hist = self.x_hist.at[i].set(x)
-      x = iter(x) + corrector(x, subkey) * self.dt
+      x = iter(x) + corrector(x, key) * self.dt
 
     # postprocess for visualization
     self.x_hist = jnp.where(self.x_hist < 20, self.x_hist, 20)
@@ -215,9 +210,9 @@ class dynamics(object):
     if ~self.attractor_flag:
       self.set_attractor()
     x = self.attractor + self.init_scale * random.normal(
-      self.key, shape=(self.N, )
+      self.rng, shape=(self.N, )
     )
-    x_ = x + self.tv_scale * random.normal(self.key, shape=(self.N, ))
+    x_ = x + self.tv_scale * random.normal(self.rng, shape=(self.N, ))
     l_exp = 0
 
     for t in jnp.arange(0, T, dt):
@@ -535,21 +530,16 @@ class KS(dynamics):
     nu=1,
     c=1,
     BC="periodic",
-    key=random.PRNGKey(0),
+    rng=random.PRNGKey(0),
     plot=False
   ):
     super(KS, self).__init__(
-      model_type, N, T, dt, tol, init_scale, tv_scale, key, plot
+      model_type, N, T, dt, tol, init_scale, tv_scale, rng, plot
     )
     self.L = L
     self.nu = nu
     self.c = c
-    # self.set_attractor()
-    # self.run_target_simulation(
-    #   self.attractor + init_scale * random.normal(self.key, shape=(N, ))
-    # )
     dt = self.dt
-    # k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
     self.BC = BC
     if self.BC == "periodic":
       self.dx = self.L / self.N
@@ -704,7 +694,7 @@ class KS(dynamics):
       gradient = gradient + jnp.sum(
         self.y_hist[:, i] *
         jnp.fft.irfft(jnp.fft.rfft(self.x_hist[:, i]) * (k**4))
-      ) * (1 if (random.normal(self.key) > bar) else 0)
+      ) * (1 if (random.normal(self.rng) > bar) else 0)
     gradient = gradient / step_num / self.N / (1 - bar)
     if self.print_:
       print("The numerical value of nu is {:.2e}".format(self.nu))
@@ -820,7 +810,7 @@ class KS(dynamics):
     for i in range(int(T / dt)):
       gradient = gradient + jnp.sum(
         self.w_hist[:, i] * (self.x_hist[:, i] - self.x_targethist[:, i])
-      ) * (1 if (random.normal(self.key) > bar) else 0)
+      ) * (1 if (random.normal(self.rng) > bar) else 0)
       #print(jnp.sum(self.y_hist[:,i]*irfft(rfft(self.x_hist[:,i])*(k**4))))
     gradient = gradient / T / self.L
     if self.print_:

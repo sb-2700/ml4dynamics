@@ -41,7 +41,7 @@ def main(config_dict: ml_collections.ConfigDict):
   r = config.ks.r
   N2 = N1 // r
   dt = config.ks.dt
-  key = random.PRNGKey(config.sim.seed)
+  rng = random.PRNGKey(config.sim.seed)
 
   # fine simulation
   ks_fine = KS(
@@ -53,7 +53,7 @@ def main(config_dict: ml_collections.ConfigDict):
     nu=nu,
     c=c,
     BC=BC,
-    key=key,
+    rng=rng,
   )
   # coarse simulator
   ks_coarse = KS(
@@ -65,7 +65,7 @@ def main(config_dict: ml_collections.ConfigDict):
     nu=nu,
     c=c,
     BC=BC,
-    key=key,
+    rng=rng,
   )
 
   # define the restriction and interpolation operator
@@ -92,22 +92,22 @@ def main(config_dict: ml_collections.ConfigDict):
     outputs = jnp.zeros((config.sim.case_num, int(T / dt), N2))
     for i in range(config.sim.case_num):
       print(i)
-      key, subkey = random.split(key)
+      rng, key = random.split(rng)
       # NOTE: the initialization here is important, DO NOT use the random
       # i.i.d. Gaussian noise as the initial condition
       if BC == "periodic":
         dx = L / N1
-        u0 = ks_fine.attractor + init_scale * random.normal(subkey) *\
+        u0 = ks_fine.attractor + init_scale * random.normal(key) *\
           jnp.sin(10 * jnp.pi * jnp.linspace(0, L - L/N1, N1) / L)
       elif BC == "Dirichlet-Neumann":
         dx = L / (N1 + 1)
         x = jnp.linspace(dx, L - dx, N1)
         # different choices of initial conditions
-        # u0 = ks_fine.attractor + init_scale * random.normal(subkey) *\
+        # u0 = ks_fine.attractor + init_scale * random.normal(key) *\
         #   jnp.sin(10 * jnp.pi * x / L)
-        # u0 = random.uniform(subkey) * jnp.sin(8 * jnp.pi * x / 128) +\
-        #   random.uniform(key) * jnp.sin(16 * jnp.pi * x / 128)
-        r0 = random.uniform(subkey) * 20 + 44
+        # u0 = random.uniform(key) * jnp.sin(8 * jnp.pi * x / 128) +\
+        #   random.uniform(rng) * jnp.sin(16 * jnp.pi * x / 128)
+        r0 = random.uniform(key) * 20 + 44
         u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
       ks_fine.run_simulation(u0, ks_fine.CN_FEM)
       input = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
@@ -164,10 +164,36 @@ def main(config_dict: ml_collections.ConfigDict):
       inputs = u.reshape(-1, input_dim)
 
   # stratify the data to balance it
-  hist, xedges, yedges = np.histogram2d(
-    inputs.reshape(-1), outputs.reshape(-1), bins=10
-  )
-  breakpoint()
+  if config.train.stratify:
+    bins = config.train.bins
+    subsample = config.train.subsample
+    hist, xedges, yedges = np.histogram2d(
+      inputs.reshape(-1), outputs.reshape(-1), bins=bins
+    )
+    bin_data = {}
+    for i in range(bins):
+      for j in range(bins):
+        if hist[i, j] > 0:
+          bin_mask = (xedges[i] <= inputs) & (inputs < xedges[i + 1]) &\
+            (yedges[j] <= outputs) & (outputs < yedges[j + 1])
+          bin_pts = np.column_stack((inputs[bin_mask], outputs[bin_mask]))
+          bin_data[(i, j)] = bin_pts
+    stratify_inputs = jnp.zeros((1, 1))
+    stratify_outputs = jnp.zeros((1, 1))
+    for _ in bin_data.keys():
+      if bin_data[_].shape[0] < subsample:
+        stratify_inputs = jnp.vstack([stratify_inputs, bin_data[_][:, 0:1]])
+        stratify_outputs = jnp.vstack([stratify_outputs, bin_data[_][:, 1:]])
+      else:
+        samples = np.random.choice(
+          jnp.arange(bin_data[_].shape[0]), size=subsample, replace=False
+        )
+        stratify_inputs = jnp.vstack([stratify_inputs, bin_data[_][samples, 0:1]])
+        stratify_outputs = jnp.vstack(
+          [stratify_outputs, bin_data[_][samples, 1:]]
+        )
+    inputs = stratify_inputs
+    outputs = stratify_outputs
 
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=42#, stratify=outputs
@@ -198,8 +224,8 @@ def main(config_dict: ml_collections.ConfigDict):
           hk.Linear(output_dim),
         ]
       )
-      # linear_residue = hk.Linear(output_dim)
-      return mlp(features)  # + linear_residue(features)
+      linear_residue = hk.Linear(output_dim)
+      return mlp(features) + linear_residue(features)
 
     correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
     # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
@@ -281,13 +307,13 @@ def main(config_dict: ml_collections.ConfigDict):
         c = jax.nn.softmax(predict[..., :n_g])  # coeff of the GMM
         mean = predict[..., n_g:2 * n_g]
         std = jnp.abs(predict[..., 2 * n_g:]) + 0.01
-        return -jnp.mean(
-          jax.scipy.special.logsumexp(
-            a=-((output - mean) / std)**2 / 2,
-            axis=1,
-            b=c / std,
-          )
-        )
+        # return -jnp.mean(
+        #   jax.scipy.special.logsumexp(
+        #     a=-((output - mean) / std)**2 / 2,
+        #     axis=1,
+        #     b=c / std,
+        #   )
+        # )
         return -jnp.mean(
           jnp.log(
             jnp.sum(c / std * jnp.exp(-((output - mean) / std)**2 / 2), axis=1)
@@ -317,7 +343,7 @@ def main(config_dict: ml_collections.ConfigDict):
 
     print("initialize vae model")
     vae = model(config.train.vae.latents, N2)
-    rng, key = random.split(key)
+    rng, key = random.split(rng)
     params = vae.init(
       key, train_ds["input"][0:1], train_ds["output"][0:1], rng
     )['params']
@@ -360,7 +386,7 @@ def main(config_dict: ml_collections.ConfigDict):
   iters = tqdm(range(epochs))
   for _ in iters:
     for i in range(0, len(train_ds["input"]), batch_size):
-      rng, key = random.split(key)
+      rng, key = random.split(rng)
       input = train_ds["input"][i:i + batch_size]
       output = train_ds["output"][i:i + batch_size]
       loss, params, opt_state = update(params, input, output, rng, opt_state)
@@ -371,7 +397,7 @@ def main(config_dict: ml_collections.ConfigDict):
     elif train_mode == "generative" or train_mode == "gaussian":
       desc_str = f"{loss=:.4e}"
       loss_hist.append(loss)
-      iters.set_description_str(desc_str)
+    iters.set_description_str(desc_str)
   loss_hist = jnp.array(loss_hist)
   loss_hist = jnp.where(loss_hist > 5, 5, loss_hist)
   plt.plot(loss_hist, label="Loss")
@@ -381,7 +407,7 @@ def main(config_dict: ml_collections.ConfigDict):
 
   valid_loss = 0
   for i in range(0, len(test_ds["input"]), batch_size):
-    rng, key = random.split(key)
+    rng, key = random.split(rng)
     input = train_ds["input"][i:i + batch_size]
     output = train_ds["output"][i:i + batch_size]
     valid_loss += loss_fn(params, input=input, output=output, rng=rng)
@@ -410,9 +436,24 @@ def main(config_dict: ml_collections.ConfigDict):
     step = jnp.prod(jnp.array(inputs.shape)) // N2 // config.sim.case_num
     t = jnp.linspace(0, T, step).reshape(1, -1, 1)
     t = jnp.tile(t, (config.sim.case_num, 1, N2)).reshape(-1)
-    plt.figure(figsize=(12, 4))
+    plt.figure(figsize=(16, 4))
     plt.subplot(141)
-    plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=t)
+    if config.train.stratify:
+      plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c="y")
+    else:
+      plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=t)
+    x_min = inputs.min()
+    x_max = inputs.max()
+    y_min = outputs.min()
+    y_max = outputs.max()
+    for x in xedges:
+      plt.plot(
+        x * jnp.ones(100), jnp.linspace(y_min, y_max, 100), linewidth=.5, c="b"
+      )
+    for y in yedges:
+      plt.plot(
+        jnp.linspace(x_min, x_max, 100), y * jnp.ones(100), linewidth=.5, c="b"
+      )
     # sns kde plot is tooooo slow!!!
     # start = time()
     # sns.kdeplot(x=inputs.reshape(-1), y=outputs.reshape(-1), fill=True)
@@ -433,15 +474,16 @@ def main(config_dict: ml_collections.ConfigDict):
         )
     plt.title("loss = {:.4e}".format(loss_hist[-1]))
     plt.subplot(142)
-    plt.hist2d(inputs.reshape(-1), outputs.reshape(-1), bins=50, density=True)
+    plt.hist2d(inputs.reshape(-1), outputs.reshape(-1), bins=20, density=True)
+    plt.title(f"{bins} bins; {subsample} subsample; {inputs.shape[0]} samples")
     plt.colorbar()
     plt.subplot(143)
     plt.hist(inputs, bins=200, label=config.train.input, density=True)
-    plt.yscale("log")
+    # plt.yscale("log")
     plt.legend()
     plt.subplot(144)
     plt.hist(outputs, bins=200, label=r"$\tau$", density=True)
-    plt.yscale("log")
+    # plt.yscale("log")
   plt.legend()
   plt.savefig(
     f"results/fig/ks_c{c}T{T}n{config.sim.case_num}_{train_mode}_{config.train.input}_scatter.png",
@@ -450,18 +492,18 @@ def main(config_dict: ml_collections.ConfigDict):
   plt.clf()
 
   # a posteriori analysis
-  key, subkey = random.split(key)
+  rng, key = random.split(rng)
   if BC == "periodic":
-    u0 = ks_fine.attractor + init_scale * random.normal(subkey) *\
+    u0 = ks_fine.attractor + init_scale * random.normal(key) *\
       jnp.sin(10 * jnp.pi * jnp.linspace(0, L - L/N1, N1) / L)
   elif BC == "Dirichlet-Neumann":
     dx = L / (N1 + 1)
     x = jnp.linspace(dx, L - dx, N1)
-    # u0 = ks_fine.attractor + init_scale * random.normal(subkey) *\
+    # u0 = ks_fine.attractor + init_scale * random.normal(key) *\
     #   jnp.sin(10 * jnp.pi * x / L)
-    # u0 = random.uniform(subkey) * jnp.sin(8 * jnp.pi * x / 128) +\
-    #   random.uniform(key) * jnp.sin(16 * jnp.pi * x / 128)
-    r0 = random.uniform(subkey) * 20 + 44
+    # u0 = random.uniform(key) * jnp.sin(8 * jnp.pi * x / 128) +\
+    #   random.uniform(rng) * jnp.sin(16 * jnp.pi * x / 128)
+    r0 = random.uniform(key) * 20 + 44
     u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
   ks_fine.run_simulation(u0, ks_fine.CN_FEM)
   if config.test.solver == "CN":
@@ -539,7 +581,7 @@ def main(config_dict: ml_collections.ConfigDict):
       return (tmp[np.arange(N2), n_g + index] +
               tmp[np.arange(N2), n_g + index] * z).reshape(-1)
     
-    def corrector_sample(input: jnp.array, key: PRNGKey):
+    def corrector_sample(input: jnp.array, rng: PRNGKey):
 
       dx = L / N2
       u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) / dx / 2
