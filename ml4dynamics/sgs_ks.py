@@ -20,7 +20,6 @@ from tqdm import tqdm
 
 from ml4dynamics.dynamics import KS
 from ml4dynamics.types import OptState, PRNGKey
-from ml4dynamics.utils import plot_with_horizontal_colorbar
 
 
 def main(config_dict: ml_collections.ConfigDict):
@@ -195,6 +194,28 @@ def main(config_dict: ml_collections.ConfigDict):
     inputs = stratify_inputs
     outputs = stratify_outputs
 
+  # NOTE: visualize and compare the full and stratified dataset
+  # bins = config.train.bins
+  # subsample = config.train.subsample
+  # hist, xedges, yedges = np.histogram2d(
+  #   inputs.reshape(-1), outputs.reshape(-1), bins=bins
+  # )
+  # breakpoint()
+  # for _ in range(50):
+  #   index = jnp.argmax(hist)
+  #   hist[index // bins, index % bins] = 0
+  # plt.figure(figsize=(4, 8))
+  # plt.subplot(211)
+  # plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c="y")
+  # if config.train.stratify:
+  #   plt.title(f"{bins} bins; {subsample} subsample; {inputs.shape[0]} samples")
+  # plt.subplot(212)
+  # # plt.hist2d(inputs.reshape(-1), outputs.reshape(-1), bins=50, density=True)
+  # plt.imshow(hist[:, ::-1].T)
+  # plt.colorbar()
+  # plt.savefig("data.png")
+  # breakpoint()
+
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=42#, stratify=outputs
   )
@@ -226,13 +247,6 @@ def main(config_dict: ml_collections.ConfigDict):
       )
       linear_residue = hk.Linear(output_dim)
       return mlp(features) + linear_residue(features)
-
-    correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
-    # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
-    lr = 5e-4
-    optimizer = optax.adam(lr)
-    params = correction_nn.init(random.PRNGKey(0), np.zeros((1, input_dim)))
-    opt_state = optimizer.init(params)
 
     def loss_fn(
       params: hk.Params,
@@ -280,14 +294,6 @@ def main(config_dict: ml_collections.ConfigDict):
       )
       # linear_residue = hk.Linear(output_dim * 2)
       return mlp(features)  # + linear_residue(features)
-
-    correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
-    # 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-5
-    lr = 1e-4
-    optimizer = optax.adam(lr)
-    params = correction_nn.init(random.PRNGKey(0), np.zeros((1, input_dim)))
-    params['linear']['b'] = jnp.ones((64, ))
-    opt_state = optimizer.init(params)
 
     def loss_fn(
       params: hk.Params,
@@ -379,6 +385,22 @@ def main(config_dict: ml_collections.ConfigDict):
   else:
     raise Exception("Unknown learning mode.")
 
+  lr = config.train.lr
+  correction_nn = hk.without_apply_rng(hk.transform(sgs_fn))
+  schedule = optax.piecewise_constant_schedule(
+    init_value=lr,
+    boundaries_and_scales={
+      1000: 0.1,
+      # 7000: 0.1,
+      # 50000: 0.5,
+    }
+  )
+  optimizer = optax.adam(schedule)
+  params = correction_nn.init(random.PRNGKey(0), np.zeros((1, input_dim)))
+  if config.train.mode == "gaussian":
+    params['linear']['b'] = jnp.ones((64, ))
+  opt_state = optimizer.init(params)
+
   # training loop
   loss_hist = []
   epochs = config.train.epochs
@@ -390,20 +412,22 @@ def main(config_dict: ml_collections.ConfigDict):
       input = train_ds["input"][i:i + batch_size]
       output = train_ds["output"][i:i + batch_size]
       loss, params, opt_state = update(params, input, output, rng, opt_state)
-    if train_mode == "regression":
-      relative_loss = loss / jnp.mean(output**2)
-      desc_str = f"{relative_loss=:.4e}"
-      loss_hist.append(relative_loss)
-    elif train_mode == "generative" or train_mode == "gaussian":
-      desc_str = f"{loss=:.4e}"
-      loss_hist.append(loss)
-    iters.set_description_str(desc_str)
+      if train_mode == "regression":
+        relative_loss = loss / jnp.mean(output**2)
+        desc_str = f"{relative_loss=:.4e}"
+        loss_hist.append(relative_loss)
+      elif train_mode == "generative" or train_mode == "gaussian":
+        desc_str = f"{loss=:.4e}"
+        loss_hist.append(loss)
+      iters.set_description_str(desc_str)
   loss_hist = jnp.array(loss_hist)
   loss_hist = jnp.where(loss_hist > 5, 5, loss_hist)
-  plt.plot(loss_hist, label="Loss")
+  plt.plot(jnp.array(loss_hist) - min(loss_hist) + 0.01, label="Loss")
   plt.xlabel("iter")
+  plt.yscale("log")
   plt.savefig(f"results/fig/ks_c{c}T{T}n{config.sim.case_num}_{train_mode}_loss.pdf")
   plt.clf()
+  breakpoint()
 
   valid_loss = 0
   for i in range(0, len(test_ds["input"]), batch_size):
