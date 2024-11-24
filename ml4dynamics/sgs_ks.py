@@ -390,8 +390,10 @@ def main(config_dict: ml_collections.ConfigDict):
   schedule = optax.piecewise_constant_schedule(
     init_value=lr,
     boundaries_and_scales={
-      1000: 0.1,
-      # 7000: 0.1,
+      5000: 0.1,
+      10000: 0.1,
+      #3000: 0.1,
+      # 5000: 0.1,
       # 50000: 0.5,
     }
   )
@@ -406,20 +408,23 @@ def main(config_dict: ml_collections.ConfigDict):
   epochs = config.train.epochs
   batch_size = config.train.batch_size
   iters = tqdm(range(epochs))
+  step = 0
   for _ in iters:
     for i in range(0, len(train_ds["input"]), batch_size):
       rng, key = random.split(rng)
       input = train_ds["input"][i:i + batch_size]
       output = train_ds["output"][i:i + batch_size]
       loss, params, opt_state = update(params, input, output, rng, opt_state)
+      lr = schedule(step)
       if train_mode == "regression":
         relative_loss = loss / jnp.mean(output**2)
-        desc_str = f"{relative_loss=:.4e}"
+        desc_str = f"{lr=:.1e}|{relative_loss=:.4e}"
         loss_hist.append(relative_loss)
       elif train_mode == "generative" or train_mode == "gaussian":
-        desc_str = f"{loss=:.4e}"
+        desc_str = f"{lr=:.1e}|{loss=:.4e}"
         loss_hist.append(loss)
       iters.set_description_str(desc_str)
+      step += 1
   loss_hist = jnp.array(loss_hist)
   loss_hist = jnp.where(loss_hist > 5, 5, loss_hist)
   plt.plot(jnp.array(loss_hist) - min(loss_hist) + 0.01, label="Loss")
