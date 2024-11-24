@@ -1,4 +1,4 @@
-"""
+r"""
 Examples with Kuramoto–Sivashinsky equation
 
 $$
@@ -46,7 +46,7 @@ init_scale = config.ks.init_scale
 N = config.ks.nx
 dt = config.ks.dt
 n_sample = 10
-key = random.PRNGKey(config.sim.seed)
+rng = random.PRNGKey(config.sim.seed)
 
 # KS simulator with Dirichlet Neumann BC
 ks1 = KS(
@@ -58,7 +58,7 @@ ks1 = KS(
   nu=nu,
   c=c,
   BC="Dirichlet-Neumann",
-  key=key,
+  rng=rng,
 )
 ks2 = KS(
   N=N // 2 - 1,
@@ -69,7 +69,7 @@ ks2 = KS(
   nu=nu,
   c=c,
   BC="Dirichlet-Neumann",
-  key=key,
+  rng=rng,
 )
 ks3 = KS(
   N=N // 4 - 1,
@@ -80,29 +80,33 @@ ks3 = KS(
   nu=nu,
   c=c,
   BC="Dirichlet-Neumann",
-  key=key,
+  rng=rng,
 )
 ks_models = [ks1, ks2, ks3]
 
-# c_array = jnp.linspace(0.0, 2.0, 21)
+c_array = jnp.linspace(0.0, 2.0, 21)
 # NOTE: one can use this script to test the change of accuracy in grid
 # coarsening
-c_array = jnp.array([0.8])
+# c_array = jnp.array([0.8])
 dx = L / N
 x = jnp.linspace(dx, L - dx, N - 1)
 ubar = jnp.zeros((3, c_array.shape[0]))
+u_std = jnp.zeros((3, c_array.shape[0]))
 u2bar = jnp.zeros((3, c_array.shape[0]))
-fig, axs = plt.subplots(1, 2, figsize=(10, 4))
+u2_std = jnp.zeros((3, c_array.shape[0]))
 color_array = ["r", "b", "g"]
 
 for i in range(c_array.shape[0]):
   print(f"{c_array[i]:.2f}")
+  umean_tmp = jnp.zeros((3, n_sample))
+  u2mean_tmp = jnp.zeros((3, n_sample))
+  fig, axs = plt.subplots(1, 2, figsize=(9, 3))
   for _ in range(n_sample):
-    key, subkey = random.split(key)
-    r = random.uniform(subkey) * 20 + 44
+    rng, key = random.split(rng)
+    r = random.uniform(key) * 20 + 44
     u0 = jnp.exp(-(x - r)**2 / r**2 * 4)
-    # u0 = random.uniform(subkey) * jnp.sin(8 * jnp.pi * x / 128) +\
-    #   random.uniform(key) * jnp.sin(16 * jnp.pi * x / 128)
+    # u0 = random.uniform(key) * jnp.sin(8 * jnp.pi * x / 128) +\
+    #   random.uniform(rng) * jnp.sin(16 * jnp.pi * x / 128)
     for ks in ks_models:
       ks.c = c_array[i]
       ks.assembly_matrix()
@@ -110,25 +114,39 @@ for i in range(c_array.shape[0]):
     ks_models[0].run_simulation(u0, ks_models[0].CN_FEM)
     ks_models[1].run_simulation(u0[1::2], ks_models[1].CN_FEM)
     ks_models[2].run_simulation(u0[3::4], ks_models[2].CN_FEM)
-
     for j in range(len(ks_models)):
-      umean = jnp.mean(ks_models[j].x_hist[-500:])
-      u2mean = jnp.mean(ks_models[j].x_hist[-500:]**2)
-      axs[0].scatter(c_array[i], umean, c=color_array[j], s=2)
-      axs[1].scatter(c_array[i], u2mean, c=color_array[j], s=2)
-      ubar = ubar.at[j, i].add(umean)
-      u2bar = u2bar.at[j, i].add(u2mean)
-      print(umean)
-      print(u2mean)
-
-ubar /= n_sample
-u2bar /= n_sample
-axs[0].plot(c_array, ubar[0], label=r"$N = {}$".format(N), c="r")
-axs[1].plot(c_array, u2bar[0], label=r"$N = {}$".format(N), c="r")
-axs[0].plot(c_array, ubar[1], label=r"$N = {}$".format(N//2), c="b")
-axs[1].plot(c_array, u2bar[1], label=r"$N = {}$".format(N//2), c="b")
-axs[0].plot(c_array, ubar[2], label=r"$N = {}$".format(N//4), c="g")
-axs[1].plot(c_array, u2bar[2], label=r"$N = {}$".format(N//4), c="g")
+      umean_tmp = umean_tmp.at[j, _].set(jnp.mean(ks_models[j].x_hist[-500:]))
+      u2mean_tmp = u2mean_tmp.at[j, _].set(
+        jnp.mean(ks_models[j].x_hist[-500:]**2)
+      )
+      # axs[0].scatter(c_array[i], umean, c=color_array[j], s=2)
+      # axs[1].scatter(c_array[i], u2mean, c=color_array[j], s=2)
+      if n_sample <= 2:
+        axs[0].plot(
+          jnp.arange(ks_models[j].x_hist.shape[0]) * dt,
+          jnp.mean(ks_models[j].x_hist, axis=1)
+        )
+        axs[1].plot(
+          jnp.arange(ks_models[j].x_hist.shape[0]) * dt,
+          jnp.mean(ks_models[j].x_hist**2, axis=1)
+        )
+  ubar = ubar.at[:, i].set(jnp.mean(umean_tmp, axis=1))
+  u2bar = u2bar.at[:, i].set(jnp.mean(u2mean_tmp, axis=1))
+  u_std = u_std.at[:, i].set(jnp.std(umean_tmp, axis=1))
+  u2_std = u2_std.at[:, i].set(jnp.std(u2mean_tmp, axis=1))
+  if n_sample <= 2:
+    plt.savefig(f"results/fig/hist{c_array[i]:.2f}.pdf")
+  plt.clf()
+_, axs = plt.subplots(1, 2, figsize=(10, 4))
+for j in range(len(ks_models)):
+  axs[0].fill_between(
+    c_array, ubar[j] - u_std[j], ubar[j] + u_std[j],
+    label=r"$N = {}$".format(N // (2**j)), color=color_array[j], alpha=0.5
+  )
+  axs[1].fill_between(
+    c_array, u2bar[j] - u2_std[j], u2bar[j] + u2_std[j],
+    label=r"$N = {}$".format(N // (2**j)), color=color_array[j], alpha=0.5
+  )
 axs[0].set_xlabel(r"$c$")
 axs[1].set_xlabel(r"$c$")
 axs[0].set_ylabel(r"$\langle \overline{u} \rangle$")
