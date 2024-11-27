@@ -1,10 +1,13 @@
 import argparse
 import copy
+from functools import partial
 
+import haiku as hk
 import h5py
 import jax
 import jax.numpy as jnp
 import jax.scipy.sparse.linalg as jsla
+import ml_collections
 import numpy as np
 import numpy.linalg as nalg
 import torch
@@ -12,6 +15,8 @@ import yaml
 from matplotlib import cm
 from matplotlib import pyplot as plt
 from numpy import random
+
+from ml4dynamics.types import PRNGKey
 
 jax.config.update("jax_enable_x64", True)
 torch.set_default_dtype(torch.float64)
@@ -417,6 +422,199 @@ def projection_correction(
   #v[-1, 1:-1] = v[-1, 1:-1] + (p[-1, 1:] - p[-1, :-1])/dy
 
   return u, v, p / dt, flag
+
+
+def a_posteriori_analysis(
+  config: ml_collections.ConfigDict,
+  ks_fine,
+  ks_coarse,
+  correction_nn: callable,
+  params: hk.Params,
+):
+  
+  c = config.ks.c
+  L = config.ks.L
+  T = config.ks.T
+  init_scale = config.ks.init_scale
+  BC = config.ks.BC
+  # solver parameters
+  if BC == "periodic":
+    N1 = config.ks.nx
+  elif BC == "Dirichlet-Neumann":
+    N1 = config.ks.nx - 1
+  r = config.ks.r
+  N2 = N1 // r
+  rng = random.PRNGKey(config.sim.seed)
+  train_mode = config.train.mode
+  n_g = config.train.n_g
+
+  # a posteriori analysis
+  rng, key = random.split(rng)
+  if BC == "periodic":
+    u0 = ks_fine.attractor + init_scale * random.normal(key) *\
+      jnp.sin(10 * jnp.pi * jnp.linspace(0, L - L/N1, N1) / L)
+  elif BC == "Dirichlet-Neumann":
+    dx = L / (N1 + 1)
+    x = jnp.linspace(dx, L - dx, N1)
+    # u0 = ks_fine.attractor + init_scale * random.normal(key) *\
+    #   jnp.sin(10 * jnp.pi * x / L)
+    # u0 = random.uniform(key) * jnp.sin(8 * jnp.pi * x / 128) +\
+    #   random.uniform(rng) * jnp.sin(16 * jnp.pi * x / 128)
+    r0 = random.uniform(key) * 20 + 44
+    u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
+  ks_fine.run_simulation(u0, ks_fine.CN_FEM)
+  if config.test.solver == "CN":
+    ks_coarse.run_simulation(u0[r-1::r], ks_coarse.CN_FEM)
+  elif config.test.solver == "RK4":
+    ks_coarse.run_simulation(u0[r-1::r], ks_coarse.RK4)
+  # im_array = jnp.zeros(
+  #   (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
+  # )
+  # im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, r-1::r].T)
+  # im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
+  # im_array = im_array.at[2,
+  #                        0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, r-1::r].T)
+  # title_array = [f"{N1}", f"{N2}", "diff"]
+  baseline = ks_coarse.x_hist
+
+  if train_mode == "regression":
+
+    def corrector(input):
+      """
+      input.shape = (N, )
+      output.shape = (N, )
+      """
+
+      dx = L / N2
+      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) / dx / 2
+      u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
+      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
+          4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
+          dx**4
+      # local model: [1] to [1]
+      if config.train.input == "u":
+        return partial(correction_nn.apply, params)(input.reshape(-1, 1)).reshape(-1)
+      elif config.train.input == "ux":
+        return partial(correction_nn.apply, params)(u_x.reshape(-1, 1)).reshape(-1)
+      elif config.train.input == "uxx":
+        return partial(correction_nn.apply, params)(u_xx.reshape(-1, 1)).reshape(-1)
+      elif config.train.input == "uxxxx":
+        return partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1)).reshape(-1)
+      # global model: [N] to [N]
+      # return partial(correction_nn.apply,
+      #                params)(input.reshape(1, -1)).reshape(-1)
+
+  elif train_mode == "generative":
+    vae_bind = vae.bind({"params": params})
+    z = random.normal(key, shape=(1, config.train.vae.latents))
+    corrector = partial(vae_bind.generate, z)
+  elif train_mode == "gaussian":
+    z = random.normal(key)
+    def corrector(input: jnp.array):
+      """
+      input.shape = (N, )
+      output.shape = (N, )
+      """
+
+      dx = L / N2
+      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) / dx / 2
+      u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
+      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
+          4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
+          dx**4
+      # local model: [1] to [1]
+      if config.train.input == "u":
+        tmp = partial(correction_nn.apply, params)(input.reshape(-1, 1))
+      elif config.train.input == "ux":
+        tmp = partial(correction_nn.apply, params)(u_x.reshape(-1, 1))
+      elif config.train.input == "uxx":
+        tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
+      elif config.train.input == "uxxxx":
+        tmp = partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1))
+      p = jax.nn.sigmoid(tmp[..., :n_g])
+      index = jax.vmap(
+        partial(jax.random.choice, key=key, a=n_g, shape=(1, ))
+      )(p=p).reshape(-1)
+      return (tmp[np.arange(N2), n_g + index] +
+              tmp[np.arange(N2), n_g + index] * z).reshape(-1)
+    
+    def corrector_sample(input: jnp.array, rng: PRNGKey):
+
+      dx = L / N2
+      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) / dx / 2
+      u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
+      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
+          4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
+          dx**4
+      # local model: [1] to [1]
+      if config.train.input == "u":
+        tmp = partial(correction_nn.apply, params)(input.reshape(-1, 1))
+      elif config.train.input == "ux":
+        tmp = partial(correction_nn.apply, params)(u_x.reshape(-1, 1))
+      elif config.train.input == "uxx":
+        tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
+      elif config.train.input == "uxxxx":
+        tmp = partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1))
+      p = jax.nn.sigmoid(tmp[..., :n_g])
+      index = jax.vmap(
+        partial(jax.random.choice, key=key, a=n_g, shape=(1, ))
+      )(p=p).reshape(-1)
+      z = random.normal(key)
+      return (tmp[np.arange(N2), n_g + index] +
+              tmp[np.arange(N2), n_g + index] * z).reshape(-1)
+
+  if config.test.solver == "CN":
+    ks_coarse.run_simulation_with_correction(
+      u0[r-1::r], ks_coarse.CN_FEM, corrector
+    )
+  elif config.test.solver == "RK4":
+    ks_coarse.run_simulation_with_correction(
+      u0[r-1::r], ks_coarse.RK4, corrector
+    )
+  correction1 = ks_coarse.x_hist
+  correction2 = None
+  if train_mode == "gaussian":
+    if config.test.solver == "CN":
+      ks_coarse.run_simulation_with_probabilistic_correction(
+        u0[r-1::r], ks_coarse.CN_FEM, corrector_sample
+      )
+    elif config.test.solver == "RK4":
+      ks_coarse.run_simulation_with_probabilistic_correction(
+        u0[r-1::r], ks_coarse.RK4, corrector_sample
+      )
+    correction2 = ks_coarse.x_hist
+
+  # compare the simulation statistics (A posteriori analysis)
+  from ml4dynamics.visualize import plot_stats
+  plot_stats(
+    np.arange(ks_fine.x_hist.shape[0]) * ks_fine.dt,
+    ks_fine.x_hist,
+    baseline,
+    correction1,
+    correction2,
+    f"results/fig/ks_c{c}T{T}n{config.sim.case_num}_{train_mode}_stats.pdf",
+  )
+  # plot_with_horizontal_colorbar(
+  #   im_array,
+  #   fig_size=(4, 6),
+  #   title_array=title_array,
+  #   file_path=
+  #   f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_cmp.pdf"
+  # )
+  # im_array = jnp.zeros(
+  #   (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
+  # )
+  # im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, r-1::r].T)
+  # im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
+  # im_array = im_array.at[2,
+  #                        0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, r-1::r].T)
+  # plot_with_horizontal_colorbar(
+  #   im_array,
+  #   fig_size=(4, 6),
+  #   title_array=title_array,
+  #   file_path=
+  #   f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_correct_cmp.pdf"
+  # )
 
 
 def plot_with_horizontal_colorbar(

@@ -14,7 +14,7 @@ ks:
   nu: 1
   c: 0.8
   L: 128
-  T: 200
+  T: 400
   init_scale: 1.
   nx: 1024
   dt: .1
@@ -134,6 +134,7 @@ for i in range(c_array.shape[0]):
   u2bar = u2bar.at[:, i].set(jnp.mean(u2mean_tmp, axis=1))
   u_std = u_std.at[:, i].set(jnp.std(umean_tmp, axis=1))
   u2_std = u2_std.at[:, i].set(jnp.std(u2mean_tmp, axis=1))
+  print(u2bar[:, i])
   if n_sample <= 2:
     plt.savefig(f"results/fig/hist{c_array[i]:.2f}.pdf")
   plt.clf()
