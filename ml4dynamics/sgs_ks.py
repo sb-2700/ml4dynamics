@@ -18,6 +18,7 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
+from ml4dynamics import utils
 from ml4dynamics.dynamics import KS
 from ml4dynamics.types import OptState, PRNGKey
 
@@ -41,6 +42,8 @@ def main(config_dict: ml_collections.ConfigDict):
   N2 = N1 // r
   dt = config.ks.dt
   rng = random.PRNGKey(config.sim.seed)
+  case_num = config.sim.case_num
+  sgs_model = config.train.sgs
 
   # fine simulation
   ks_fine = KS(
@@ -79,17 +82,17 @@ def main(config_dict: ml_collections.ConfigDict):
 
   # prepare the training data
   if os.path.isfile(
-    'data/ks/c{:.1f}_T{}_n{}.npz'.format(c, T, config.sim.case_num)
+    'data/ks/c{:.1f}T{}n{}_{}.npz'.format(c, T, case_num, sgs_model)
   ):
     data = np.load(
-      'data/ks/c{:.1f}_T{}_n{}.npz'.format(c, T, config.sim.case_num)
+      'data/ks/c{:.1f}T{}n{}_{}.npz'.format(c, T, case_num, sgs_model)
     )
     inputs = data["input"]
     outputs = data["output"]
   else:
-    inputs = jnp.zeros((config.sim.case_num, int(T / dt), N2))
-    outputs = jnp.zeros((config.sim.case_num, int(T / dt), N2))
-    for i in range(config.sim.case_num):
+    inputs = jnp.zeros((case_num, int(T / dt), N2))
+    outputs = jnp.zeros((case_num, int(T / dt), N2))
+    for i in range(case_num):
       print(i)
       rng, key = random.split(rng)
       # NOTE: the initialization here is important, DO NOT use the random
@@ -112,11 +115,14 @@ def main(config_dict: ml_collections.ConfigDict):
       input = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
       output = jnp.zeros_like(input)
       for j in range(ks_fine.step_num):
-        next_step_fine = ks_fine.CN_FEM(
-          ks_fine.x_hist[j]
-        )  # shape = [N1, step_num]
-        next_step_coarse = ks_coarse.CN_FEM(input[j])  # shape = [step_num, N2]
-        output = output.at[j].set(res_op @ next_step_fine - next_step_coarse)
+        if sgs_model == "filter":
+          output = ks_fine.x_hist**2 @ res_op.T - input**2
+        elif sgs_model == "correction":
+          next_step_fine = ks_fine.CN_FEM(
+            ks_fine.x_hist[j]
+          )  # shape = [N1, step_num]
+          next_step_coarse = ks_coarse.CN_FEM(input[j])  # shape = [step_num, N2]
+          output = output.at[j].set(res_op @ next_step_fine - next_step_coarse)
       inputs = inputs.at[i].set(input)
       outputs = outputs.at[i].set(output)
 
@@ -126,7 +132,7 @@ def main(config_dict: ml_collections.ConfigDict):
       jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs)):
       raise Exception("The data contains Inf or NaN")
     np.savez(
-      'data/ks/c{:.1f}_T{}_n{}.npz'.format(c, T, config.sim.case_num),
+      'data/ks/c{:.1f}T{}n{}_{}.npz'.format(c, T, case_num, sgs_model),
       input=inputs,
       output=outputs
     )
@@ -163,7 +169,38 @@ def main(config_dict: ml_collections.ConfigDict):
       inputs = u.reshape(-1, input_dim)
 
   # stratify the data to balance it
-  if config.train.stratify:
+  if config.train.stratify == "input_output":
+    bins = config.train.bins
+    subsample = config.train.subsample
+    hist, xedges, yedges = np.histogram2d(
+      inputs.reshape(-1), outputs.reshape(-1), bins=bins
+    )
+    bin_data = {}
+    for i in range(bins):
+      for j in range(bins):
+        if hist[i, j] > 0:
+          bin_mask = (xedges[i] <= inputs) & (inputs < xedges[i + 1]) &\
+            (yedges[j] <= outputs) & (outputs < yedges[j + 1])
+          bin_pts = np.column_stack((inputs[bin_mask], outputs[bin_mask]))
+          bin_data[(i, j)] = bin_pts
+    stratify_inputs = jnp.zeros((1, 1))
+    stratify_outputs = jnp.zeros((1, 1))
+    for _ in bin_data.keys():
+      if bin_data[_].shape[0] < subsample:
+        stratify_inputs = jnp.vstack([stratify_inputs, bin_data[_][:, 0:1]])
+        stratify_outputs = jnp.vstack([stratify_outputs, bin_data[_][:, 1:]])
+      else:
+        samples = np.random.choice(
+          jnp.arange(bin_data[_].shape[0]), size=subsample, replace=False
+        )
+        stratify_inputs = jnp.vstack([stratify_inputs, bin_data[_][samples, 0:1]])
+        stratify_outputs = jnp.vstack(
+          [stratify_outputs, bin_data[_][samples, 1:]]
+        )
+    inputs = stratify_inputs
+    outputs = stratify_outputs
+
+  if config.train.stratify == "input":
     bins = config.train.bins
     subsample = config.train.subsample
     hist, xedges, yedges = np.histogram2d(
@@ -430,7 +467,7 @@ def main(config_dict: ml_collections.ConfigDict):
   plt.plot(jnp.array(loss_hist) - min(loss_hist) + 0.01, label="Loss")
   plt.xlabel("iter")
   plt.yscale("log")
-  plt.savefig(f"results/fig/ks_c{c}T{T}n{config.sim.case_num}_{train_mode}_loss.pdf")
+  plt.savefig(f"results/fig/ks_c{c}T{T}n{case_num}_{train_mode}_loss.pdf")
   plt.clf()
   breakpoint()
 
@@ -452,7 +489,7 @@ def main(config_dict: ml_collections.ConfigDict):
     plt.xlabel(r"$T$")
     plt.ylabel("error")
   elif train_mode == "regression" or train_mode == "gaussian":
-    if config.sim.case_num == 1:
+    if case_num == 1:
       from ml4dynamics.visualize import plot_error_cloudmap
       err = correction_nn.apply(params, inputs) - outputs
       err = err[:, 0]
@@ -462,31 +499,27 @@ def main(config_dict: ml_collections.ConfigDict):
       )
 
     # TODO: the treatment here is temporary
-    step = jnp.prod(jnp.array(inputs.shape)) // N2 // config.sim.case_num
+    step = jnp.prod(jnp.array(inputs.shape)) // N2 // case_num
     t = jnp.linspace(0, T, step).reshape(1, -1, 1)
-    t = jnp.tile(t, (config.sim.case_num, 1, N2)).reshape(-1)
+    t = jnp.tile(t, (case_num, 1, N2)).reshape(-1)
     plt.figure(figsize=(16, 4))
     plt.subplot(141)
     if config.train.stratify:
       plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c="y")
     else:
       plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=t)
-    x_min = inputs.min()
-    x_max = inputs.max()
-    y_min = outputs.min()
-    y_max = outputs.max()
-    for x in xedges:
-      plt.plot(
-        x * jnp.ones(100), jnp.linspace(y_min, y_max, 100), linewidth=.5, c="b"
-      )
-    for y in yedges:
-      plt.plot(
-        jnp.linspace(x_min, x_max, 100), y * jnp.ones(100), linewidth=.5, c="b"
-      )
-    # sns kde plot is tooooo slow!!!
-    # start = time()
-    # sns.kdeplot(x=inputs.reshape(-1), y=outputs.reshape(-1), fill=True)
-    # print(f"sns plot time collapsed: {time() - start}")
+    # x_min = inputs.min()
+    # x_max = inputs.max()
+    # y_min = outputs.min()
+    # y_max = outputs.max()
+    # for x in xedges:
+    #   plt.plot(
+    #     x * jnp.ones(100), jnp.linspace(y_min, y_max, 100), linewidth=.5, c="b"
+    #   )
+    # for y in yedges:
+    #   plt.plot(
+    #     jnp.linspace(x_min, x_max, 100), y * jnp.ones(100), linewidth=.5, c="b"
+    #   )
     tmp_input = jnp.linspace(jnp.min(inputs), jnp.max(inputs), 20)
     tmp_output = correction_nn.apply(params, tmp_input.reshape(-1, 1))
     if train_mode == "regression":
@@ -515,178 +548,12 @@ def main(config_dict: ml_collections.ConfigDict):
     # plt.yscale("log")
   plt.legend()
   plt.savefig(
-    f"results/fig/ks_c{c}T{T}n{config.sim.case_num}_{train_mode}_{config.train.input}_scatter.png",
+    f"results/fig/ks_c{c}T{T}n{case_num}_{train_mode}_{config.train.input}_scatter.png",
     dpi=1000
   )
   plt.clf()
 
-  # a posteriori analysis
-  rng, key = random.split(rng)
-  if BC == "periodic":
-    u0 = ks_fine.attractor + init_scale * random.normal(key) *\
-      jnp.sin(10 * jnp.pi * jnp.linspace(0, L - L/N1, N1) / L)
-  elif BC == "Dirichlet-Neumann":
-    dx = L / (N1 + 1)
-    x = jnp.linspace(dx, L - dx, N1)
-    # u0 = ks_fine.attractor + init_scale * random.normal(key) *\
-    #   jnp.sin(10 * jnp.pi * x / L)
-    # u0 = random.uniform(key) * jnp.sin(8 * jnp.pi * x / 128) +\
-    #   random.uniform(rng) * jnp.sin(16 * jnp.pi * x / 128)
-    r0 = random.uniform(key) * 20 + 44
-    u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
-  ks_fine.run_simulation(u0, ks_fine.CN_FEM)
-  if config.test.solver == "CN":
-    ks_coarse.run_simulation(u0[r-1::r], ks_coarse.CN_FEM)
-  elif config.test.solver == "RK4":
-    ks_coarse.run_simulation(u0[r-1::r], ks_coarse.RK4)
-  # im_array = jnp.zeros(
-  #   (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
-  # )
-  # im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, r-1::r].T)
-  # im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
-  # im_array = im_array.at[2,
-  #                        0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, r-1::r].T)
-  # title_array = [f"{N1}", f"{N2}", "diff"]
-  baseline = ks_coarse.x_hist
-
-  if train_mode == "regression":
-
-    def corrector(input):
-      """
-      input.shape = (N, )
-      output.shape = (N, )
-      """
-
-      dx = L / N2
-      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) / dx / 2
-      u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
-      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
-          4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
-          dx**4
-      # local model: [1] to [1]
-      if config.train.input == "u":
-        return partial(correction_nn.apply, params)(input.reshape(-1, 1)).reshape(-1)
-      elif config.train.input == "ux":
-        return partial(correction_nn.apply, params)(u_x.reshape(-1, 1)).reshape(-1)
-      elif config.train.input == "uxx":
-        return partial(correction_nn.apply, params)(u_xx.reshape(-1, 1)).reshape(-1)
-      elif config.train.input == "uxxxx":
-        return partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1)).reshape(-1)
-      # global model: [N] to [N]
-      # return partial(correction_nn.apply,
-      #                params)(input.reshape(1, -1)).reshape(-1)
-
-  elif train_mode == "generative":
-    vae_bind = vae.bind({"params": params})
-    z = random.normal(key, shape=(1, config.train.vae.latents))
-    corrector = partial(vae_bind.generate, z)
-  elif train_mode == "gaussian":
-    z = random.normal(key)
-    def corrector(input: jnp.array):
-      """
-      input.shape = (N, )
-      output.shape = (N, )
-      """
-
-      dx = L / N2
-      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) / dx / 2
-      u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
-      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
-          4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
-          dx**4
-      # local model: [1] to [1]
-      if config.train.input == "u":
-        tmp = partial(correction_nn.apply, params)(input.reshape(-1, 1))
-      elif config.train.input == "ux":
-        tmp = partial(correction_nn.apply, params)(u_x.reshape(-1, 1))
-      elif config.train.input == "uxx":
-        tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
-      elif config.train.input == "uxxxx":
-        tmp = partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1))
-      p = jax.nn.sigmoid(tmp[..., :n_g])
-      index = jax.vmap(
-        partial(jax.random.choice, key=key, a=n_g, shape=(1, ))
-      )(p=p).reshape(-1)
-      return (tmp[np.arange(N2), n_g + index] +
-              tmp[np.arange(N2), n_g + index] * z).reshape(-1)
-    
-    def corrector_sample(input: jnp.array, rng: PRNGKey):
-
-      dx = L / N2
-      u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) / dx / 2
-      u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
-      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
-          4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
-          dx**4
-      # local model: [1] to [1]
-      if config.train.input == "u":
-        tmp = partial(correction_nn.apply, params)(input.reshape(-1, 1))
-      elif config.train.input == "ux":
-        tmp = partial(correction_nn.apply, params)(u_x.reshape(-1, 1))
-      elif config.train.input == "uxx":
-        tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
-      elif config.train.input == "uxxxx":
-        tmp = partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1))
-      p = jax.nn.sigmoid(tmp[..., :n_g])
-      index = jax.vmap(
-        partial(jax.random.choice, key=key, a=n_g, shape=(1, ))
-      )(p=p).reshape(-1)
-      z = random.normal(key)
-      return (tmp[np.arange(N2), n_g + index] +
-              tmp[np.arange(N2), n_g + index] * z).reshape(-1)
-
-  if config.test.solver == "CN":
-    ks_coarse.run_simulation_with_correction(
-      u0[r-1::r], ks_coarse.CN_FEM, corrector
-    )
-  elif config.test.solver == "RK4":
-    ks_coarse.run_simulation_with_correction(
-      u0[r-1::r], ks_coarse.RK4, corrector
-    )
-  correction1 = ks_coarse.x_hist
-  correction2 = None
-  if train_mode == "gaussian":
-    if config.test.solver == "CN":
-      ks_coarse.run_simulation_with_probabilistic_correction(
-        u0[r-1::r], ks_coarse.CN_FEM, corrector_sample
-      )
-    elif config.test.solver == "RK4":
-      ks_coarse.run_simulation_with_probabilistic_correction(
-        u0[r-1::r], ks_coarse.RK4, corrector_sample
-      )
-    correction2 = ks_coarse.x_hist
-
-  # compare the simulation statistics (A posteriori analysis)
-  from ml4dynamics.visualize import plot_stats
-  plot_stats(
-    np.arange(ks_fine.x_hist.shape[0]) * ks_fine.dt,
-    ks_fine.x_hist,
-    baseline,
-    correction1,
-    correction2,
-    f"results/fig/ks_c{c}T{T}n{config.sim.case_num}_{train_mode}_stats.pdf",
-  )
-  # plot_with_horizontal_colorbar(
-  #   im_array,
-  #   fig_size=(4, 6),
-  #   title_array=title_array,
-  #   file_path=
-  #   f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_cmp.pdf"
-  # )
-  # im_array = jnp.zeros(
-  #   (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
-  # )
-  # im_array = im_array.at[0, 0].set(ks_fine.x_hist[:, r-1::r].T)
-  # im_array = im_array.at[1, 0].set(ks_coarse.x_hist.T)
-  # im_array = im_array.at[2,
-  #                        0].set(ks_coarse.x_hist.T - ks_fine.x_hist[:, r-1::r].T)
-  # plot_with_horizontal_colorbar(
-  #   im_array,
-  #   fig_size=(4, 6),
-  #   title_array=title_array,
-  #   file_path=
-  #   f"results/fig/ks_nu{nu}_N{N1}n{config.sim.case_num}_{train_mode}_correct_cmp.pdf"
-  # )
+  utils.a_posteriori_analysis(config, )
   breakpoint()
 
 
