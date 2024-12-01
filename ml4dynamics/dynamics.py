@@ -10,9 +10,9 @@ from jax.numpy.linalg import solve
 from matplotlib import pyplot as plt
 from scipy.integrate import solve_ivp
 
-#from scipy.linalg import lstsq
-from scipy.sparse import csr_matrix
-from scipy.sparse.linalg import lsqr
+# from scipy.linalg import lstsq
+# from scipy.sparse import csr_matrix
+# from scipy.sparse.linalg import lsqr
 
 """
 Other candidates for chaotic dynamics:
@@ -154,7 +154,7 @@ class dynamics(object):
       self.x_hist = self.x_hist.at[i].set(x)
       x = iter(x)
 
-    self.check_simulation()
+    # self.check_simulation()
 
   def run_simulation_with_correction(self, x, iter, corrector):
     step_num = self.step_num
@@ -827,7 +827,7 @@ class RD(dynamics):
   def __init__(
     self,
     model_type='react_diff',
-    N=128,
+    N=128**2 * 2,
     T=10,
     dt=0.01,
     dx=0,
@@ -838,6 +838,7 @@ class RD(dynamics):
     alpha=0.01,
     beta=1.0,
     gamma=0.05,
+    d=2,
     device=torch.device('cpu'),
     plot=False
   ):
@@ -846,13 +847,12 @@ class RD(dynamics):
 
     self.device = device
     self.L = L
-    if dx == 0:
-      self.dx = self.L / self.N
-    else:
-      self.dx = dx
+    self.dx = dx
     self.alpha = alpha
     self.beta = beta
     self.gamma = gamma
+    self.d = d
+    self.n = int(jnp.sqrt(self.N / 2))
     self.assembly_matrix()
 
   def f(self, x):
@@ -868,7 +868,7 @@ class RD(dynamics):
     :d: ratio between the diffusion coeff for u & v
     """
 
-    n = self.N
+    n = self.n
     gamma = self.gamma
     dt = self.dt
     d = self.d
@@ -878,7 +878,6 @@ class RD(dynamics):
     L = L.at[0, -1].set(1)
     L = L.at[-1, 0].set(1)
     L = L / (dx**2)
-    L2 = jnp.kron(L, jnp.eye(n)) + jnp.kron(jnp.eye(n), L)
 
     # matrix for ADI scheme
     self.L_uminus = jnp.eye(n) - L * gamma * dt / 2
@@ -886,8 +885,11 @@ class RD(dynamics):
     self.L_vminus = jnp.eye(n) - L * gamma * dt / 2 * d
     self.L_vplus = jnp.eye(n) + L * gamma * dt / 2 * d
 
-  def adi(self, u, v):
+  def adi(self, uv):
 
+    n = self.n
+    u = uv[:n**2].reshape((n, n))
+    v = uv[n**2:].reshape((n, n))
     dt = self.dt
     rhsu = self.L_uplus @ u @ self.L_uplus + dt * (u - v - u**3 + self.alpha)
     rhsv = self.L_vplus @ v @ self.L_vplus + self.beta * dt * (u - v)
@@ -898,7 +900,7 @@ class RD(dynamics):
     v = jax.scipy.linalg.solve(self.L_vminus, rhsv)
     v = jax.scipy.linalg.solve(self.L_vminus, v.T)
     v = v.T
-    return u, v
+    return jnp.hstack([u.reshape(-1), v.reshape(-1)])
 
 
 class NS(dynamics):

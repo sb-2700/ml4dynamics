@@ -1,12 +1,4 @@
-import sys
-from pathlib import Path
-
-ROOT_PATH = str(Path(__file__).parent.parent)
-sys.path.append(ROOT_PATH)
-
-import argparse
 import copy
-import pdb
 from datetime import datetime
 
 import h5py

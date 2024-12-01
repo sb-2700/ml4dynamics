@@ -5,7 +5,6 @@ notebook
 """
 
 # We need to use functional programming so we can call the function we want
-import jax
 import jax.numpy as jnp
 import pytest
 import yaml
@@ -49,7 +48,7 @@ def test_reaction_diffusion_equation_solver():
 
   n = 32
   widthx = 6.4
-  step_num = 100
+  step_num = 1000
   warm_up = 0
   writeInterval = 1
   dx = widthx / n
