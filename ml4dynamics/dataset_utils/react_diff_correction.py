@@ -6,8 +6,6 @@ import torch
 import yaml
 from box import Box
 from jax import random as random
-from matplotlib import cm
-from matplotlib import pyplot as plt
 
 from ml4dynamics.dynamics import RD
 
@@ -88,13 +86,12 @@ def generate_react_diff_correction_dataset(
       # version
       tmp = (input[i, :, 0::2, 0::2] + input[i, :, 1::2, 0::2] +
         input[i, :, 0::2, 1::2] + input[i, :, 1::2, 1::2]) / 4
-      uv = jnp.hstack([tmp[0].reshape(-1), tmp[1].reshape(-1)])
+      uv = tmp.reshape(-1)
       next_step_coarse = rd_coarse.adi(uv).reshape(2, nx // r, nx // r)
       next_steo_coarse_interp = jnp.vstack(
         [jnp.kron(next_step_coarse[0], jnp.ones((r, r))).reshape(1, nx, nx),
          jnp.kron(next_step_coarse[1], jnp.ones((r, r))).reshape(1, nx, nx),]
       )
-
       output = output.at[j].set(next_step_fine - next_steo_coarse_interp)
     inputs = inputs.at[i].set(input)
     outputs = outputs.at[i].set(output)

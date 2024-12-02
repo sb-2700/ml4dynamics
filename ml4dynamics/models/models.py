@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from flax import linen as fnn
 from torch import nn
 
+torch.set_default_dtype(torch.float64)
 
 ##########################################################################
 # jax implementation

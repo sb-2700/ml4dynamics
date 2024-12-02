@@ -1,56 +1,80 @@
 import os
 import time
 
+import h5py
 import ml_collections
 import numpy as np
-import numpy.random as random
-import torch as torch
+import torch
+import torch.nn as nn
 import yaml
 from box import Box
-from models import EDNet, UNet
-from simulator import *
+from ml4dynamics.models.models import EDNet, UNet
+from sklearn.model_selection import train_test_split
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
-from utils import read_and_preprocess
 
 np.set_printoptions(precision=15)
 torch.set_default_dtype(torch.float64)
 
-
 def train(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
-  pde_type = config.data.type
-  folder = config.data.folder
-  dataset = config.data.dataset
+  pde_type = config.name
+  alpha = config.react_diff.alpha
+  beta = config.react_diff.beta
+  gamma = config.react_diff.gamma
+  T = config.react_diff.T
+  dt = config.react_diff.dt
+  step_num = int(T / dt)
+  nx = config.react_diff.nx
+  case_num = config.sim.case_num
+  batch_size = config.train.batch_size_ae
+  # rng = np.random.PRNGKey(config.sim.seed)
+  dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
+    alpha, beta, gamma, case_num
+  )
+  if pde_type == "react_diff":
+    h5_filename = f"data/react_diff/{dataset}.h5"
   GPU = 0
   device = torch.device(
     "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
   )
 
-  nx, ny, label_dim, traj_num, step_num, input, output = read_and_preprocess(
-    folder + dataset, device
-  )
+  with h5py.File(h5_filename, "r") as h5f:
+    inputs = torch.tensor(
+      h5f["data"]["inputs"][()], dtype=torch.float64
+    ).to(device)
+    outputs = torch.tensor(
+      h5f["data"]["inputs"][()], dtype=torch.float64
+    ).to(device)
   print(
-    "Training {} model with data: {} ...".format(pde_type, config.data.folder)
+    f"Training {pde_type} model with data: {dataset} ..."
   )
+  train_x, test_x, train_y, test_y = train_test_split(
+    inputs, outputs, test_size=0.2, random_state=config.sim.seed
+  )
+  train_dataset = TensorDataset(train_x, train_y)
+  train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+  test_dataset = TensorDataset(test_x, test_y)
+  test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
   # setting training hyperparameters
-  sample_num = (traj_num - 1) * step_num
-  ed_epochs = 2000
-  ols_epochs = 1000
-  mols_epochs = 1000
-  aols_epochs = 1000
-  tr_epochs = 1000
+  sample_num = case_num * step_num
+  ae_epochs = config.train.epochs_ae
+  ae_epochs = 1
+  ols_epochs = 1
+  mols_epochs = 1
+  aols_epochs = 1
+  tr_epochs = 1
   batch_size = step_num
   learning_rate = 1e-4
   factor = 0.8  # learning rate decay factor
-  noise_scale = 1e-3  # paramet.er for adverserial OLS
+  noise_scale = 1e-3  # parameter for adverserial OLS
   printInterval = 100
   saveInterval = 100
   period = 2  # related to the scheduler
   lambda_ = torch.tensor(1000, requires_grad=False).to(device)
-  test_index = int(np.floor(r.rand() * 10))
 
   # this part can be simplify to a "load model module"
   if pde_type == "react_diff":
@@ -96,19 +120,19 @@ def train(config_dict: ml_collections.ConfigDict):
     )
     model_tr.eval()
   # if u switch this EDNet to UNet, the error will become very small
-  model_ed = EDNet(channel_array=[2, 4, 8, 16, 32, 64]).to(device)
+  model_ae = EDNet(channel_array=[2, 4, 8, 16, 32, 64]).to(device)
   if os.path.isfile("ckpts/{}/ED-{}.pth".format(pde_type, dataset)):
-    model_ed.load_state_dict(
+    model_ae.load_state_dict(
       torch.load(
         "ckpts/{}/ED-{}.pth".format(pde_type, dataset),
         map_location=torch.device("cpu")
       )
     )
-    model_ed.eval()
+    model_ae.eval()
 
   # Loss and optimizer
   criterion = nn.MSELoss()
-  optimizer_ed = torch.optim.Adam(model_ed.parameters(), lr=learning_rate)
+  optimizer_ae = torch.optim.Adam(model_ae.parameters(), lr=learning_rate)
   optimizer_ols = torch.optim.Adam(model_ols.parameters(), lr=learning_rate)
   optimizer_mols = torch.optim.Adam(
     model_mols.parameters(), lr=learning_rate, weight_decay=0.01
@@ -116,8 +140,8 @@ def train(config_dict: ml_collections.ConfigDict):
   optimizer_aols = torch.optim.Adam(model_aols.parameters(), lr=learning_rate)
   optimizer_tr = torch.optim.Adam(model_tr.parameters(), lr=learning_rate)
   # maybe try other scheduler
-  scheduler_ed = ReduceLROnPlateau(
-    optimizer_ed,
+  scheduler_ae = ReduceLROnPlateau(
+    optimizer_ae,
     mode="min",
     factor=factor,
     patience=period * sample_num,
@@ -153,83 +177,64 @@ def train(config_dict: ml_collections.ConfigDict):
   )
 
   T1 = time.perf_counter()
-  iters = tqdm(range(ed_epochs))
-  for epoch in iters:
-    train_loss = 0
-    test_loss = 0
-    for j in range(traj_num):
-      for i in range(0, step_num, batch_size):
-        uv = input[j, i:i + batch_size].reshape([batch_size, 2, nx,
-                                                 ny]).to(device)
-        outputs = model_ed(uv)
-        loss_ed = criterion(outputs, uv)
-        if j == test_index:
-          # test trajectory is used for validation
-          test_loss = test_loss + loss_ed.item()
-        else:
-          train_loss = train_loss + loss_ed.item()
-          optimizer_ed.zero_grad()
-          loss_ed.backward()
-          optimizer_ed.step()
-          scheduler_ed.step(loss_ed)
+  iters = tqdm(range(ae_epochs))
+  for step in iters:
+    for batch_inputs, _ in train_dataloader:
+      predict = model_ae(batch_inputs)
+      loss_ae = criterion(predict, batch_inputs)
+      optimizer_ae.zero_grad()
+      loss_ae.backward()
+      optimizer_ae.step()
+      scheduler_ae.step(loss_ae)
+      desc_str = f"{loss_ae.item()=:.4e}"
+      iters.set_description_str(desc_str)
 
-    if np.isnan(train_loss).item():
+    if np.isnan(loss_ae.item()):
       print("Training loss became NaN. Stopping training.")
       break
-    if (epoch + 1) % printInterval == 0:
-      print(
-        "Autoencoder Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".
-        format(
-          epoch + 1, ed_epochs,
-          train_loss * batch_size / step_num / (traj_num - 1),
-          test_loss * batch_size / step_num
-        )
-      )
-    if (epoch + 1) % saveInterval == 0:
+    # if (epoch + 1) % printInterval == 0:
+    #   print(
+    #     "Autoencoder Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".
+    #     format(
+    #       epoch + 1, ae_epochs,
+    #       train_loss * batch_size / step_num / (case_num - 1),
+    #       test_loss * batch_size / step_num
+    #     )
+    #   )
+    if (step + 1) % saveInterval == 0:
       torch.save(
-        model_ed.state_dict(), "ckpts/{}/ED-{}.pth".format(pde_type, dataset)
+        model_ae.state_dict(), "ckpts/{}/ED-{}.pth".format(pde_type, dataset)
       )
 
   T2 = time.perf_counter()
   print("Training time for ED model: {:4e}".format(T2 - T1))
-  del optimizer_ed, scheduler_ed, loss_ed
+  del optimizer_ae, scheduler_ae, loss_ae
 
   # Train the OLS model
   iters = tqdm(range(ols_epochs))
-  for epoch in iters:
-    train_loss = 0
-    test_loss = 0
-    for j in range(traj_num):
-      for i in range(0, step_num, batch_size):
-        uv = U[j, i:i + batch_size].reshape([batch_size, 2, nx, ny]).to(device)
-        outputs = model_ols(uv)
-        loss_ols = criterion(
-          outputs,
-          output[j,
-                 i:i + batch_size, :, :].reshape(batch_size, label_dim, nx, ny)
-        )
-        if j == test_index:
-          # test trajectory is used for validation
-          test_loss = test_loss + loss_ols.item()
-        else:
-          train_loss = train_loss + loss_ols.item()
-          optimizer_ols.zero_grad()
-          loss_ols.backward()
-          optimizer_ols.step()
-          scheduler_ols.step(loss_ols)
+  for _ in iters:
+    for batch_inputs, batch_outputs in train_dataloader:
+      predict = model_ols(batch_inputs)
+      loss_ols = criterion(predict, batch_outputs)
+      optimizer_ols.zero_grad()
+      loss_ols.backward()
+      optimizer_ols.step()
+      scheduler_ols.step(loss_ols)
+      desc_str = f"{loss_ols.item()=:.4e}"
+      iters.set_description_str(desc_str)
 
-    if np.isnan(train_loss).item():
+    if np.isnan(loss_ols.item()):
       print("Training loss became NaN. Stopping training.")
       break
-    if (epoch + 1) % printInterval == 0:
-      print(
-        "OLS Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
-          epoch + 1, ols_epochs,
-          train_loss * batch_size / step_num / (traj_num - 1),
-          test_loss * batch_size / step_num
-        )
-      )
-    if (epoch + 1) % saveInterval == 0:
+    # if (epoch + 1) % printInterval == 0:
+    #   print(
+    #     "OLS Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
+    #       epoch + 1, ols_epochs,
+    #       train_loss * batch_size / step_num / (case_num - 1),
+    #       test_loss * batch_size / step_num
+    #     )
+    #   )
+    if (_ + 1) % saveInterval == 0:
       torch.save(
         model_ols.state_dict(), "ckpts/{}/OLS-{}.pth".format(pde_type, dataset)
       )
@@ -240,40 +245,29 @@ def train(config_dict: ml_collections.ConfigDict):
 
   # Train the mOLS model
   iters = tqdm(range(mols_epochs))
-  for epoch in iters:
-    train_loss = 0
-    test_loss = 0
-    for j in range(traj_num):
-      for i in range(0, step_num, batch_size):
-        uv = U[j, i:i + batch_size].reshape([batch_size, 2, nx, ny]).to(device)
-        outputs = model_mols(uv)
-        loss_mols = criterion(
-          outputs,
-          output[j,
-                 i:i + batch_size, :, :].reshape(batch_size, label_dim, nx, ny)
-        )
-        if j == test_index:
-          # test trajectory is used for validation
-          test_loss = test_loss + loss_mols.item()
-        else:
-          train_loss = train_loss + loss_mols.item()
-          optimizer_mols.zero_grad()
-          loss_mols.backward()
-          optimizer_mols.step()
-          scheduler_mols.step(loss_mols)
+  for _ in iters:
+    for batch_inputs, batch_outputs in train_dataloader:
+      predict = model_mols(batch_inputs)
+      loss_mols = criterion(predict, batch_outputs)
+      optimizer_mols.zero_grad()
+      loss_mols.backward()
+      optimizer_mols.step()
+      scheduler_mols.step(loss_mols)
+      desc_str = f"{loss_mols.item()=:.4e}"
+      iters.set_description_str(desc_str)
 
-    if np.isnan(train_loss).item():
+    if np.isnan(loss_mols.item()):
       print("Training loss became NaN. Stopping training.")
       break
-    if (epoch + 1) % printInterval == 0:
-      print(
-        "mOLS Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
-          epoch + 1, mols_epochs,
-          train_loss * batch_size / step_num / (traj_num - 1),
-          test_loss * batch_size / step_num
-        )
-      )
-    if (epoch + 1) % saveInterval == 0:
+    # if (epoch + 1) % printInterval == 0:
+    #   print(
+    #     "mOLS Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
+    #       epoch + 1, mols_epochs,
+    #       train_loss * batch_size / step_num / (case_num - 1),
+    #       test_loss * batch_size / step_num
+    #     )
+    #   )
+    if (_ + 1) % saveInterval == 0:
       torch.save(
         model_mols.state_dict(),
         "ckpts/{}/mOLS-{}.pth".format(pde_type, dataset)
@@ -285,43 +279,31 @@ def train(config_dict: ml_collections.ConfigDict):
 
   # Train the aOLS model
   iters = tqdm(range(aols_epochs))
-  for epoch in iters:
-    train_loss = 0
-    test_loss = 0
-    for j in range(traj_num):
-      for i in range(0, step_num, batch_size):
-        uv = (
-          U[j, i:i + batch_size].reshape([batch_size, 2, nx, ny]) +
-          noise_scale * torch.randn(batch_size, 2, nx, ny)
-        ).to(device)
-        outputs = model_aols(uv)
-        loss_aols = criterion(
-          outputs,
-          output[j,
-                 i:i + batch_size, :, :].reshape(batch_size, label_dim, nx, ny)
-        )
-        if j == test_index:
-          # test trajectory is used for validation
-          test_loss = test_loss + loss_aols.item()
-        else:
-          train_loss = train_loss + loss_aols.item()
-          optimizer_aols.zero_grad()
-          loss_aols.backward()
-          optimizer_aols.step()
-          scheduler_aols.step(loss_aols)
+  for _ in iters:
+    for batch_inputs, batch_outputs in train_dataloader:
+      noise = torch.randn(batch_inputs.shape).to(device) * noise_scale
+      predict = model_aols(batch_inputs + noise)
+      loss_aols = criterion(predict, batch_outputs)
+      optimizer_aols.zero_grad()
+      loss_aols.backward()
+      optimizer_aols.step()
+      scheduler_aols.step(loss_aols)
+      desc_str = f"{loss_aols.item()=:.4e}"
+      iters.set_description_str(desc_str)
 
-    if np.isnan(train_loss).item():
+    if np.isnan(loss_aols.item()):
       print("Training loss became NaN. Stopping training.")
-      break
-    if (epoch + 1) % printInterval == 0:
-      print(
-        "aOLS Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
-          epoch + 1, aols_epochs,
-          train_loss * batch_size / step_num / (traj_num - 1),
-          test_loss * batch_size / step_num
-        )
-      )
-    if (epoch + 1) % saveInterval == 0:
+      break          
+
+    # if (epoch + 1) % printInterval == 0:
+    #   print(
+    #     "aOLS Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
+    #       epoch + 1, aols_epochs,
+    #       train_loss * batch_size / step_num / (case_num - 1),
+    #       test_loss * batch_size / step_num
+    #     )
+    #   )
+    if (_ + 1) % saveInterval == 0:
       torch.save(
         model_aols.state_dict(),
         "ckpts/{}/aOLS-{}.pth".format(pde_type, dataset)
@@ -333,55 +315,40 @@ def train(config_dict: ml_collections.ConfigDict):
 
   # Train the TR model
   iters = tqdm(range(tr_epochs))
-  for epoch in iters:
-    train_loss = 0
-    test_loss = 0
-    est_loss = 0
-    for j in range(traj_num):
-      for i in range(0, step_num, batch_size):
-        uv = U[j, i:i + batch_size].reshape([batch_size, 2, nx, ny]).to(device)
-        uv.requires_grad = True
-        outputs = model_tr(uv)
-        loss_tr = criterion(
-          outputs,
-          output[j,
-                 i:i + batch_size, :, :].reshape(batch_size, label_dim, nx, ny)
-        )
-        est_tr = loss_tr.item()
-        z1 = torch.ones_like(uv).to(device)
-        de_outputs = model_ed(uv)
-        de_loss = criterion(de_outputs, uv)
-        grad_de = torch.autograd.grad(de_loss, uv, create_graph=True)
-        sum_ = torch.sum(grad_de[0] * outputs / torch.norm(grad_de[0]))
-        loss_tr = loss_tr + lambda_ * criterion(
-          sum_,
-          torch.tensor(0.0).to(device)
-        )
-        if j == test_index:
-          # test trajectory is used for validation
-          test_loss = test_loss + loss_tr.item()
-          est_loss = est_loss + est_tr
-        else:
-          train_loss = train_loss + loss_tr.item()
-          optimizer_tr.zero_grad()
-          loss_tr.backward()
-          optimizer_tr.step()
-          scheduler_tr.step(loss_tr)
-
-    if np.isnan(train_loss).item():
-      print("Training loss became NaN. Stopping training.")
-      break
-    if (epoch + 1) % printInterval == 0:
-      print(
-        "TR Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}, Test LS Loss: {:4e}, Test Reg Loss: {:4e}"
-        .format(
-          epoch + 1, tr_epochs,
-          train_loss * batch_size / step_num / (traj_num - 1),
-          test_loss * batch_size / step_num, est_loss * batch_size / step_num,
-          (test_loss - est_loss) * batch_size / step_num
-        )
+  for _ in iters:
+    for batch_inputs, batch_outputs in train_dataloader:
+      batch_inputs.requires_grad = True
+      predict = model_tr(batch_inputs)
+      loss_tr = criterion(predict, batch_outputs)
+      de_outputs = model_ae(batch_inputs)
+      de_loss = criterion(de_outputs, batch_inputs)
+      grad_de = torch.autograd.grad(de_loss, batch_inputs, create_graph=True)
+      sum_ = torch.sum(grad_de[0] * predict / torch.norm(grad_de[0]))
+      loss_tr = loss_tr + lambda_ * criterion(
+        sum_,
+        torch.tensor(0.0).to(device)
       )
-    if (epoch + 1) % saveInterval == 0:
+      optimizer_tr.zero_grad()
+      loss_tr.backward()
+      optimizer_tr.step()
+      scheduler_tr.step(loss_tr)
+      desc_str = f"{loss_tr.item()=:.4e}"
+      iters.set_description_str(desc_str)
+
+    if np.isnan(loss_tr.item()):
+      print("Training loss became NaN. Stopping training.")
+      break   
+    # if (epoch + 1) % printInterval == 0:
+    #   print(
+    #     "TR Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}, Test LS Loss: {:4e}, Test Reg Loss: {:4e}"
+    #     .format(
+    #       epoch + 1, tr_epochs,
+    #       train_loss * batch_size / step_num / (case_num - 1),
+    #       test_loss * batch_size / step_num, est_loss * batch_size / step_num,
+    #       (test_loss - est_loss) * batch_size / step_num
+    #     )
+    #   )
+    if (_ + 1) % saveInterval == 0:
       torch.save(
         model_tr.state_dict(), "ckpts/{}/TR-{}.pth".format(pde_type, dataset)
       )
@@ -392,6 +359,6 @@ def train(config_dict: ml_collections.ConfigDict):
 
 if __name__ == "__main__":
 
-  with open("config/train.yaml", "r") as file:
+  with open("config/simulation.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
   train(config_dict)
