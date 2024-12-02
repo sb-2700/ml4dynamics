@@ -1,66 +1,51 @@
-import jax.numpy as jnp
-import torch
+import numpy as np
 import yaml
 from box import Box
-from jax import random as random
 from matplotlib import cm
 from matplotlib import pyplot as plt
 
-from ml4dynamics.dynamics import RD
-
+from ml4dynamics.dynamics import NS_channel
 
 with open("config/simulation.yaml", "r") as file:
   config_dict = yaml.safe_load(file)
 config = Box(config_dict)
 # model parameters
 warm_up = config.sim.warm_up
-Lx = Ly = config.react_diff.Lx
-nx = config.react_diff.nx
-ny = config.react_diff.nx
+Lx = Ly = config.ns.Lx
+nx = config.ns.nx
+ny = config.ns.ny
 dx = dy = Lx / nx
-gamma = config.react_diff.gamma
-d = config.react_diff.d
-t = config.react_diff.t
-alpha = config.react_diff.alpha
-beta = config.react_diff.beta
-# solver parameters
-step_num = config.react_diff.nt
-dt = t / step_num
+T = config.ns.T
+Re = config.ns.Re
+dt = config.ns.dt
+step_num = int(T / dt)
 
-# KS simulator with Dirichlet Neumann BC
-rd_fine = RD(
-  N=nx**2 * 2,
-  T=t,
+# NS channel simulator with no-slip BC
+ns_fine = NS_channel(
+  Lx=Lx,
+  nx=nx,
+  ny=ny,
+  T=T,
   dt=dt,
-  dx=dx,
-  tol=1e-8,
-  init_scale=4,
-  tv_scale=1e-8,
-  L=Lx,
-  alpha=alpha,
-  beta=beta,
-  gamma=gamma,
-  d=d,
-  device=torch.device('cpu'),
+  Re=Re,
 )
+y0 = 0.325
+u = np.zeros([nx + 2, ny + 2])
+v = np.zeros([nx + 2, ny + 1])
+u[0, 1:-1] = np.exp(-50 * (np.linspace(dy / 2, 1 - dy / 2, ny) - y0)**2)
+u0 = np.hstack([u.reshape(-1), v.reshape(-1)])
 
-u_fft = jnp.zeros((nx, nx, 2))
-u_fft = u_fft.at[:10, :10].set(
-  random.normal(key=random.PRNGKey(0), shape=(10, 10, 2))
-)
-u0 = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1)).reshape(-1)) / nx
-u0 = jnp.zeros(nx**2 * 2)
-# u0 = random.normal(key=random.PRNGKey(0), shape=(nx, nx, 2)).reshape(-1)
-
-rd_fine.assembly_matrix()
-rd_fine.run_simulation(u0, rd_fine.adi)
+ns_fine.assembly_matrix()
+ns_fine.run_simulation(u0, ns_fine.projection_correction)
 n_plot = 3
 fig, axs = plt.subplots(n_plot, n_plot)
 axs = axs.flatten()
 for i in range(n_plot**2):
-  axs[i].imshow(rd_fine.x_hist[i, :nx**2].reshape(nx, nx), cmap=cm.jet)
+  axs[i].imshow(
+    ns_fine.x_hist[i * 100, :(nx + 2) * (ny + 2)].reshape(nx + 2, ny + 2),
+    cmap=cm.jet
+  )
   axs[i].axis("off")
-plt.colorbar()
 plt.savefig("test.pdf")
 
 breakpoint()

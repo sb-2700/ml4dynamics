@@ -18,38 +18,35 @@ Lx = Ly = config.react_diff.Lx
 nx = config.react_diff.nx
 ny = config.react_diff.nx
 dx = dy = Lx / nx
-gamma = config.react_diff.gamma
-d = config.react_diff.d
-t = config.react_diff.t
+T = config.react_diff.T
+dt = config.react_diff.dt
+step_num = int(T / dt)
 alpha = config.react_diff.alpha
 beta = config.react_diff.beta
-# solver parameters
-step_num = config.react_diff.nt
-dt = t / step_num
+gamma = config.react_diff.gamma
+d = config.react_diff.d
 
 # KS simulator with Dirichlet Neumann BC
 rd_fine = RD(
-  N=nx**2 * 2,
-  T=t,
-  dt=dt,
-  dx=dx,
-  tol=1e-8,
-  init_scale=4,
-  tv_scale=1e-8,
   L=Lx,
+  N=nx**2 * 2,
+  T=T,
+  dt=dt,
   alpha=alpha,
   beta=beta,
   gamma=gamma,
   d=d,
-  device=torch.device('cpu'),
+  tol=1e-8,
+  init_scale=4,
+  tv_scale=1e-8,
 )
 
-u_fft = jnp.zeros((nx, nx, 2))
-u_fft = u_fft.at[:10, :10].set(
-  random.normal(key=random.PRNGKey(0), shape=(10, 10, 2))
+u_fft = jnp.zeros((2, nx, nx))
+u_fft = u_fft.at[:, :10, :10].set(
+  random.normal(key=random.PRNGKey(0), shape=(2, 10, 10))
 )
-u0 = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1)).reshape(-1)) / nx
-u0 = jnp.zeros(nx**2 * 2)
+u0 = jnp.real(jnp.fft.fftn(u_fft, axes=(1, 2)).reshape(-1)) / nx
+# u0 = jnp.zeros(nx**2 * 2)
 # u0 = random.normal(key=random.PRNGKey(0), shape=(nx, nx, 2)).reshape(-1)
 
 rd_fine.assembly_matrix()
@@ -58,9 +55,8 @@ n_plot = 3
 fig, axs = plt.subplots(n_plot, n_plot)
 axs = axs.flatten()
 for i in range(n_plot**2):
-  axs[i].imshow(rd_fine.x_hist[i, :nx**2].reshape(nx, nx), cmap=cm.jet)
+  axs[i].imshow(rd_fine.x_hist[i * 500, :nx**2].reshape(nx, nx), cmap=cm.jet)
   axs[i].axis("off")
-plt.colorbar()
 plt.savefig("test.pdf")
 
 breakpoint()
