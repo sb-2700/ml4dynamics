@@ -26,7 +26,7 @@ beta = config.react_diff.beta
 gamma = config.react_diff.gamma
 d = config.react_diff.d
 
-# KS simulator with Dirichlet Neumann BC
+# RD simulator with periodic BC
 rd_fine = RD(
   L=Lx,
   N=nx**2 * 2,
@@ -36,9 +36,6 @@ rd_fine = RD(
   beta=beta,
   gamma=gamma,
   d=d,
-  tol=1e-8,
-  init_scale=4,
-  tv_scale=1e-8,
 )
 
 u_fft = jnp.zeros((2, nx, nx))

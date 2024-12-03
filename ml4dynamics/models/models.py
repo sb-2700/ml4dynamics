@@ -195,10 +195,10 @@ def blockUNet(
   return block
 
 
-class EDNet(nn.Module):
+class Autoencoder(nn.Module):
 
   def __init__(self, channel_array=[2, 4, 4, 8, 8, 16], dropout=0.):
-    super(EDNet, self).__init__()
+    super(Autoencoder, self).__init__()
 
     self.layer1 = nn.Sequential()
     self.layer1.add_module(
