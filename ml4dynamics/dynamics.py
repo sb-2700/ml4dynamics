@@ -1,14 +1,19 @@
 import copy
+import os
 import time
 from abc import ABCMeta, abstractmethod
+
+os.environ['JAX_XLA_PYTHON_CLIENT_PREALLOCATE'] = 'False'
 
 import jax
 import jax.numpy as jnp
 import jax.random as random
+import numpy as np
 import torch
 from jax.numpy.linalg import solve
 from matplotlib import pyplot as plt
 from scipy.integrate import solve_ivp
+import scipy.sparse as spa
 
 # from scipy.linalg import lstsq
 # from scipy.sparse import csr_matrix
@@ -147,7 +152,7 @@ class dynamics(object):
       x = iter(x)
     self.x_hist = self.x_hist.at[0].set(self.x_targethist[0])
 
-  def run_simulation(self, x, iter):
+  def run_simulation(self, x, iter: callable):
     step_num = self.step_num
     self.x_hist = jnp.zeros([step_num, self.N])
     for i in range(step_num):
@@ -396,12 +401,12 @@ class Rossler(dynamics):
     N=3,
     T=100,
     dt=0.001,
-    tol=1e-8,
-    init_scale=1,
-    tv_scale=1e-8,
     a=0.1,
     b=0.1,
     c=14,
+    tol=1e-8,
+    init_scale=1,
+    tv_scale=1e-8,
     plot=False
   ):
     super(Rossler,
@@ -450,18 +455,16 @@ class Lorenz(dynamics):
     N=3,
     T=100,
     dt=0.001,
-    tol=1e-8,
-    init_scale=1,
-    tv_scale=1e-8,
     sigma=10,
     rho=28,
     beta=8 / 3,
-    device=torch.device('cpu'),
+    tol=1e-8,
+    init_scale=1,
+    tv_scale=1e-8,
     plot=False
   ):
     super(Lorenz,
           self).__init__(model_type, N, T, dt, tol, init_scale, tv_scale, plot)
-    self.device = device
     self.sigma = sigma
     self.rho = rho
     self.beta = beta
@@ -520,16 +523,16 @@ class KS(dynamics):
   def __init__(
     self,
     model_type='KS',
+    L=100 * jnp.pi,
     N=512,
     T=10,
     dt=0.01,
-    tol=1e-8,
-    init_scale=1e-2,
-    tv_scale=1e-8,
-    L=100 * jnp.pi,
     nu=1,
     c=1,
     BC="periodic",
+    tol=1e-8,
+    init_scale=1e-2,
+    tv_scale=1e-8,
     rng=random.PRNGKey(0),
     plot=False
   ):
@@ -546,7 +549,6 @@ class KS(dynamics):
     elif self.BC == "Dirichlet-Neumann":
       self.dx = self.L / (self.N + 1)
     self.assembly_matrix()
-    #print(jnp.max(jnp.abs(1 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))/(1 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))))
 
   def f(self, t, x):
     return (jnp.eye(self.N) - 2 * self.L * self.dt) @ x -\
@@ -603,7 +605,7 @@ class KS(dynamics):
     self.attractor = copy.deepcopy(x)
     self.attractor_flag = True
 
-  # @jax.jit
+  @jax.jit
   # NOTE: currently we can not jit as the self is not an array
   def CN_FEM(self, x):
     return jax.scipy.linalg.solve(
@@ -823,36 +825,42 @@ class KS(dynamics):
 
 
 class RD(dynamics):
+  r"""
+  
+  $$
+
+  $$
+
+  The dimension of the state variable is given by $N = 2n^2$ where $n$ is the
+  spatial discretization size.
+  """
 
   def __init__(
     self,
     model_type='react_diff',
+    L=2 * jnp.pi,
     N=128**2 * 2,
     T=10,
     dt=0.01,
-    dx=0,
-    tol=1e-8,
-    init_scale=4,
-    tv_scale=1e-8,
-    L=2 * jnp.pi,
     alpha=0.01,
     beta=1.0,
     gamma=0.05,
     d=2,
-    device=torch.device('cpu'),
+    tol=1e-8,
+    init_scale=4,
+    tv_scale=1e-8,
     plot=False
   ):
     super(RD,
           self).__init__(model_type, N, T, dt, tol, init_scale, tv_scale, plot)
 
-    self.device = device
     self.L = L
-    self.dx = dx
+    self.n = int(jnp.sqrt(self.N / 2))
+    self.dx = L / self.n
     self.alpha = alpha
     self.beta = beta
     self.gamma = gamma
     self.d = d
-    self.n = int(jnp.sqrt(self.N / 2))
     self.assembly_matrix()
 
   def f(self, x):
@@ -908,15 +916,14 @@ class NS(dynamics):
   def __init__(
     self,
     model_type='NS',
+    L=2 * jnp.pi,
     N=128,
     T=10,
     dt=0.01,
-    dx=0,
+    nu=0.0001,
     tol=1e-8,
     init_scale=4,
     tv_scale=1e-8,
-    L=2 * jnp.pi,
-    nu=0.0001,
     device=torch.device('cpu'),
     plot=False
   ):
@@ -925,17 +932,10 @@ class NS(dynamics):
 
     self.device = device
     self.L = L
-    if dx == 0:
-      self.dx = self.L / self.N
-    else:
-      self.dx = torch.Tensor([dx]).to(self.device)
+    self.dx = self.L / self.N
     self.nu = torch.Tensor([dt]).to(self.device)
     self.nu = torch.Tensor([nu]).to(self.device)
     self.assembly_spectral()
-
-  def f(self, x):
-    print("This is an abstract f method!")
-    raise NotImplementedError
 
   def assembly_spectral(self):
     # assembly array for spectral method
@@ -1058,9 +1058,156 @@ class NS(dynamics):
       #self.err_hist[i] = torch.sum((irfft2(w) -
       #       2*self.kappa * torch.cos(self.kappa*self.X)
       #       * torch.cos(self.kappa*self.Y)
-      #       * torch.exp(torch.Tensor([-2*self.kappa**2*(i+1)*self.dt*self.nu])))**2)
+      #       * torch.exp(
+      #           torch.Tensor([-2*self.kappa**2*(i+1)*self.dt*self.nu])))**2
+      #         )
+  
 
-  def calc_gradient(self):
-    # naive method to calculate the gradient, either direct method or adjoint method
-    print("This is an abstract f method!")
-    raise NotImplementedError
+class NS_channel(dynamics):
+  r"""
+  
+  $$
+
+  $$
+
+  The dimension of the state variable is given by $N = 2 * n * (n/4)$ where
+  $n, n/4$ is the spatial discretization size of x and y directions.
+  """
+
+  def __init__(
+    self,
+    model_type='NS',
+    Lx=4,
+    N=0,
+    nx=128,
+    ny=32,
+    T=10,
+    dt=0.01,
+    Re=100,
+    tol=1e-8,
+    init_scale=4,
+    tv_scale=1e-8,
+    plot=False
+  ):
+    super(NS_channel,
+          self).__init__(model_type, N, T, dt, tol, init_scale, tv_scale, plot)
+
+    self.Lx = Lx
+    self.nx = nx
+    self.ny = ny
+    self.dx = self.dy = self.Lx / self.nx
+    self.N = (nx + 2) * (2 * ny + 3)
+    self.dt = dt
+    self.Re = Re
+    self.assembly_matrix()
+
+  def assembly_matrix(self):
+    nx = self.nx
+    ny = self.ny
+    dx = self.dx
+    dy = self.dy
+    LNx = np.eye(nx) * (-2)
+    LNy = np.eye(ny) * (-2)
+    for i in range(1, nx - 1):
+      LNx[i, i - 1] = 1
+      LNx[i, i + 1] = 1
+    for i in range(1, ny - 1):
+      LNy[i, i - 1] = 1
+      LNy[i, i + 1] = 1
+    LNx[0, 1] = 1
+    LNx[0, 0] = -1
+    LNx[-1, -1] = -1
+    LNx[-1, -2] = 1
+    LNy[0, 1] = 1
+    LNy[0, 0] = -1
+    LNy[-1, -1] = -1
+    LNy[-1, -2] = 1
+    LNx = spa.csc_matrix(LNx / (dx**2))
+    LNy = spa.csc_matrix(LNy / (dy**2))
+    # BE CAREFUL, SINCE THE LAPLACIAN MATRIX IN X Y DIRECTION IS NOT THE SAME
+    #L2N = spa.kron(LNy, spa.eye(nx)) + spa.kron(spa.eye(ny), LNx)
+    L2N = spa.kron(LNx, spa.eye(ny)) + spa.kron(spa.eye(nx), LNy)
+    self.L = copy.deepcopy(L2N)
+    #for i in range(ny):
+    #    L[(i+1)*nx - 1, (i+1)*nx - 1] = L[(i+1)*nx - 1, (i+1)*nx - 1] - 2
+    for i in range(ny):
+      self.L[-1 - i, -1 - i] = self.L[-1 - i, -1 - i] - 2 / (dx**2)
+
+  def projection_correction(self, uv, y0=0.325):
+    """projection method to solve the incompressible NS equation
+      The convection discretization is given by central difference
+      u_ij (u_i+1,j - u_i-1,j)/2dx + \Sigma v_ij (u_i,j+1 - u_i,j-1)/2dx"""
+    
+    nx = self.nx
+    ny = self.ny
+    dx = self.dx
+    dy = self.dy
+    dt = self.dt
+    Re = self.Re
+    u = uv[:(nx + 2) * (ny + 2)].reshape((nx + 2, ny + 2))
+    v = uv[(nx + 2) * (ny + 2):].reshape((nx + 2, ny + 1))
+    t = 0
+
+    # central difference for first derivative
+    u_x = (u[2:, 1:-1] - u[:-2, 1:-1]) / dx / 2
+    u_y = (u[1:-1, 2:] - u[1:-1, :-2]) / dy / 2
+    v_x = (v[2:, 1:-1] - v[:-2, 1:-1]) / dx / 2
+    v_y = (v[1:-1, 2:] - v[1:-1, :-2]) / dy / 2
+
+    # five pts scheme for Laplacian
+    u_xx = (-2 * u[1:-1, 1:-1] + u[2:, 1:-1] + u[:-2, 1:-1]) / (dx**2)
+    u_yy = (-2 * u[1:-1, 1:-1] + u[1:-1, 2:] + u[1:-1, :-2]) / (dy**2)
+    #u_xy = (u[2:,2:]+u[:-2,:-2]-2*u[1:-1,1:-1])/(dx**2)/2 - \
+    #        (u_xx+u_yy)/2
+    v_xx = (-2 * v[1:-1, 1:-1] + v[2:, 1:-1] + v[:-2, 1:-1]) / (dx**2)
+    v_yy = (-2 * v[1:-1, 1:-1] + v[1:-1, 2:] + v[1:-1, :-2]) / (dy**2)
+    #v_xy = (v[2:,2:]+v[:-2,:-2]-2*v[1:-1,1:-1])/(dx**2)/2 - \
+    #        (v_xx+v_yy)/2
+
+    # interpolate u, v on v, u respectively, we interpolate using the four neighbor nodes
+    u2v = (u[:-2, 1:-2] + u[1:-1, 1:-2] + u[:-2, 2:-1] + u[1:-1, 2:-1]) / 4
+    v2u = (v[1:-1, :-1] + v[2:, :-1] + v[1:-1, 1:] + v[2:, 1:]) / 4
+
+    # prediction step: forward Euler
+    u[1:-1, 1:-1] = u[
+      1:-1, 1:-1] + dt * ((u_xx + u_yy) / Re - u[1:-1, 1:-1] * u_x - v2u * u_y)
+    v[1:-1, 1:-1] = v[
+      1:-1, 1:-1] + dt * ((v_xx + v_yy) / Re - u2v * v_x - v[1:-1, 1:-1] * v_y)
+
+    # correction step: calculating the residue of Poisson equation as the
+    #  divergence of new velocity field
+    divu = (u[1:-1, 1:-1] - u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
+    # GMRES with initial guess pressure in last time step
+    p = spa.linalg.spsolve(self.L, divu.reshape(nx * ny)).reshape([nx, ny])
+    # p = jsla.gmres(A=L, b=divu.reshape(nx * ny), x0=p).reshape([nx, ny])
+    # BiSTABCG with initial guess pressure in last time step
+    # p = jsla.bicgstab(A=L, b=divu.reshape(nx * ny), x0=p).reshape([nx, ny])
+
+    u[1:-2, 1:-1] = u[1:-2, 1:-1] - (p[1:, :] - p[:-1, :]) / dx
+    v[1:-1, 1:-1] = v[1:-1, 1:-1] - (p[:, 1:] - p[:, :-1]) / dy
+    u[-2, 1:-1] = u[-2, 1:-1] + 2 * p[-1, :] / dx
+
+    # check the corrected velocity field is divergence free
+    divu = (u[1:-1, 1:-1] - u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
+    if jnp.linalg.norm(divu) > self.tol:
+      print(jnp.linalg.norm(divu))
+      print(t)
+      print("Velocity field is not divergence free!!!")
+      breakpoint()
+      raise Exception("Velocity field is not divergence free!!!")
+
+    # update Dirichlet BC on left, upper, lower boundary
+    u[:, 0] = -u[:, 1]
+    u[:, -1] = -u[:, -2]
+    v[0, 1:-1] = 2 * np.exp(-50 * (np.linspace(dy, 1 - dy, ny - 1) - y0)**2
+                            ) * np.sin(t) - v[1, 1:-1]
+    # update Neuman BC on right boundary
+    u[-1, :] = u[-3, :]
+    v[-1, :] = v[
+      -2, :]  # alternative choice to use Neuman BC for v on the right boundary
+    #v[-1, 1:-1] = v[-1, 1:-1] + (p[-1, 1:] - p[-1, :-1])/dy
+
+    uv[:(nx + 2) * (ny + 2)] = u.reshape(-1)
+    uv[(nx + 2) * (ny + 2):] = v.reshape(-1)
+
+    return uv

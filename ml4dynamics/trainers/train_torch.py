@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import yaml
 from box import Box
-from ml4dynamics.models.models import EDNet, UNet
+from ml4dynamics.models.models import Autoencoder, UNet
 from sklearn.model_selection import train_test_split
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, TensorDataset
@@ -62,15 +62,15 @@ def train(config_dict: ml_collections.ConfigDict):
   # setting training hyperparameters
   sample_num = case_num * step_num
   ae_epochs = config.train.epochs_ae
-  ae_epochs = 1
-  ols_epochs = 1
-  mols_epochs = 1
-  aols_epochs = 1
-  tr_epochs = 1
+  ae_epochs = 200
+  ols_epochs = 200
+  mols_epochs = 200
+  aols_epochs = 200
+  tr_epochs = 200
   batch_size = step_num
   learning_rate = 1e-4
   factor = 0.8  # learning rate decay factor
-  noise_scale = 1e-3  # parameter for adverserial OLS
+  noise_scale = 1e-3  # parameter for adverserial ols
   printInterval = 100
   saveInterval = 100
   period = 2  # related to the scheduler
@@ -87,44 +87,44 @@ def train(config_dict: ml_collections.ConfigDict):
     model_mols = UNet([2, 4, 8, 32, 64, 128, 1]).to(device)
     model_aols = UNet([2, 4, 8, 32, 64, 128, 1]).to(device)
     model_tr = UNet([2, 4, 8, 32, 64, 128, 1]).to(device)
-  if os.path.isfile("ckpts/{}/OLS-{}.pth".format(pde_type, dataset)):
+  if os.path.isfile("ckpts/{}/ols-{}.pth".format(pde_type, dataset)):
     model_ols.load_state_dict(
       torch.load(
-        "ckpts/{}/OLS-{}.pth".format(pde_type, dataset),
+        "ckpts/{}/ols-{}.pth".format(pde_type, dataset),
         map_location=torch.device("cpu")
       )
     )
     model_ols.eval()
-  if os.path.isfile("ckpts/{}/OLS-{}.pth".format(pde_type, dataset), ):
+  if os.path.isfile("ckpts/{}/ols-{}.pth".format(pde_type, dataset), ):
     model_mols.load_state_dict(
       torch.load(
-        "ckpts/{}/OLS-{}.pth".format(pde_type, dataset),
+        "ckpts/{}/ols-{}.pth".format(pde_type, dataset),
         map_location=torch.device("cpu")
       )
     )
     model_mols.eval()
-  if os.path.isfile("ckpts/{}/aOLS-{}.pth".format(pde_type, dataset)):
+  if os.path.isfile("ckpts/{}/aols-{}.pth".format(pde_type, dataset)):
     model_aols.load_state_dict(
       torch.load(
-        "ckpts/{}/aOLS-{}.pth".format(pde_type, dataset),
+        "ckpts/{}/aols-{}.pth".format(pde_type, dataset),
         map_location=torch.device("cpu")
       )
     )
     model_aols.eval()
-  if os.path.isfile("ckpts/{}/TR-{}.pth".format(pde_type, dataset)):
+  if os.path.isfile("ckpts/{}/tr-{}.pth".format(pde_type, dataset)):
     model_tr.load_state_dict(
       torch.load(
-        "ckpts/{}/TR-{}.pth".format(pde_type, dataset),
+        "ckpts/{}/tr-{}.pth".format(pde_type, dataset),
         map_location=torch.device("cpu")
       )
     )
     model_tr.eval()
-  # if u switch this EDNet to UNet, the error will become very small
-  model_ae = EDNet(channel_array=[2, 4, 8, 16, 32, 64]).to(device)
-  if os.path.isfile("ckpts/{}/ED-{}.pth".format(pde_type, dataset)):
+  # if u switch this Autoencoder to UNet, the error will become very small
+  model_ae = Autoencoder(channel_array=[2, 4, 8, 16, 32, 64]).to(device)
+  if os.path.isfile("ckpts/{}/ae-{}.pth".format(pde_type, dataset)):
     model_ae.load_state_dict(
       torch.load(
-        "ckpts/{}/ED-{}.pth".format(pde_type, dataset),
+        "ckpts/{}/ae-{}.pth".format(pde_type, dataset),
         map_location=torch.device("cpu")
       )
     )
@@ -203,14 +203,14 @@ def train(config_dict: ml_collections.ConfigDict):
     #   )
     if (step + 1) % saveInterval == 0:
       torch.save(
-        model_ae.state_dict(), "ckpts/{}/ED-{}.pth".format(pde_type, dataset)
+        model_ae.state_dict(), "ckpts/{}/ae-{}.pth".format(pde_type, dataset)
       )
 
   T2 = time.perf_counter()
-  print("Training time for ED model: {:4e}".format(T2 - T1))
+  print("Training time for Autoencoder model: {:4e}".format(T2 - T1))
   del optimizer_ae, scheduler_ae, loss_ae
 
-  # Train the OLS model
+  # Train the ols model
   iters = tqdm(range(ols_epochs))
   for _ in iters:
     for batch_inputs, batch_outputs in train_dataloader:
@@ -228,7 +228,7 @@ def train(config_dict: ml_collections.ConfigDict):
       break
     # if (epoch + 1) % printInterval == 0:
     #   print(
-    #     "OLS Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
+    #     "ols Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
     #       epoch + 1, ols_epochs,
     #       train_loss * batch_size / step_num / (case_num - 1),
     #       test_loss * batch_size / step_num
@@ -236,14 +236,14 @@ def train(config_dict: ml_collections.ConfigDict):
     #   )
     if (_ + 1) % saveInterval == 0:
       torch.save(
-        model_ols.state_dict(), "ckpts/{}/OLS-{}.pth".format(pde_type, dataset)
+        model_ols.state_dict(), "ckpts/{}/ols-{}.pth".format(pde_type, dataset)
       )
 
   T3 = time.perf_counter()
-  print("Training time for OLS model: {:4e}".format(T3 - T2))
+  print("Training time for ols model: {:4e}".format(T3 - T2))
   del model_ols, optimizer_ols, scheduler_ols, loss_ols
 
-  # Train the mOLS model
+  # Train the mols model
   iters = tqdm(range(mols_epochs))
   for _ in iters:
     for batch_inputs, batch_outputs in train_dataloader:
@@ -261,7 +261,7 @@ def train(config_dict: ml_collections.ConfigDict):
       break
     # if (epoch + 1) % printInterval == 0:
     #   print(
-    #     "mOLS Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
+    #     "mols Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
     #       epoch + 1, mols_epochs,
     #       train_loss * batch_size / step_num / (case_num - 1),
     #       test_loss * batch_size / step_num
@@ -270,14 +270,14 @@ def train(config_dict: ml_collections.ConfigDict):
     if (_ + 1) % saveInterval == 0:
       torch.save(
         model_mols.state_dict(),
-        "ckpts/{}/mOLS-{}.pth".format(pde_type, dataset)
+        "ckpts/{}/mols-{}.pth".format(pde_type, dataset)
       )
 
   T4 = time.perf_counter()
-  print("Training time for mOLS model: {:4e}".format(T4 - T3))
+  print("Training time for mols model: {:4e}".format(T4 - T3))
   del model_mols, optimizer_mols, scheduler_mols, loss_mols
 
-  # Train the aOLS model
+  # Train the aols model
   iters = tqdm(range(aols_epochs))
   for _ in iters:
     for batch_inputs, batch_outputs in train_dataloader:
@@ -297,7 +297,7 @@ def train(config_dict: ml_collections.ConfigDict):
 
     # if (epoch + 1) % printInterval == 0:
     #   print(
-    #     "aOLS Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
+    #     "aols Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}".format(
     #       epoch + 1, aols_epochs,
     #       train_loss * batch_size / step_num / (case_num - 1),
     #       test_loss * batch_size / step_num
@@ -306,14 +306,14 @@ def train(config_dict: ml_collections.ConfigDict):
     if (_ + 1) % saveInterval == 0:
       torch.save(
         model_aols.state_dict(),
-        "ckpts/{}/aOLS-{}.pth".format(pde_type, dataset)
+        "ckpts/{}/aols-{}.pth".format(pde_type, dataset)
       )
 
   T5 = time.perf_counter()
-  print("Training time for aOLS model: {:4e}".format(T5 - T4))
+  print("Training time for aols model: {:4e}".format(T5 - T4))
   del model_aols, optimizer_aols, scheduler_aols, loss_aols
 
-  # Train the TR model
+  # Train the tr model
   iters = tqdm(range(tr_epochs))
   for _ in iters:
     for batch_inputs, batch_outputs in train_dataloader:
@@ -340,7 +340,7 @@ def train(config_dict: ml_collections.ConfigDict):
       break   
     # if (epoch + 1) % printInterval == 0:
     #   print(
-    #     "TR Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}, Test LS Loss: {:4e}, Test Reg Loss: {:4e}"
+    #     "tr Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}, Test LS Loss: {:4e}, Test Reg Loss: {:4e}"
     #     .format(
     #       epoch + 1, tr_epochs,
     #       train_loss * batch_size / step_num / (case_num - 1),
@@ -350,11 +350,11 @@ def train(config_dict: ml_collections.ConfigDict):
     #   )
     if (_ + 1) % saveInterval == 0:
       torch.save(
-        model_tr.state_dict(), "ckpts/{}/TR-{}.pth".format(pde_type, dataset)
+        model_tr.state_dict(), "ckpts/{}/tr-{}.pth".format(pde_type, dataset)
       )
 
   T6 = time.perf_counter()
-  print("Training time for TR model: {:4e}".format(T6 - T5))
+  print("Training time for tr model: {:4e}".format(T6 - T5))
 
 
 if __name__ == "__main__":
