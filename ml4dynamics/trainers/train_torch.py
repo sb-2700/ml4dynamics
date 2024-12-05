@@ -8,14 +8,16 @@ import torch
 import torch.nn as nn
 import yaml
 from box import Box
-from ml4dynamics.models.models import Autoencoder, UNet
 from sklearn.model_selection import train_test_split
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
+from ml4dynamics.models.models import Autoencoder, UNet
+
 np.set_printoptions(precision=15)
 torch.set_default_dtype(torch.float64)
+
 
 def train(config_dict: ml_collections.ConfigDict):
 
@@ -42,22 +44,22 @@ def train(config_dict: ml_collections.ConfigDict):
   )
 
   with h5py.File(h5_filename, "r") as h5f:
-    inputs = torch.tensor(
-      h5f["data"]["inputs"][()], dtype=torch.float64
-    ).to(device)
-    outputs = torch.tensor(
-      h5f["data"]["inputs"][()], dtype=torch.float64
-    ).to(device)
-  print(
-    f"Training {pde_type} model with data: {dataset} ..."
-  )
+    inputs = torch.tensor(h5f["data"]["inputs"][()],
+                          dtype=torch.float64).to(device)
+    outputs = torch.tensor(h5f["data"]["inputs"][()],
+                           dtype=torch.float64).to(device)
+  print(f"Training {pde_type} model with data: {dataset} ...")
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=config.sim.seed
   )
   train_dataset = TensorDataset(train_x, train_y)
-  train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+  train_dataloader = DataLoader(
+    train_dataset, batch_size=batch_size, shuffle=True
+  )
   test_dataset = TensorDataset(test_x, test_y)
-  test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+  test_dataloader = DataLoader(
+    test_dataset, batch_size=batch_size, shuffle=True
+  )
 
   # setting training hyperparameters
   sample_num = case_num * step_num
@@ -293,7 +295,7 @@ def train(config_dict: ml_collections.ConfigDict):
 
     if np.isnan(loss_aols.item()):
       print("Training loss became NaN. Stopping training.")
-      break          
+      break
 
     # if (epoch + 1) % printInterval == 0:
     #   print(
@@ -337,7 +339,7 @@ def train(config_dict: ml_collections.ConfigDict):
 
     if np.isnan(loss_tr.item()):
       print("Training loss became NaN. Stopping training.")
-      break   
+      break
     # if (epoch + 1) % printInterval == 0:
     #   print(
     #     "tr Epoch [{}/{}], Train Loss: {:.4e}, Test Loss: {:4e}, Test LS Loss: {:4e}, Test Reg Loss: {:4e}"

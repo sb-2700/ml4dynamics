@@ -83,34 +83,37 @@ def plot_stats(
   plt.subplot(211)
   plt.plot(t_array, np.mean(fine_traj, axis=1), label="truth")
   plt.plot(
-    t_array, np.mean(baseline, axis=1),
+    t_array,
+    np.mean(baseline, axis=1),
     label="baseline={:.3e}|MSE={:.3e}".format(
       # np.linalg.norm(
       #   np.mean(fine_traj, axis=1) - np.mean(baseline, axis=1)
       # )
       np.mean(fine_traj[-avg_length:]) - np.mean(baseline[-avg_length:]),
-      np.mean((fine_traj[:,r-1::r] - baseline)**2)
+      np.mean((fine_traj[:, r - 1::r] - baseline)**2)
     )
   )
   plt.plot(
-    t_array, np.mean(correction1, axis=1),
+    t_array,
+    np.mean(correction1, axis=1),
     label="err2={:.3e}|MSE={:.3e}".format(
       # np.linalg.norm(
       #   np.mean(fine_traj, axis=1) - np.mean(correction1, axis=1)
       # )
       np.mean(fine_traj[-avg_length:]) - np.mean(correction1[-avg_length:]),
-      np.mean((fine_traj[:,r-1::r] - correction1)**2)
+      np.mean((fine_traj[:, r - 1::r] - correction1)**2)
     )
   )
   if correction2 is not None:
     plt.plot(
-      t_array, np.mean(correction2, axis=1),
+      t_array,
+      np.mean(correction2, axis=1),
       label="err3={:.3e}|MSE={:.3e}".format(
         # np.linalg.norm(
         #   np.mean(fine_traj, axis=1) - np.mean(correction2, axis=1)
         # )
         np.mean(fine_traj[-avg_length:]) - np.mean(correction2[-avg_length:]),
-        np.mean((fine_traj[:,r-1::r] - correction2)**2)
+        np.mean((fine_traj[:, r - 1::r] - correction2)**2)
       )
     )
   plt.legend()
@@ -119,7 +122,8 @@ def plot_stats(
   plt.subplot(212)
   plt.plot(t_array, np.mean(fine_traj**2, axis=1), label="truth")
   plt.plot(
-    t_array, np.mean(baseline**2, axis=1),
+    t_array,
+    np.mean(baseline**2, axis=1),
     label="baseline={:.3e}".format(
       # np.linalg.norm(
       #   np.mean(fine_traj**2, axis=1) - np.mean(baseline**2, axis=1)
@@ -128,22 +132,26 @@ def plot_stats(
     )
   )
   plt.plot(
-    t_array, np.mean(correction1**2, axis=1),
+    t_array,
+    np.mean(correction1**2, axis=1),
     label="err2={:.3e}".format(
       # np.linalg.norm(
       #   np.mean(fine_traj**2, axis=1) - np.mean(correction1**2, axis=1)
       # )
-      np.mean(fine_traj[-avg_length:]**2) - np.mean(correction1[-avg_length:]**2),
+      np.mean(fine_traj[-avg_length:]**2) -
+      np.mean(correction1[-avg_length:]**2),
     )
   )
   if correction2 is not None:
     plt.plot(
-      t_array, np.mean(correction2**2, axis=1),
+      t_array,
+      np.mean(correction2**2, axis=1),
       label="err3={:.3e}".format(
         # np.linalg.norm(
         #   np.mean(fine_traj**2, axis=1) - np.mean(correction2**2, axis=1)
         # )
-        np.mean(fine_traj[-avg_length:]**2) - np.mean(correction2[-avg_length:]**2),
+        np.mean(fine_traj[-avg_length:]**2) -
+        np.mean(correction2[-avg_length:]**2),
       )
     )
   plt.legend()
@@ -152,18 +160,18 @@ def plot_stats(
   plt.savefig(fig_name)
   print(
     "rmse without correction: {:.3e}".format(
-      np.sqrt(np.mean((baseline.T - fine_traj[:, r-1::r].T)**2))
+      np.sqrt(np.mean((baseline.T - fine_traj[:, r - 1::r].T)**2))
     )
   )
   print(
     "rmse with correction1: {:.3e}".format(
-      np.sqrt(np.mean((correction1.T - fine_traj[:, r-1::r].T)**2))
+      np.sqrt(np.mean((correction1.T - fine_traj[:, r - 1::r].T)**2))
     )
   )
   if correction2 is not None:
     print(
       "rmse with correction2: {:.3e}".format(
-        np.sqrt(np.mean((correction2.T - fine_traj[:, r-1::r].T)**2))
+        np.sqrt(np.mean((correction2.T - fine_traj[:, r - 1::r].T)**2))
       )
     )
 

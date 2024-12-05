@@ -1,4 +1,5 @@
 import os
+from time import time
 
 import jax
 import jax.numpy as jnp
@@ -11,9 +12,9 @@ from dlpack import asdlpack
 from jax import random
 from matplotlib import cm
 from matplotlib import pyplot as plt
+
 from ml4dynamics.dynamics import RD
 from ml4dynamics.models.models import UNet
-from time import time
 
 jax.config.update("jax_enable_x64", True)
 np.set_printoptions(precision=15)
@@ -43,13 +44,13 @@ def a_posteriori_test(config_dict: ml_collections.ConfigDict):
   device = torch.device(f"cuda:{GPU}" if torch.cuda.is_available() else "cpu")
   model = UNet().to(device)
   if os.path.isfile(f"ckpts/{pde_type}/{model_type}_{dataset}.pth"):
-      model.load_state_dict(
-        torch.load(
-          f"ckpts/{pde_type}/{model_type}_{dataset}.pth",
-          map_location=torch.device("cpu")
-        )
+    model.load_state_dict(
+      torch.load(
+        f"ckpts/{pde_type}/{model_type}_{dataset}.pth",
+        map_location=torch.device("cpu")
       )
-      model.eval()
+    )
+    model.eval()
 
   rd_fine = RD(
     L=Lx,
@@ -63,7 +64,7 @@ def a_posteriori_test(config_dict: ml_collections.ConfigDict):
   )
   rd_coarse = RD(
     L=Lx,
-    N=(nx//r)**2 * 2,
+    N=(nx // r)**2 * 2,
     T=T,
     dt=dt,
     alpha=alpha,
@@ -77,12 +78,16 @@ def a_posteriori_test(config_dict: ml_collections.ConfigDict):
     x_hist = jnp.zeros([step_num, 2, nx, nx])
     for i in range(step_num):
       x_hist = x_hist.at[i].set(uv)
-      tmp = (uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] +
-        uv[:, 0::2, 1::2] + uv[:, 1::2, 1::2]) / 4
+      tmp = (
+        uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] + uv[:, 0::2, 1::2] +
+        uv[:, 1::2, 1::2]
+      ) / 4
       uv = rd_coarse.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
       uv = np.vstack(
-        [np.kron(uv[0], np.ones((r, r))).reshape(1, nx, nx),
-        np.kron(uv[1], np.ones((r, r))).reshape(1, nx, nx),]
+        [
+          np.kron(uv[0], np.ones((r, r))).reshape(1, nx, nx),
+          np.kron(uv[1], np.ones((r, r))).reshape(1, nx, nx),
+        ]
       )
 
       # naive jax-torch data exchange from numpy, gpu-cpu
@@ -96,12 +101,10 @@ def a_posteriori_test(config_dict: ml_collections.ConfigDict):
       correction = model(
         torch.from_dlpack(asdlpack(uv)).reshape((1, *uv.shape)).to(device)
       )
-      uv += jnp.array(
-        jnp.from_dlpack(asdlpack(correction[0].detach()))
-      ) * dt
+      uv += jnp.array(jnp.from_dlpack(asdlpack(correction[0].detach()))) * dt
 
     return x_hist
-  
+
   u_fft = jnp.zeros((2, nx, nx))
   u_fft = u_fft.at[:, :10, :10].set(
     random.normal(key=random.PRNGKey(0), shape=(2, 10, 10))
@@ -133,7 +136,8 @@ def a_posteriori_test(config_dict: ml_collections.ConfigDict):
     axs[i].axis("off")
   plt.savefig(f"results/fig/{pde_type}_{dataset}_true.pdf")
 
+
 if __name__ == "__main__":
-   with open("config/simulation.yaml", "r") as file:
+  with open("config/simulation.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
-   a_posteriori_test(config_dict)
+  a_posteriori_test(config_dict)

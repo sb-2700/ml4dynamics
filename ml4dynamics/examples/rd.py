@@ -8,7 +8,6 @@ from matplotlib import pyplot as plt
 
 from ml4dynamics.dynamics import RD
 
-
 with open("config/simulation.yaml", "r") as file:
   config_dict = yaml.safe_load(file)
 config = Box(config_dict)

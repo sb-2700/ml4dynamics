@@ -8,6 +8,8 @@ of the fourteenth international conference on artificial intelligence and
 statistics. JMLR Workshop and Conference Proceedings, 2011.
 """
 
+from functools import partial
+
 import h5py
 import jax
 import jax.numpy as jnp
@@ -17,12 +19,11 @@ import optax
 import tensorflow as tf
 import yaml
 from box import Box
-from functools import partial
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from ml4dynamics.dynamics import RD
-from ml4dynamics.models.models_jax import UNet, CustomTrainState
+from ml4dynamics.models.models_jax import CustomTrainState, UNet
 
 jax.config.update("jax_enable_x64", True)
 
@@ -59,9 +60,7 @@ def main(config_dict: ml_collections.ConfigDict):
   with h5py.File(h5_filename, "r") as h5f:
     inputs = jnp.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
     outputs = jnp.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
-  print(
-    f"Training {pde_type} model with data: {dataset} ..."
-  )
+  print(f"Training {pde_type} model with data: {dataset} ...")
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=config.sim.seed
   )
@@ -69,23 +68,31 @@ def main(config_dict: ml_collections.ConfigDict):
   dataset = dataset.shuffle(buffer_size=4).batch(200)
   val_dataset = tf.data.Dataset.from_tensor_slices((test_x, test_y))
   val_dataset = val_dataset.shuffle(buffer_size=4).batch(200)
-  
+
   unet = UNet()
   init_rngs = {
-    'params': jax.random.PRNGKey(0), 'dropout': jax.random.PRNGKey(1)
+    'params': jax.random.PRNGKey(0),
+    'dropout': jax.random.PRNGKey(1)
   }
   unet_variables = unet.init(init_rngs, jnp.ones([1, nx, nx, 2]))
   optimizer = optax.adam(learning_rate=0.01)
   train_state = CustomTrainState.create(
-    apply_fn=unet.apply, params=unet_variables["params"], tx=optimizer,
+    apply_fn=unet.apply,
+    params=unet_variables["params"],
+    tx=optimizer,
     batch_stats=unet_variables["batch_stats"]
   )
 
-  @partial(jax.jit, static_argnums=(3,))
+  @partial(jax.jit, static_argnums=(3, ))
   def train_step(x, y, train_state, is_training=True):
+
     def loss_fn(params, batch_stats, is_training):
       y_pred, batch_stats = train_state.apply_fn_with_bn(
-        {"params": params, "batch_stats": batch_stats}, x,
+        {
+          "params": params,
+          "batch_stats": batch_stats
+        },
+        x,
         is_training=is_training
       )
       loss = jnp.mean((y - y_pred)**2)
@@ -94,9 +101,8 @@ def main(config_dict: ml_collections.ConfigDict):
 
     if is_training:
       grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-      (loss, batch_stats), grads = grad_fn(
-        train_state.params, train_state.batch_stats, True
-      )
+      (loss, batch_stats
+       ), grads = grad_fn(train_state.params, train_state.batch_stats, True)
 
       train_state = train_state.apply_gradients(grads=grads)
       train_state = train_state.update_batch_stats(batch_stats)
@@ -119,7 +125,7 @@ def main(config_dict: ml_collections.ConfigDict):
   )
   rd_coarse = RD(
     L=Lx,
-    N=(nx//r)**2 * 2,
+    N=(nx // r)**2 * 2,
     T=T,
     dt=dt,
     alpha=alpha,
@@ -136,17 +142,25 @@ def main(config_dict: ml_collections.ConfigDict):
       x_hist = x_hist.at[i].set(uv)
       uv = uv.transpose(1, 2, 0)
       correction, _ = train_state.apply_fn_with_bn(
-        {"params": train_state.params, "batch_stats": train_state.batch_stats},
-        uv.reshape(1, *uv.shape), is_training=False
+        {
+          "params": train_state.params,
+          "batch_stats": train_state.batch_stats
+        },
+        uv.reshape(1, *uv.shape),
+        is_training=False
       )
       correction = correction.reshape(nx, nx, -1).transpose(2, 0, 1)
       uv = uv.transpose(2, 0, 1)
-      tmp = (uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] +
-        uv[:, 0::2, 1::2] + uv[:, 1::2, 1::2]) / 4
+      tmp = (
+        uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] + uv[:, 0::2, 1::2] +
+        uv[:, 1::2, 1::2]
+      ) / 4
       uv = rd_coarse.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
       uv = jnp.vstack(
-        [jnp.kron(uv[0], jnp.ones((r, r))).reshape(1, nx, nx),
-         jnp.kron(uv[1], jnp.ones((r, r))).reshape(1, nx, nx),]
+        [
+          jnp.kron(uv[0], jnp.ones((r, r))).reshape(1, nx, nx),
+          jnp.kron(uv[1], jnp.ones((r, r))).reshape(1, nx, nx),
+        ]
       )
       uv += correction * dt
 
@@ -171,7 +185,7 @@ def main(config_dict: ml_collections.ConfigDict):
       if jnp.isnan(loss):
         print("Training loss became NaN. Stopping training.")
         break
-    
+
     val_loss = 0
     count = 0
     for batch_data, batch_labels in val_dataset:
@@ -195,17 +209,21 @@ def main(config_dict: ml_collections.ConfigDict):
     if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
       print("similation contains NaN!")
       breakpoint()
-    input = rd_fine.x_hist.reshape((step_num, 2, nx, nx))
+    input = x_hist.reshape((step_num, 2, nx, nx))
     output = jnp.zeros_like(input)
     for j in range(x_hist.shape[0]):
       next_step_fine = rd_fine.adi(x_hist[i]).reshape(2, nx, nx)
-      tmp = (input[i, :, 0::2, 0::2] + input[i, :, 1::2, 0::2] +
-        input[i, :, 0::2, 1::2] + input[i, :, 1::2, 1::2]) / 4
+      tmp = (
+        input[i, :, 0::2, 0::2] + input[i, :, 1::2, 0::2] +
+        input[i, :, 0::2, 1::2] + input[i, :, 1::2, 1::2]
+      ) / 4
       uv = tmp.reshape(-1)
       next_step_coarse = rd_coarse.adi(uv).reshape(2, nx // r, nx // r)
       next_steo_coarse_interp = jnp.vstack(
-        [jnp.kron(next_step_coarse[0], jnp.ones((r, r))).reshape(1, nx, nx),
-         jnp.kron(next_step_coarse[1], jnp.ones((r, r))).reshape(1, nx, nx),]
+        [
+          jnp.kron(next_step_coarse[0], jnp.ones((r, r))).reshape(1, nx, nx),
+          jnp.kron(next_step_coarse[1], jnp.ones((r, r))).reshape(1, nx, nx),
+        ]
       )
       output = output.at[j].set(next_step_fine - next_steo_coarse_interp)
 
@@ -219,6 +237,7 @@ def main(config_dict: ml_collections.ConfigDict):
     dataset = dataset.shuffle(buffer_size=4).batch(200)
     val_dataset = tf.data.Dataset.from_tensor_slices((test_x, test_y))
     val_dataset = val_dataset.shuffle(buffer_size=4).batch(200)
+
 
 if __name__ == "__main__":
 

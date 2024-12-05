@@ -23,8 +23,12 @@ class CustomTrainState(TrainState):
   batch_stats: dict
 
   def apply_fn_with_bn(self, *args, is_training, **nargs):
-    output, mutated_vars = self.apply_fn(*args, **nargs,
-                                          mutable=["batch_stats"], rngs={'dropout': jax.random.PRNGKey(2)})
+    output, mutated_vars = self.apply_fn(
+      *args,
+      **nargs,
+      mutable=["batch_stats"],
+      rngs={'dropout': jax.random.PRNGKey(2)}
+    )
     new_batch_stats = mutated_vars["batch_stats"]
     return output, new_batch_stats
 
@@ -33,6 +37,8 @@ class CustomTrainState(TrainState):
 
 
 """cVAE model definitions."""
+
+
 class Encoder(nn.Module):
   """cVAE Encoder."""
 
@@ -101,6 +107,8 @@ def model(latents, features):
 
 
 """UNet model definitions."""
+
+
 class Encoder(nn.Module):
   features: int = 2
   training: bool = True
@@ -153,9 +161,10 @@ class Decoder(nn.Module):
   @nn.compact
   def __call__(self, z1, z2, z3, z4_dropout, z5_dropout):
     z6_up = jax.image.resize(
-      z5_dropout, shape=(
-        z5_dropout.shape[0], z5_dropout.shape[1] * 2,
-        z5_dropout.shape[2] * 2, z5_dropout.shape[3]
+      z5_dropout,
+      shape=(
+        z5_dropout.shape[0], z5_dropout.shape[1] * 2, z5_dropout.shape[2] * 2,
+        z5_dropout.shape[3]
       ),
       method='nearest'
     )
@@ -169,10 +178,8 @@ class Decoder(nn.Module):
     z6 = nn.relu(z6)
 
     z7_up = jax.image.resize(
-      z6, shape=(
-        z6.shape[0], z6.shape[1] * 2,
-        z6.shape[2] * 2, z6.shape[3]
-      ),
+      z6,
+      shape=(z6.shape[0], z6.shape[1] * 2, z6.shape[2] * 2, z6.shape[3]),
       method='nearest'
     )
     z7 = nn.Conv(self.features * 4, kernel_size=(2, 2))(z7_up)
@@ -185,10 +192,8 @@ class Decoder(nn.Module):
     z7 = nn.relu(z7)
 
     z8_up = jax.image.resize(
-      z7, shape=(
-        z7.shape[0], z7.shape[1] * 2,
-        z7.shape[2] * 2, z7.shape[3]
-      ),
+      z7,
+      shape=(z7.shape[0], z7.shape[1] * 2, z7.shape[2] * 2, z7.shape[3]),
       method='nearest'
     )
     z8 = nn.Conv(self.features * 2, kernel_size=(2, 2))(z8_up)
@@ -201,10 +206,8 @@ class Decoder(nn.Module):
     z8 = nn.relu(z8)
 
     z9_up = jax.image.resize(
-      z8, shape=(
-        z8.shape[0], z8.shape[1] * 2,
-        z8.shape[2] * 2, z8.shape[3]
-      ),
+      z8,
+      shape=(z8.shape[0], z8.shape[1] * 2, z8.shape[2] * 2, z8.shape[3]),
       method='nearest'
     )
     z9 = nn.Conv(self.features, kernel_size=(2, 2))(z9_up)
@@ -232,4 +235,3 @@ class UNet(nn.Module):
     y = Decoder(self.training)(z1, z2, z3, z4_dropout, z5_dropout)
 
     return y
-

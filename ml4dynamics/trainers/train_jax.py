@@ -7,27 +7,28 @@ learning and structured prediction to no-regret online learning." Proceeding
 of the fourteenth international conference on artificial intelligence and
 statistics. JMLR Workshop and Conference Proceedings, 2011.
 """
+import os
+from time import time
+
 import h5py
 import jax
 import jax.numpy as jnp
 import ml_collections
 import numpy as np
 import optax
-import os
 import tensorflow as tf
 import yaml
 from box import Box
-from flax.training import checkpoints
 from sklearn.model_selection import train_test_split
-from time import time
 from tqdm import tqdm
 
-from ml4dynamics.models.models_jax import UNet, CustomTrainState
+from ml4dynamics.models.models_jax import UNet
 
 np.set_printoptions(precision=15)
 jax.config.update("jax_enable_x64", True)
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 CKPT_DIR = 'ckpts'
+
 
 def main(config_dict: ml_collections.ConfigDict):
 
@@ -62,9 +63,7 @@ def main(config_dict: ml_collections.ConfigDict):
     inputs = jnp.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
     outputs = jnp.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
 
-  print(
-    f"Training {pde_type} model with data: {dataset} ..."
-  )
+  print(f"Training {pde_type} model with data: {dataset} ...")
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=config.sim.seed
   )
@@ -73,7 +72,8 @@ def main(config_dict: ml_collections.ConfigDict):
 
   unet = UNet()
   init_rngs = {
-    'params': jax.random.PRNGKey(0), 'dropout': jax.random.PRNGKey(1)
+    'params': jax.random.PRNGKey(0),
+    'dropout': jax.random.PRNGKey(1)
   }
   unet_variables = unet.init(init_rngs, jnp.ones([1, nx, nx, 2]))
   optimizer = optax.adam(learning_rate=0.001)
@@ -82,7 +82,7 @@ def main(config_dict: ml_collections.ConfigDict):
   #   apply_fn=unet.apply, params=unet_variables["params"], tx=optimizer,
   #   batch_stats=unet_variables["batch_stats"]
   # )
-  
+
   @jax.jit
   def update(variables, x, y, opt_state):
 
@@ -91,9 +91,8 @@ def main(config_dict: ml_collections.ConfigDict):
       return jnp.mean((y - predict))
 
     grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-    (loss, batch_stats), grads = grad_fn(
-      variables["params"], variables["batch_stats"]
-    )
+    (loss, batch_stats
+     ), grads = grad_fn(variables["params"], variables["batch_stats"])
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
@@ -106,8 +105,8 @@ def main(config_dict: ml_collections.ConfigDict):
     for batch_data, batch_labels in dataset:
       breakpoint()
       loss, unet_variables, opt_state = update(
-        unet_variables, jnp.array(batch_data),
-        jnp.array(batch_labels), opt_state
+        unet_variables, jnp.array(batch_data), jnp.array(batch_labels),
+        opt_state
       )
       loss_avg += loss
       count += 1
@@ -125,6 +124,7 @@ def main(config_dict: ml_collections.ConfigDict):
   # checkpoints.save_checkpoint(
   #   ckpt_dir=CKPT_DIR, target=train_state, step=0, overwrite=True
   # )
+
 
 if __name__ == "__main__":
 

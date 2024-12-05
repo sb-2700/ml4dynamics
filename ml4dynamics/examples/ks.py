@@ -32,7 +32,6 @@ from matplotlib import pyplot as plt
 
 from ml4dynamics.dynamics import KS
 
-
 with open("config/simulation.yaml", "r") as file:
   config_dict = yaml.safe_load(file)
 config = Box(config_dict)
@@ -141,12 +140,20 @@ for i in range(c_array.shape[0]):
 _, axs = plt.subplots(1, 2, figsize=(10, 4))
 for j in range(len(ks_models)):
   axs[0].fill_between(
-    c_array, ubar[j] - u_std[j], ubar[j] + u_std[j],
-    label=r"$N = {}$".format(N // (2**j)), color=color_array[j], alpha=0.5
+    c_array,
+    ubar[j] - u_std[j],
+    ubar[j] + u_std[j],
+    label=r"$N = {}$".format(N // (2**j)),
+    color=color_array[j],
+    alpha=0.5
   )
   axs[1].fill_between(
-    c_array, u2bar[j] - u2_std[j], u2bar[j] + u2_std[j],
-    label=r"$N = {}$".format(N // (2**j)), color=color_array[j], alpha=0.5
+    c_array,
+    u2bar[j] - u2_std[j],
+    u2bar[j] + u2_std[j],
+    label=r"$N = {}$".format(N // (2**j)),
+    color=color_array[j],
+    alpha=0.5
   )
 axs[0].set_xlabel(r"$c$")
 axs[1].set_xlabel(r"$c$")

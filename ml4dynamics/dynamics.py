@@ -9,16 +9,15 @@ import jax
 import jax.numpy as jnp
 import jax.random as random
 import numpy as np
+import scipy.sparse as spa
 import torch
 from jax.numpy.linalg import solve
 from matplotlib import pyplot as plt
 from scipy.integrate import solve_ivp
-import scipy.sparse as spa
 
 # from scipy.linalg import lstsq
 # from scipy.sparse import csr_matrix
 # from scipy.sparse.linalg import lsqr
-
 """
 Other candidates for chaotic dynamics:
 Logistic mapping
@@ -1061,7 +1060,7 @@ class NS(dynamics):
       #       * torch.exp(
       #           torch.Tensor([-2*self.kappa**2*(i+1)*self.dt*self.nu])))**2
       #         )
-  
+
 
 class NS_channel(dynamics):
   r"""
@@ -1137,7 +1136,7 @@ class NS_channel(dynamics):
     """projection method to solve the incompressible NS equation
       The convection discretization is given by central difference
       u_ij (u_i+1,j - u_i-1,j)/2dx + \Sigma v_ij (u_i,j+1 - u_i,j-1)/2dx"""
-    
+
     nx = self.nx
     ny = self.ny
     dx = self.dx
@@ -1176,7 +1175,8 @@ class NS_channel(dynamics):
 
     # correction step: calculating the residue of Poisson equation as the
     #  divergence of new velocity field
-    divu = (u[1:-1, 1:-1] - u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
+    divu = (u[1:-1, 1:-1] -
+            u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
     # GMRES with initial guess pressure in last time step
     p = spa.linalg.spsolve(self.L, divu.reshape(nx * ny)).reshape([nx, ny])
     # p = jsla.gmres(A=L, b=divu.reshape(nx * ny), x0=p).reshape([nx, ny])
@@ -1188,7 +1188,8 @@ class NS_channel(dynamics):
     u[-2, 1:-1] = u[-2, 1:-1] + 2 * p[-1, :] / dx
 
     # check the corrected velocity field is divergence free
-    divu = (u[1:-1, 1:-1] - u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
+    divu = (u[1:-1, 1:-1] -
+            u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
     if jnp.linalg.norm(divu) > self.tol:
       print(jnp.linalg.norm(divu))
       print(t)

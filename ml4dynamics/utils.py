@@ -2,8 +2,8 @@ import argparse
 import copy
 from functools import partial
 
-import haiku as hk
 import h5py
+import haiku as hk
 import jax
 import jax.numpy as jnp
 import jax.scipy.sparse.linalg as jsla
@@ -431,7 +431,7 @@ def a_posteriori_analysis(
   correction_nn: callable,
   params: hk.Params,
 ):
-  
+
   c = config.ks.c
   L = config.ks.L
   T = config.ks.T
@@ -464,9 +464,9 @@ def a_posteriori_analysis(
     u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
   ks_fine.run_simulation(u0, ks_fine.CN_FEM)
   if config.test.solver == "CN":
-    ks_coarse.run_simulation(u0[r-1::r], ks_coarse.CN_FEM)
+    ks_coarse.run_simulation(u0[r - 1::r], ks_coarse.CN_FEM)
   elif config.test.solver == "RK4":
-    ks_coarse.run_simulation(u0[r-1::r], ks_coarse.RK4)
+    ks_coarse.run_simulation(u0[r - 1::r], ks_coarse.RK4)
   # im_array = jnp.zeros(
   #   (3, 1, ks_coarse.x_hist.shape[1], ks_coarse.x_hist.shape[0])
   # )
@@ -493,13 +493,17 @@ def a_posteriori_analysis(
           dx**4
       # local model: [1] to [1]
       if config.train.input == "u":
-        return partial(correction_nn.apply, params)(input.reshape(-1, 1)).reshape(-1)
+        return partial(correction_nn.apply,
+                       params)(input.reshape(-1, 1)).reshape(-1)
       elif config.train.input == "ux":
-        return partial(correction_nn.apply, params)(u_x.reshape(-1, 1)).reshape(-1)
+        return partial(correction_nn.apply, params)(u_x.reshape(-1,
+                                                                1)).reshape(-1)
       elif config.train.input == "uxx":
-        return partial(correction_nn.apply, params)(u_xx.reshape(-1, 1)).reshape(-1)
+        return partial(correction_nn.apply,
+                       params)(u_xx.reshape(-1, 1)).reshape(-1)
       elif config.train.input == "uxxxx":
-        return partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1)).reshape(-1)
+        return partial(correction_nn.apply,
+                       params)(u_xxxx.reshape(-1, 1)).reshape(-1)
       # global model: [N] to [N]
       # return partial(correction_nn.apply,
       #                params)(input.reshape(1, -1)).reshape(-1)
@@ -510,6 +514,7 @@ def a_posteriori_analysis(
     corrector = partial(vae_bind.generate, z)
   elif train_mode == "gaussian":
     z = random.normal(key)
+
     def corrector(input: jnp.array):
       """
       input.shape = (N, )
@@ -532,12 +537,12 @@ def a_posteriori_analysis(
       elif config.train.input == "uxxxx":
         tmp = partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1))
       p = jax.nn.sigmoid(tmp[..., :n_g])
-      index = jax.vmap(
-        partial(jax.random.choice, key=key, a=n_g, shape=(1, ))
-      )(p=p).reshape(-1)
-      return (tmp[np.arange(N2), n_g + index] +
-              tmp[np.arange(N2), n_g + index] * z).reshape(-1)
-    
+      index = jax.vmap(partial(jax.random.choice, key=key, a=n_g,
+                               shape=(1, )))(p=p).reshape(-1)
+      return (
+        tmp[np.arange(N2), n_g + index] + tmp[np.arange(N2), n_g + index] * z
+      ).reshape(-1)
+
     def corrector_sample(input: jnp.array, rng: PRNGKey):
 
       dx = L / N2
@@ -556,31 +561,31 @@ def a_posteriori_analysis(
       elif config.train.input == "uxxxx":
         tmp = partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1))
       p = jax.nn.sigmoid(tmp[..., :n_g])
-      index = jax.vmap(
-        partial(jax.random.choice, key=key, a=n_g, shape=(1, ))
-      )(p=p).reshape(-1)
+      index = jax.vmap(partial(jax.random.choice, key=key, a=n_g,
+                               shape=(1, )))(p=p).reshape(-1)
       z = random.normal(key)
-      return (tmp[np.arange(N2), n_g + index] +
-              tmp[np.arange(N2), n_g + index] * z).reshape(-1)
+      return (
+        tmp[np.arange(N2), n_g + index] + tmp[np.arange(N2), n_g + index] * z
+      ).reshape(-1)
 
   if config.test.solver == "CN":
     ks_coarse.run_simulation_with_correction(
-      u0[r-1::r], ks_coarse.CN_FEM, corrector
+      u0[r - 1::r], ks_coarse.CN_FEM, corrector
     )
   elif config.test.solver == "RK4":
     ks_coarse.run_simulation_with_correction(
-      u0[r-1::r], ks_coarse.RK4, corrector
+      u0[r - 1::r], ks_coarse.RK4, corrector
     )
   correction1 = ks_coarse.x_hist
   correction2 = None
   if train_mode == "gaussian":
     if config.test.solver == "CN":
       ks_coarse.run_simulation_with_probabilistic_correction(
-        u0[r-1::r], ks_coarse.CN_FEM, corrector_sample
+        u0[r - 1::r], ks_coarse.CN_FEM, corrector_sample
       )
     elif config.test.solver == "RK4":
       ks_coarse.run_simulation_with_probabilistic_correction(
-        u0[r-1::r], ks_coarse.RK4, corrector_sample
+        u0[r - 1::r], ks_coarse.RK4, corrector_sample
       )
     correction2 = ks_coarse.x_hist
 

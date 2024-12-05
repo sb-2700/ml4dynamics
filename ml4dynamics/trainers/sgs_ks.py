@@ -121,7 +121,9 @@ def main(config_dict: ml_collections.ConfigDict):
           next_step_fine = ks_fine.CN_FEM(
             ks_fine.x_hist[j]
           )  # shape = [N1, step_num]
-          next_step_coarse = ks_coarse.CN_FEM(input[j])  # shape = [step_num, N2]
+          next_step_coarse = ks_coarse.CN_FEM(
+            input[j]
+          )  # shape = [step_num, N2]
           output = output.at[j].set(res_op @ next_step_fine - next_step_coarse)
       inputs = inputs.at[i].set(input)
       outputs = outputs.at[i].set(output)
@@ -193,7 +195,9 @@ def main(config_dict: ml_collections.ConfigDict):
         samples = np.random.choice(
           jnp.arange(bin_data[_].shape[0]), size=subsample, replace=False
         )
-        stratify_inputs = jnp.vstack([stratify_inputs, bin_data[_][samples, 0:1]])
+        stratify_inputs = jnp.vstack(
+          [stratify_inputs, bin_data[_][samples, 0:1]]
+        )
         stratify_outputs = jnp.vstack(
           [stratify_outputs, bin_data[_][samples, 1:]]
         )
@@ -224,7 +228,9 @@ def main(config_dict: ml_collections.ConfigDict):
         samples = np.random.choice(
           jnp.arange(bin_data[_].shape[0]), size=subsample, replace=False
         )
-        stratify_inputs = jnp.vstack([stratify_inputs, bin_data[_][samples, 0:1]])
+        stratify_inputs = jnp.vstack(
+          [stratify_inputs, bin_data[_][samples, 0:1]]
+        )
         stratify_outputs = jnp.vstack(
           [stratify_outputs, bin_data[_][samples, 1:]]
         )
@@ -254,7 +260,10 @@ def main(config_dict: ml_collections.ConfigDict):
   # breakpoint()
 
   train_x, test_x, train_y, test_y = train_test_split(
-    inputs, outputs, test_size=0.2, random_state=42#, stratify=outputs
+    inputs,
+    outputs,
+    test_size=0.2,
+    random_state=42  #, stratify=outputs
   )
   train_ds = {"input": jnp.array(train_x), "output": jnp.array(train_y)}
   test_ds = {"input": jnp.array(test_x), "output": jnp.array(test_y)}
@@ -265,6 +274,7 @@ def main(config_dict: ml_collections.ConfigDict):
     # training a fully connected neural network to do the closure modeling
     # via regression
     print(f"Fit the SGS model with regression...")
+
     def sgs_fn(features: jnp.ndarray) -> jnp.ndarray:
       """
       NOTE: an example to show the inconsistency of a priori and a posteriori
