@@ -15,8 +15,10 @@ import jax
 import jax.numpy as jnp
 import jax.random as random
 import ml_collections
+import numpy as np
 import optax
 import tensorflow as tf
+from time import time
 import yaml
 from box import Box
 from sklearn.model_selection import train_test_split
@@ -24,8 +26,9 @@ from tqdm import tqdm
 
 from ml4dynamics.dynamics import RD
 from ml4dynamics.models.models_jax import CustomTrainState, UNet
+from ml4dynamics.utils import jax_memory_profiler
 
-jax.config.update("jax_enable_x64", True)
+# jax.config.update("jax_enable_x64", True)
 
 
 def main(config_dict: ml_collections.ConfigDict):
@@ -42,12 +45,12 @@ def main(config_dict: ml_collections.ConfigDict):
   step_num = int(T / dt)
   Lx = config.react_diff.Lx
   nx = config.react_diff.nx
-  dx = Lx / nx
   r = config.react_diff.r
   # solver parameters
   dagger_epochs = config.train.dagger_epochs
   epochs = config.train.dagger_inner_epochs
-  batch_size = config.train.batch_size_ae
+  batch_size = config.train.batch_size_jax
+  buffer_size = config.train.buffer_size
   rng = random.PRNGKey(config.sim.seed)
   case_num = config.sim.case_num
 
@@ -58,16 +61,17 @@ def main(config_dict: ml_collections.ConfigDict):
     h5_filename = f"data/react_diff/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
-    inputs = jnp.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
-    outputs = jnp.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
-  print(f"Training {pde_type} model with data: {dataset} ...")
+    inputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
+    outputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=config.sim.seed
   )
-  dataset = tf.data.Dataset.from_tensor_slices((train_x, train_y))
-  dataset = dataset.shuffle(buffer_size=4).batch(200)
+  train_dataset = tf.data.Dataset.from_tensor_slices((train_x, train_y))
+  train_dataset = train_dataset.shuffle(
+    buffer_size=buffer_size
+  ).batch(batch_size)
   val_dataset = tf.data.Dataset.from_tensor_slices((test_x, test_y))
-  val_dataset = val_dataset.shuffle(buffer_size=4).batch(200)
+  val_dataset = val_dataset.shuffle(buffer_size=buffer_size).batch(batch_size)
 
   unet = UNet()
   init_rngs = {
@@ -134,12 +138,10 @@ def main(config_dict: ml_collections.ConfigDict):
     d=d,
   )
 
-  @jax.jit
   def run_simulation(uv: jnp.ndarray):
-    step_num = rd_fine.step_num
-    x_hist = jnp.zeros([step_num, 2, nx, nx])
-    for i in range(step_num):
-      x_hist = x_hist.at[i].set(uv)
+
+    @jax.jit
+    def iter(uv: jnp.array):
       uv = uv.transpose(1, 2, 0)
       correction, _ = train_state.apply_fn_with_bn(
         {
@@ -162,9 +164,32 @@ def main(config_dict: ml_collections.ConfigDict):
           jnp.kron(uv[1], jnp.ones((r, r))).reshape(1, nx, nx),
         ]
       )
-      uv += correction * dt
+      return uv + correction * dt
+
+    step_num = rd_fine.step_num
+    x_hist = jnp.zeros([step_num, 2, nx, nx])
+    for i in range(step_num):
+      x_hist = x_hist.at[i].set(uv)
+      uv = iter(uv)
 
     return x_hist
+  
+  @jax.jit
+  def calc_correction(uv: jnp.ndarray):
+    next_step_fine = rd_fine.adi(uv.reshape(-1)).reshape(2, nx, nx)
+    tmp = (
+      uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] +
+      uv[:, 0::2, 1::2] + uv[:, 1::2, 1::2]
+    ) / 4
+    uv_ = tmp.reshape(-1)
+    next_step_coarse = rd_coarse.adi(uv_).reshape(2, nx // r, nx // r)
+    next_steo_coarse_interp = jnp.vstack(
+      [
+        jnp.kron(next_step_coarse[0], jnp.ones((r, r))).reshape(1, nx, nx),
+        jnp.kron(next_step_coarse[1], jnp.ones((r, r))).reshape(1, nx, nx),
+      ]
+    )
+    return next_step_fine - next_steo_coarse_interp
 
   dagger_iters = tqdm(range(dagger_epochs))
   for i in dagger_iters:
@@ -173,7 +198,7 @@ def main(config_dict: ml_collections.ConfigDict):
     for e in inner_iters:
       loss_avg = 0
       count = 1
-      for batch_data, batch_labels in dataset:
+      for batch_data, batch_labels in train_dataset:
         loss, train_state = train_step(
           jnp.array(batch_data), jnp.array(batch_labels), train_state, True
         )
@@ -205,38 +230,32 @@ def main(config_dict: ml_collections.ConfigDict):
     )
     uv = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1))) / nx
     uv = uv.transpose(2, 0, 1)
+    start = time()
     x_hist = run_simulation(uv)
+    print(f"simulation takes {time() - start:.2f}s...")
     if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
       print("similation contains NaN!")
       breakpoint()
     input = x_hist.reshape((step_num, 2, nx, nx))
     output = jnp.zeros_like(input)
     for j in range(x_hist.shape[0]):
-      next_step_fine = rd_fine.adi(x_hist[i]).reshape(2, nx, nx)
-      tmp = (
-        input[i, :, 0::2, 0::2] + input[i, :, 1::2, 0::2] +
-        input[i, :, 0::2, 1::2] + input[i, :, 1::2, 1::2]
-      ) / 4
-      uv = tmp.reshape(-1)
-      next_step_coarse = rd_coarse.adi(uv).reshape(2, nx // r, nx // r)
-      next_steo_coarse_interp = jnp.vstack(
-        [
-          jnp.kron(next_step_coarse[0], jnp.ones((r, r))).reshape(1, nx, nx),
-          jnp.kron(next_step_coarse[1], jnp.ones((r, r))).reshape(1, nx, nx),
-        ]
-      )
-      output = output.at[j].set(next_step_fine - next_steo_coarse_interp)
+      output = output.at[j].set(calc_correction(input[j]) / dt)
 
     # generate new dataset
-    inputs = jnp.vstack([inputs, input])
-    outputs = jnp.vstack([outputs, output])
+    jax_memory_profiler()
+    breakpoint()
+    inputs = np.vstack([inputs, np.asarray(input.transpose(0, 2, 3, 1))])
+    outputs = np.vstack([outputs, np.asarray(output.transpose(0, 2, 3, 1))])
     train_x, test_x, train_y, test_y = train_test_split(
       inputs, outputs, test_size=0.2, random_state=config.sim.seed
     )
-    dataset = tf.data.Dataset.from_tensor_slices((train_x, train_y))
-    dataset = dataset.shuffle(buffer_size=4).batch(200)
+    train_dataset = tf.data.Dataset.from_tensor_slices((train_x, train_y))
+    train_dataset = train_dataset.shuffle(
+      buffer_size=buffer_size
+    ).batch(batch_size)
     val_dataset = tf.data.Dataset.from_tensor_slices((test_x, test_y))
-    val_dataset = val_dataset.shuffle(buffer_size=4).batch(200)
+    val_dataset = val_dataset.shuffle(buffer_size=buffer_size).batch(batch_size)
+    breakpoint()
 
 
 if __name__ == "__main__":
