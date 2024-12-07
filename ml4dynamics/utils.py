@@ -1,7 +1,7 @@
-import argparse
 import copy
 from functools import partial
 
+import gc
 import h5py
 import haiku as hk
 import jax
@@ -657,3 +657,22 @@ def plot_with_horizontal_colorbar(
   if file_path is not None:
     plt.savefig(file_path, dpi=300)
   plt.clf()
+
+
+def jax_memory_profiler(verbose: bool = False):
+
+  all_objects = gc.get_objects()
+  total_size = 0
+  aux_size = 0
+  for obj in all_objects:
+    if isinstance(obj, jnp.ndarray):
+      total_size += jax.device_get(obj).nbytes
+      if jax.device_get(obj).nbytes > 1e7 and\
+        'nvidia' in obj.device.device_kind.lower():
+        aux_size += jax.device_get(obj).nbytes
+        if verbose:
+          print(obj.dtype)
+          print(obj.shape)
+          print(jax.device_get(obj).nbytes)
+  print(f"total_size of large array on gpu: {aux_size/1e9:.3f}GB")
+  print(f"total_size: {total_size/1e9:.3f}GB")
