@@ -1,6 +1,5 @@
 import os
 from functools import partial
-from time import time
 from typing import Tuple
 
 import haiku as hk
@@ -9,7 +8,6 @@ import jax.numpy as jnp
 import ml_collections
 import numpy as np
 import optax
-import seaborn as sns
 import yaml
 from box import Box
 from jax import random as random
@@ -18,9 +16,9 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-from ml4dynamics import utils
 from ml4dynamics.dynamics import KS
 from ml4dynamics.types import OptState, PRNGKey
+from ml4dynamics import utils
 
 
 def main(config_dict: ml_collections.ConfigDict):
@@ -47,26 +45,26 @@ def main(config_dict: ml_collections.ConfigDict):
 
   # fine simulation
   ks_fine = KS(
+    L=L,
     N=N1,
     T=T,
     dt=dt,
-    init_scale=init_scale,
-    L=L,
     nu=nu,
     c=c,
     BC=BC,
+    init_scale=init_scale,
     rng=rng,
   )
   # coarse simulator
   ks_coarse = KS(
+    L=L,
     N=N2,
     T=T,
     dt=dt,
-    init_scale=init_scale,
-    L=L,
     nu=nu,
     c=c,
     BC=BC,
+    init_scale=init_scale,
     rng=rng,
   )
 

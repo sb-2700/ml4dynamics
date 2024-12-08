@@ -17,7 +17,6 @@ import jax.random as random
 import ml_collections
 import numpy as np
 import optax
-import tensorflow as tf
 from time import time
 import yaml
 from box import Box
@@ -52,6 +51,7 @@ def main(config_dict: ml_collections.ConfigDict):
   batch_size = config.train.batch_size_jax
   buffer_size = config.train.buffer_size
   rng = random.PRNGKey(config.sim.seed)
+  np.random.seed(rng)
   case_num = config.sim.case_num
 
   dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
@@ -66,12 +66,10 @@ def main(config_dict: ml_collections.ConfigDict):
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=config.sim.seed
   )
-  train_dataset = tf.data.Dataset.from_tensor_slices((train_x, train_y))
-  train_dataset = train_dataset.shuffle(
-    buffer_size=buffer_size
-  ).batch(batch_size)
-  val_dataset = tf.data.Dataset.from_tensor_slices((test_x, test_y))
-  val_dataset = val_dataset.shuffle(buffer_size=buffer_size).batch(batch_size)
+  datasize = train_x.shape[0]
+  shuffled_indices = np.random.permutation(datasize)
+  train_x = train_x[shuffled_indices]
+  train_y = train_y[shuffled_indices]
 
   unet = UNet()
   init_rngs = {
@@ -195,12 +193,15 @@ def main(config_dict: ml_collections.ConfigDict):
   for i in dagger_iters:
     print(f"DAgger {i}-th iteration")
     inner_iters = tqdm(range(epochs))
-    for e in inner_iters:
+    for j in inner_iters:
       loss_avg = 0
       count = 1
-      for batch_data, batch_labels in train_dataset:
+      for k in range(0, train_x.shape[0], batch_size):
         loss, train_state = train_step(
-          jnp.array(batch_data), jnp.array(batch_labels), train_state, True
+          train_x[k: k + batch_size],
+          train_y[k: k + batch_size],
+          train_state,
+          True
         )
         loss_avg += loss
         count += 1
@@ -213,9 +214,12 @@ def main(config_dict: ml_collections.ConfigDict):
 
     val_loss = 0
     count = 0
-    for batch_data, batch_labels in val_dataset:
+    for k in range(0, test_x.shape[0], batch_size):
       loss, train_state = train_step(
-        jnp.array(batch_data), jnp.array(batch_labels), train_state, False
+        jnp.array(test_x[k: k + batch_size]),
+        jnp.array(test_y[k: k + batch_size]),
+        train_state,
+        False
       )
       val_loss += loss
       count += 1
@@ -236,26 +240,27 @@ def main(config_dict: ml_collections.ConfigDict):
     if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
       print("similation contains NaN!")
       breakpoint()
+    rd_fine.run_simulation(uv.reshape(-1), rd_fine.adi)
+    print("L2 error: {:.4f}".format(
+      jnp.sum(
+        jnp.linalg.norm(x_hist.reshape(step_num, -1) - rd_fine.x_hist, axis=1)
+      )
+    ))
     input = x_hist.reshape((step_num, 2, nx, nx))
     output = jnp.zeros_like(input)
     for j in range(x_hist.shape[0]):
       output = output.at[j].set(calc_correction(input[j]) / dt)
 
     # generate new dataset
-    jax_memory_profiler()
-    breakpoint()
     inputs = np.vstack([inputs, np.asarray(input.transpose(0, 2, 3, 1))])
     outputs = np.vstack([outputs, np.asarray(output.transpose(0, 2, 3, 1))])
     train_x, test_x, train_y, test_y = train_test_split(
       inputs, outputs, test_size=0.2, random_state=config.sim.seed
     )
-    train_dataset = tf.data.Dataset.from_tensor_slices((train_x, train_y))
-    train_dataset = train_dataset.shuffle(
-      buffer_size=buffer_size
-    ).batch(batch_size)
-    val_dataset = tf.data.Dataset.from_tensor_slices((test_x, test_y))
-    val_dataset = val_dataset.shuffle(buffer_size=buffer_size).batch(batch_size)
-    breakpoint()
+    datasize = train_x.shape[0]
+    shuffled_indices = np.random.permutation(datasize)
+    train_x = train_x[shuffled_indices]
+    train_y = train_y[shuffled_indices]
 
 
 if __name__ == "__main__":
