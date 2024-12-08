@@ -20,12 +20,13 @@ import optax
 from time import time
 import yaml
 from box import Box
+from matplotlib import cm
+from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from ml4dynamics.dynamics import RD
 from ml4dynamics.models.models_jax import CustomTrainState, UNet
-from ml4dynamics.utils import jax_memory_profiler
 
 # jax.config.update("jax_enable_x64", True)
 
@@ -47,7 +48,7 @@ def main(config_dict: ml_collections.ConfigDict):
   r = config.react_diff.r
   # solver parameters
   dagger_epochs = config.train.dagger_epochs
-  epochs = config.train.dagger_inner_epochs
+  inner_epochs = config.train.dagger_inner_epochs
   batch_size = config.train.batch_size_jax
   buffer_size = config.train.buffer_size
   rng = random.PRNGKey(config.sim.seed)
@@ -77,7 +78,13 @@ def main(config_dict: ml_collections.ConfigDict):
     'dropout': jax.random.PRNGKey(1)
   }
   unet_variables = unet.init(init_rngs, jnp.ones([1, nx, nx, 2]))
-  optimizer = optax.adam(learning_rate=0.01)
+  schedule = optax.piecewise_constant_schedule(
+    init_value=config.train.lr, boundaries_and_scales={
+      int(b): 0.5 for b in jnp.arange(1, dagger_epochs) * datasize //
+      batch_size * inner_epochs
+    }
+  )
+  optimizer = optax.adam(schedule)
   train_state = CustomTrainState.create(
     apply_fn=unet.apply,
     params=unet_variables["params"],
@@ -135,6 +142,15 @@ def main(config_dict: ml_collections.ConfigDict):
     gamma=gamma,
     d=d,
   )
+  # fix a case for DAgger iteration
+  key, rng = random.split(rng)
+  max_freq = 10
+  u_fft = jnp.zeros((nx, nx, 2))
+  u_fft = u_fft.at[:max_freq, :max_freq].set(
+    random.normal(key, shape=(max_freq, max_freq, 2))
+  )
+  uv = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1))) / nx
+  uv = uv.transpose(2, 0, 1)
 
   def run_simulation(uv: jnp.ndarray):
 
@@ -191,8 +207,10 @@ def main(config_dict: ml_collections.ConfigDict):
 
   dagger_iters = tqdm(range(dagger_epochs))
   for i in dagger_iters:
-    print(f"DAgger {i}-th iteration")
-    inner_iters = tqdm(range(epochs))
+    print(f"DAgger {i}-th iteration...")
+    print(f"{train_state.step}th step, lr: {schedule(train_state.step):.4e}")
+    inner_iters = tqdm(range(inner_epochs))
+    loss_hist = []
     for j in inner_iters:
       loss_avg = 0
       count = 1
@@ -207,11 +225,16 @@ def main(config_dict: ml_collections.ConfigDict):
         count += 1
         desc_str = f"{loss=:.4f}"
         inner_iters.set_description_str(desc_str)
+        loss_hist.append(loss)
       loss_avg /= count
       if jnp.isnan(loss):
         print("Training loss became NaN. Stopping training.")
         break
 
+    plt.plot(jnp.array(loss_hist) - jnp.array(loss_hist).min() + 0.001)
+    plt.yscale("log")
+    plt.savefig(f"results/fig/{i}th_loss.pdf")
+    plt.clf()
     val_loss = 0
     count = 0
     for k in range(0, test_x.shape[0], batch_size):
@@ -226,14 +249,14 @@ def main(config_dict: ml_collections.ConfigDict):
     print(f"val loss: {val_loss/count:0.4f}")
 
     # DAgger step
-    key, rng = random.split(rng)
-    max_freq = 10
-    u_fft = jnp.zeros((nx, nx, 2))
-    u_fft = u_fft.at[:max_freq, :max_freq].set(
-      random.normal(key, shape=(max_freq, max_freq, 2))
-    )
-    uv = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1))) / nx
-    uv = uv.transpose(2, 0, 1)
+    # key, rng = random.split(rng)
+    # max_freq = 10
+    # u_fft = jnp.zeros((nx, nx, 2))
+    # u_fft = u_fft.at[:max_freq, :max_freq].set(
+    #   random.normal(key, shape=(max_freq, max_freq, 2))
+    # )
+    # uv = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1))) / nx
+    # uv = uv.transpose(2, 0, 1)
     start = time()
     x_hist = run_simulation(uv)
     print(f"simulation takes {time() - start:.2f}s...")
@@ -250,6 +273,23 @@ def main(config_dict: ml_collections.ConfigDict):
     output = jnp.zeros_like(input)
     for j in range(x_hist.shape[0]):
       output = output.at[j].set(calc_correction(input[j]) / dt)
+
+    # visualization
+    n_plot = 3
+    fig, axs = plt.subplots(n_plot, n_plot)
+    axs = axs.flatten()
+    for j in range(n_plot**2):
+      axs[j].imshow(rd_fine.x_hist[j * 100, :nx**2].reshape(nx, nx), cmap=cm.jet)
+      axs[j].axis("off")
+    plt.savefig(f"results/fig/cloudmap_true.pdf")
+    plt.clf()
+    fig, axs = plt.subplots(n_plot, n_plot)
+    axs = axs.flatten()
+    for j in range(n_plot**2):
+      axs[j].imshow(x_hist[j * 500, 0], cmap=cm.jet)
+      axs[j].axis("off")
+    plt.savefig(f"results/fig/{i}th_cloudmap.pdf")
+    plt.clf()
 
     # generate new dataset
     inputs = np.vstack([inputs, np.asarray(input.transpose(0, 2, 3, 1))])
