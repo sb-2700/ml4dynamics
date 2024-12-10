@@ -1,4 +1,5 @@
 import os
+from functools import partial
 from time import time
 
 import jax
@@ -8,13 +9,13 @@ import numpy as np
 import torch
 import yaml
 from box import Box
-from dlpack import asdlpack
 from jax import random
 from matplotlib import cm
 from matplotlib import pyplot as plt
 
 from ml4dynamics.dynamics import RD
 from ml4dynamics.models.models import UNet
+from ml4dynamics.trainers import train_utils
 
 jax.config.update("jax_enable_x64", True)
 np.set_printoptions(precision=15)
@@ -72,38 +73,10 @@ def a_posteriori_test(config_dict: ml_collections.ConfigDict):
     gamma=gamma,
     d=d,
   )
-
-  def run_simulation(uv: np.ndarray):
-    step_num = rd_fine.step_num
-    x_hist = jnp.zeros([step_num, 2, nx, nx])
-    for i in range(step_num):
-      x_hist = x_hist.at[i].set(uv)
-      tmp = (
-        uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] + uv[:, 0::2, 1::2] +
-        uv[:, 1::2, 1::2]
-      ) / 4
-      uv = rd_coarse.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
-      uv = np.vstack(
-        [
-          np.kron(uv[0], np.ones((r, r))).reshape(1, nx, nx),
-          np.kron(uv[1], np.ones((r, r))).reshape(1, nx, nx),
-        ]
-      )
-
-      # naive jax-torch data exchange from numpy, gpu-cpu
-      # uv_np = np.asarray(uv)
-      # uv_torch = torch.from_numpy(uv_np).clone().to(device)
-      # correction = model(uv_torch.reshape((1, *uv.shape)))
-      # uv += jnp.array((correction[0].detach().cpu().numpy())) * dt
-
-      # jax-torch data exchange via dlpack
-      # reference: https://github.com/jax-ml/jax/issues/1100
-      correction = model(
-        torch.from_dlpack(asdlpack(uv)).reshape((1, *uv.shape)).to(device)
-      )
-      uv += jnp.array(jnp.from_dlpack(asdlpack(correction[0].detach()))) * dt
-
-    return x_hist
+  run_simulation = partial(
+    train_utils.run_simulation_coarse_grid_correction_torch, model, rd_fine,
+    rd_coarse, nx, r, dt, device
+  )
 
   u_fft = jnp.zeros((2, nx, nx))
   u_fft = u_fft.at[:, :10, :10].set(

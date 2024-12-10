@@ -25,10 +25,12 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
+from ml4dynamics.dataset_utils import dataset_utils
 from ml4dynamics.dynamics import RD
 from ml4dynamics.models.models_jax import CustomTrainState, UNet
+from ml4dynamics.trainers import train_utils
 
-# jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", True)
 
 
 def main(config_dict: ml_collections.ConfigDict):
@@ -47,10 +49,9 @@ def main(config_dict: ml_collections.ConfigDict):
   nx = config.react_diff.nx
   r = config.react_diff.r
   # solver parameters
-  dagger_epochs = config.train.dagger_epochs
-  inner_epochs = config.train.dagger_inner_epochs
+  dagger_epochs = config.dagger.epochs
+  inner_epochs = config.dagger.inner_epochs
   batch_size = config.train.batch_size_jax
-  buffer_size = config.train.buffer_size
   rng = random.PRNGKey(config.sim.seed)
   np.random.seed(rng)
   case_num = config.sim.case_num
@@ -79,7 +80,7 @@ def main(config_dict: ml_collections.ConfigDict):
   }
   unet_variables = unet.init(init_rngs, jnp.ones([1, nx, nx, 2]))
   schedule = optax.piecewise_constant_schedule(
-    init_value=config.train.lr, boundaries_and_scales={
+    init_value=config.dagger.lr, boundaries_and_scales={
       int(b): 0.5 for b in jnp.arange(1, dagger_epochs) * datasize //
       batch_size * inner_epochs
     }
@@ -151,59 +152,13 @@ def main(config_dict: ml_collections.ConfigDict):
   )
   uv = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1))) / nx
   uv = uv.transpose(2, 0, 1)
-
-  def run_simulation(uv: jnp.ndarray):
-
-    @jax.jit
-    def iter(uv: jnp.array):
-      uv = uv.transpose(1, 2, 0)
-      correction, _ = train_state.apply_fn_with_bn(
-        {
-          "params": train_state.params,
-          "batch_stats": train_state.batch_stats
-        },
-        uv.reshape(1, *uv.shape),
-        is_training=False
-      )
-      correction = correction.reshape(nx, nx, -1).transpose(2, 0, 1)
-      uv = uv.transpose(2, 0, 1)
-      tmp = (
-        uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] + uv[:, 0::2, 1::2] +
-        uv[:, 1::2, 1::2]
-      ) / 4
-      uv = rd_coarse.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
-      uv = jnp.vstack(
-        [
-          jnp.kron(uv[0], jnp.ones((r, r))).reshape(1, nx, nx),
-          jnp.kron(uv[1], jnp.ones((r, r))).reshape(1, nx, nx),
-        ]
-      )
-      return uv + correction * dt
-
-    step_num = rd_fine.step_num
-    x_hist = jnp.zeros([step_num, 2, nx, nx])
-    for i in range(step_num):
-      x_hist = x_hist.at[i].set(uv)
-      uv = iter(uv)
-
-    return x_hist
-  
-  @jax.jit
-  def calc_correction(uv: jnp.ndarray):
-    next_step_fine = rd_fine.adi(uv.reshape(-1)).reshape(2, nx, nx)
-    tmp = (
-      uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] +
-      uv[:, 0::2, 1::2] + uv[:, 1::2, 1::2]
-    ) / 4
-    uv_ = tmp.reshape(-1)
-    next_step_coarse = rd_coarse.adi(uv_).reshape(2, nx // r, nx // r)
-    next_steo_coarse_interp = jnp.vstack(
-      [
-        jnp.kron(next_step_coarse[0], jnp.ones((r, r))).reshape(1, nx, nx),
-        jnp.kron(next_step_coarse[1], jnp.ones((r, r))).reshape(1, nx, nx),
-      ]
-    )
-    return next_step_fine - next_steo_coarse_interp
+  calc_correction = jax.jit(partial(
+    dataset_utils.calc_correction, rd_fine, rd_coarse, nx, r
+  ))
+  run_simulation = partial(
+    train_utils.run_simulation_coarse_grid_correction, train_state, rd_fine,
+    rd_coarse, nx, r, dt
+  )
 
   dagger_iters = tqdm(range(dagger_epochs))
   for i in dagger_iters:

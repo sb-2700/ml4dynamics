@@ -1,14 +1,20 @@
 from datetime import datetime
+from functools import partial
 
 import h5py
+import jax
 import jax.numpy as jnp
 import ml_collections
-import torch
+import numpy as np
 import yaml
 from box import Box
 from jax import random as random
 
+from ml4dynamics.dataset_utils import dataset_utils
 from ml4dynamics.dynamics import RD
+
+
+jax.config.update("jax_enable_x64", True)
 
 
 def generate_react_diff_correction_dataset(
@@ -17,7 +23,6 @@ def generate_react_diff_correction_dataset(
   
   config = Box(config_dict)
   # model parameters
-  warm_up = config.sim.warm_up
   alpha = config.react_diff.alpha
   beta = config.react_diff.beta
   gamma = config.react_diff.gamma
@@ -27,7 +32,6 @@ def generate_react_diff_correction_dataset(
   step_num = int(T / dt)
   Lx = config.react_diff.Lx
   nx = config.react_diff.nx
-  dx = Lx / nx
   r = config.react_diff.r
   # solver parameters
   rng = random.PRNGKey(config.sim.seed)
@@ -35,39 +39,29 @@ def generate_react_diff_correction_dataset(
 
   # react_diff simulator with periodic BC
   rd_fine = RD(
+    L=Lx,
     N=nx**2 * 2,
     T=T,
     dt=dt,
-    dx=dx,
-    tol=1e-8,
-    init_scale=4,
-    tv_scale=1e-8,
-    L=Lx,
     alpha=alpha,
     beta=beta,
     gamma=gamma,
     d=d,
-    device=torch.device('cpu'),
   )
 
   rd_coarse = RD(
-    N=(nx//r)**2 * 2,
+    L=Lx,
+    N=(nx // r)**2 * 2,
     T=T,
     dt=dt,
-    dx=dx * r,
-    tol=1e-8,
-    init_scale=4,
-    tv_scale=1e-8,
-    L=Lx,
     alpha=alpha,
     beta=beta,
     gamma=gamma,
     d=d,
-    device=torch.device('cpu'),
   )
 
-  inputs = jnp.zeros((case_num, step_num, 2, nx, nx))
-  outputs = jnp.zeros((case_num, step_num, 2, nx, nx))
+  inputs = np.zeros((case_num, step_num, 2, nx, nx))
+  outputs = np.zeros((case_num, step_num, 2, nx, nx))
   for i in range(case_num):
     print(i)
     rng, key = random.split(rng)
@@ -80,27 +74,19 @@ def generate_react_diff_correction_dataset(
     rd_fine.run_simulation(u0, rd_fine.adi)
 
     input = rd_fine.x_hist.reshape((step_num, 2, nx, nx))
-    output = jnp.zeros_like(input)
+    output = np.zeros_like(input)
+    calc_correction = jax.jit(partial(
+      dataset_utils.calc_correction, rd_fine, rd_coarse, nx, r
+    ))
     for j in range(rd_fine.step_num):
-      next_step_fine = rd_fine.adi(rd_fine.x_hist[i]).reshape(2, nx, nx)
-      # NOTE: this is only for downsampling by 2, need to write a general
-      # version
-      tmp = (input[i, :, 0::2, 0::2] + input[i, :, 1::2, 0::2] +
-        input[i, :, 0::2, 1::2] + input[i, :, 1::2, 1::2]) / 4
-      uv = tmp.reshape(-1)
-      next_step_coarse = rd_coarse.adi(uv).reshape(2, nx // r, nx // r)
-      next_steo_coarse_interp = jnp.vstack(
-        [jnp.kron(next_step_coarse[0], jnp.ones((r, r))).reshape(1, nx, nx),
-         jnp.kron(next_step_coarse[1], jnp.ones((r, r))).reshape(1, nx, nx),]
-      )
-      output = output.at[j].set(next_step_fine - next_steo_coarse_interp)
-    inputs = inputs.at[i].set(input)
-    outputs = outputs.at[i].set(output)
+      output[j] = calc_correction(input[j]) / dt
+    inputs[i] = input
+    outputs[i] = output
 
   inputs = inputs.reshape(-1, 2, nx, nx)
   outputs = outputs.reshape(-1, 2, nx, nx) / dt
-  if jnp.any(jnp.isnan(inputs)) or jnp.any(jnp.isnan(outputs)) or\
-    jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs)):
+  if np.any(np.isnan(inputs)) or np.any(np.isnan(outputs)) or\
+    np.any(np.isinf(inputs)) or np.any(np.isinf(outputs)):
     raise Exception("The data contains Inf or NaN")
 
   breakpoint()
