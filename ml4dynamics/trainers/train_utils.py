@@ -7,7 +7,8 @@ from dlpack import asdlpack
 
 
 def run_simulation_coarse_grid_correction(
-  train_state, rd_fine, rd_coarse, nx: int, r: int, dt: float, uv: jnp.ndarray
+  train_state, rd_fine, rd_coarse, nx: int, r: int, dt: float, beta: float,
+  uv: jnp.ndarray
 ):
   r"""
   TODO: Come up with a better name, this is more or less a synthetic
@@ -23,11 +24,15 @@ def run_simulation_coarse_grid_correction(
   $$
     u_{k+1}^{2n} = I_n^{2n} \circ f_n(R_{2n}^{n}(u_k^{2n})) + y_k^{2n}
   $$
+
+  Following the DAgger paper, we use beta to mix the current policy with the
+  expert policy to stabilize the trajectory
   
   """
 
   @jax.jit
   def iter(uv: jnp.array):
+    uv_expert = (rd_fine.adi(uv.reshape(-1))).reshape(2, nx, nx)
     uv = uv.transpose(1, 2, 0)
     correction, _ = train_state.apply_fn_with_bn(
       {
@@ -50,7 +55,7 @@ def run_simulation_coarse_grid_correction(
         jnp.kron(uv[1], jnp.ones((r, r))).reshape(1, nx, nx),
       ]
     )
-    return uv + correction * dt
+    return (uv + correction * dt) * (1 - beta) + beta * uv_expert
 
   step_num = rd_fine.step_num
   x_hist = jnp.zeros([step_num, 2, nx, nx])

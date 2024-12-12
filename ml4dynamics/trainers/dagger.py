@@ -157,7 +157,7 @@ def main(config_dict: ml_collections.ConfigDict):
   ))
   run_simulation = partial(
     train_utils.run_simulation_coarse_grid_correction, train_state, rd_fine,
-    rd_coarse, nx, r, dt
+    rd_coarse, nx, r, dt, beta=0
   )
 
   dagger_iters = tqdm(range(dagger_epochs))
