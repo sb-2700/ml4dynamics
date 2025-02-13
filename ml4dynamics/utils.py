@@ -14,7 +14,7 @@ import torch
 import yaml
 from matplotlib import cm
 from matplotlib import pyplot as plt
-from numpy import random
+from jax import random as random
 
 from ml4dynamics.types import PRNGKey
 

@@ -510,12 +510,16 @@ def main(config_dict: ml_collections.ConfigDict):
     step = jnp.prod(jnp.array(inputs.shape)) // N2 // case_num
     t = jnp.linspace(0, T, step).reshape(1, -1, 1)
     t = jnp.tile(t, (case_num, 1, N2)).reshape(-1)
-    plt.figure(figsize=(16, 4))
-    plt.subplot(141)
+    # plt.figure(figsize=(16, 4))
+    # plt.subplot(141)
+    plt.figure(figsize=(13, 4.5))
+    plt.subplot(131)
     if config.train.stratify:
       plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c="y")
     else:
-      plt.scatter(inputs.reshape(-1, 1), outputs, s=.2, c=t)
+      plt.scatter(inputs.reshape(-1, 1), outputs, s=.2)
+      plt.xlabel(r"$\partial_{xx} u$", fontsize=15)
+      plt.ylabel(r"$\tau$", fontsize=15)
     # x_min = inputs.min()
     # x_max = inputs.max()
     # y_min = outputs.min()
@@ -542,26 +546,40 @@ def main(config_dict: ml_collections.ConfigDict):
           markersize=.5,
           label="learned"
         )
-    plt.title("loss = {:.4e}".format(loss_hist[-1]))
-    plt.subplot(142)
-    plt.hist2d(inputs.reshape(-1), outputs.reshape(-1), bins=20, density=True)
-    plt.title(f"{bins} bins; {subsample} subsample; {inputs.shape[0]} samples")
-    plt.colorbar()
-    plt.subplot(143)
-    plt.hist(inputs, bins=200, label=config.train.input, density=True)
-    # plt.yscale("log")
+    # plt.title("loss = {:.4e}".format(loss_hist[-1]))
+    # plt.subplot(142)
+    # plt.hist2d(inputs.reshape(-1), outputs.reshape(-1), bins=20, density=True)
+    # plt.title(f"{bins} bins; {subsample} subsample; {inputs.shape[0]} samples")
+    # plt.colorbar()
+    # plt.subplot(143)
+    plt.subplot(132)
+    # plt.hist(inputs, bins=200, label=config.train.input, density=True)
+    plt.hist(inputs, bins=200, label=r"$\partial_{xx}u$", density=True)
+    plt.yscale("log")
+    plt.xlabel(r"$\partial_{xx} u$", fontsize=15)
+    plt.ylabel("density")
     plt.legend()
-    plt.subplot(144)
+    # plt.subplot(144)
+    plt.subplot(133)
     plt.hist(outputs, bins=200, label=r"$\tau$", density=True)
-    # plt.yscale("log")
+    plt.yscale("log")
+    plt.xlabel(r"$\tau$", fontsize=15)
+    plt.ylabel("density")
   plt.legend()
   plt.savefig(
     f"results/fig/ks_c{c}T{T}n{case_num}_{train_mode}_{config.train.input}_scatter.png",
-    dpi=1000
+    dpi=500
   )
   plt.clf()
+  breakpoint()
 
-  utils.a_posteriori_analysis(config, )
+  utils.a_posteriori_analysis(
+    config,
+    ks_fine,
+    ks_coarse,
+    correction_nn,
+    params,
+  )
   breakpoint()
 
 

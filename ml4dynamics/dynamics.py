@@ -604,7 +604,7 @@ class KS(dynamics):
     self.attractor = copy.deepcopy(x)
     self.attractor_flag = True
 
-  @jax.jit
+  # @jax.jit
   # NOTE: currently we can not jit as the self is not an array
   def CN_FEM(self, x):
     return jax.scipy.linalg.solve(
