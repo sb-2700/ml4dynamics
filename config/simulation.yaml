@@ -23,8 +23,8 @@ name: react_diff
 
 ks:
   nu: 1
-  c: 1.6
-  T: 400
+  c: 1.2
+  T: 200
   dt: .1
   L: 128
   nx: 1024
@@ -56,7 +56,7 @@ ns:
 
 sim:
   seed: 42
-  case_num: 1       # number of simulations to perform
+  case_num: 10       # number of simulations to perform
   warm_up: 200      # warm up step for simulation
   patience: 5       # patience for NaN simulation
   writeInterval: 2
@@ -66,22 +66,28 @@ plot:
   dim: 2            # Spatial dimension
   channel_idx: 0    # Index of the variable to be plotted
 
+dagger:
+  lr: 0.01
+  epochs: 10
+  inner_epochs: 20
+  beta: 0.9
+
 train:
   stratify: False
   sgs: correction # filter, correction
   bins: 50
   subsample: 200
-  mode: gaussian # regression, gaussian, generative
+  mode: regression # regression, gaussian, generative
   linear: True # whether add a linear residue layer
   n_g: 1 # number of gaussian mixture components
   input: uxx # uglobal, u, ux, uxx, uxxxx
-  lr: 0.01
+  lr: 0.1
+  batch_size: 1000000
+  batch_size_jax: 64
+  batch_size_ae: 500
+  buffer_size: 10
   epochs: 2000
   epochs_ae: 200
-  dagger_epochs: 10
-  dagger_inner_epochs: 50
-  batch_size: 1000000
-  batch_size_ae: 500
   vae:
     latents: 128
 
