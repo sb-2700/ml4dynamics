@@ -7,6 +7,7 @@ import jax.random as random
 import ml_collections
 import numpy as np
 import optax
+import pickle
 from time import time
 import yaml
 from box import Box
@@ -18,39 +19,16 @@ from tqdm import tqdm
 from ml4dynamics.dataset_utils import dataset_utils
 from ml4dynamics.models.models_jax import CustomTrainState, UNet
 from ml4dynamics.trainers import train_utils
+from ml4dynamics.types import PRNGKey
 
 jax.config.update("jax_enable_x64", True)
 
 def main(config: ml_collections.ConfigDict):
 
-  config = Box(config_dict)
-  pde_type = config.name
-  alpha = config.react_diff.alpha
-  beta = config.react_diff.beta
-  gamma = config.react_diff.gamma
-  case_num = config.sim.case_num
-
-  # load dataset
-  dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
-    alpha, beta, gamma, case_num
-  )
-  if pde_type == "react_diff":
-    h5_filename = f"data/react_diff/{dataset}.h5"
-
-  with h5py.File(h5_filename, "r") as h5f:
-    inputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
-    outputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
-  train_x, test_x, train_y, test_y = train_test_split(
-    inputs, outputs, test_size=0.2, random_state=config.sim.seed
-  )
-  datasize = train_x.shape[0]
-  shuffled_indices = np.random.permutation(datasize)
-  train_x = train_x[shuffled_indices]
-  train_y = train_y[shuffled_indices]
-
   def train(
     model_type: str,
-    epochs: int
+    epochs: int,
+    rng: PRNGKey,
   ):
 
     @partial(jax.jit, static_argnums=(3, 4))
@@ -92,14 +70,15 @@ def main(config: ml_collections.ConfigDict):
       return loss, train_state
 
     unet = UNet()
+    rng1, rng2 = random.split(rng)
     init_rngs = {
-      'params': jax.random.PRNGKey(0),
-      'dropout': jax.random.PRNGKey(1)
+      'params': rng1,
+      'dropout': rng2
     }
     unet_variables = unet.init(init_rngs, jnp.ones([1, nx, nx, 2]))
     schedule = optax.piecewise_constant_schedule(
       init_value=config.train.lr, boundaries_and_scales={
-        int(b): 0.5 for b in jnp.arange(1, config.train.epochs) 
+        int(b): 0.5 for b in jnp.arange(1, config.train.epochs, 100) 
       }
     )
     optimizer = optax.adam(schedule)
@@ -109,29 +88,76 @@ def main(config: ml_collections.ConfigDict):
       tx=optimizer,
       batch_stats=unet_variables["batch_stats"]
     )
+    loss_hist = []
 
-    for epoch in tqdm(range(epochs)):
-      state_ae = train_step(state_ae, (train_x, train_x), model_type="ae")
-      if (epoch + 1) % config["save_interval"] == 0:
-        with open(save_file, "wb") as f:
-          pickle.dump(output, f)
+    iters = tqdm(range(epochs))
+    for epoch in iters:
+      total_loss = 0
+      for k in range(0, train_x.shape[0], batch_size):
+        loss, train_state = train_step(
+          train_x[k: k + batch_size],
+          train_y[k: k + batch_size],
+          train_state,
+          True
+        )
+        total_loss += loss
+      desc_str = f"{total_loss=:.4f}"
+      iters.set_description_str(desc_str)
+      loss_hist.append(total_loss)
+      
+      if (epoch + 1) % config.train.save == 0:
+        with open(f"ckpts/{pde_type}/{model_type}.pkl", "wb") as f:
+          pickle.dump(unet_variables, f)
 
-  rng = jax.random.PRNGKey(config["seed"])
+    val_loss = 0
+    for k in range(0, test_x.shape[0], batch_size):
+      loss, train_state = train_step(
+        jnp.array(test_x[k: k + batch_size]),
+        jnp.array(test_y[k: k + batch_size]),
+        train_state,
+        False
+      )
+      val_loss += loss
+    print(f"val loss: {val_loss:.4f}")
 
-  print("Training Autoencoder...")
-  train("ae")
+  config = Box(config_dict)
+  pde_type = config.name
+  alpha = config.react_diff.alpha
+  beta = config.react_diff.beta
+  gamma = config.react_diff.gamma
+  nx = config.react_diff.nx
+  case_num = config.sim.case_num
+  batch_size = config.train.batch_size_jax
+  epochs = config.train.epochs
 
-  print("Training OLS...")
-  train("ols")
+  # load dataset
+  dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
+    alpha, beta, gamma, case_num
+  )
+  if pde_type == "react_diff":
+    h5_filename = f"data/react_diff/{dataset}.h5"
 
-  print("Training MOLS...")
-  train("mols")
+  print("start loading data...")
+  start = time()
+  with h5py.File(h5_filename, "r") as h5f:
+    inputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
+    outputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
+  train_x, test_x, train_y, test_y = train_test_split(
+    inputs, outputs, test_size=0.2, random_state=config.sim.seed
+  )
+  datasize = train_x.shape[0]
+  shuffled_indices = np.random.permutation(datasize)
+  train_x = train_x[shuffled_indices]
+  train_y = train_y[shuffled_indices]
+  print(f"finis loading data with {time() - start:.2f}s...")
 
-  print("Training AOLS...")
-  train("aols")
+  rng = jax.random.PRNGKey(config.sim.seed)
+  models_array = ["ae", "ols", "mols", "aols", "tr"]
 
-  print("Training TR...")
-  train("tr")
+  for _ in models_array:
+    rng, key = random.split(rng)
+    print(f"Training {_}...")
+    train(_, epochs, key)
 
 if __name__ == "__main__":
 
