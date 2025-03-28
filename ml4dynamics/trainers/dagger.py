@@ -10,7 +10,6 @@ statistics. JMLR Workshop and Conference Proceedings, 2011.
 
 from functools import partial
 
-import h5py
 import jax
 import jax.numpy as jnp
 import jax.random as random
@@ -25,6 +24,7 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
+from ml4dynamics import utils
 from ml4dynamics.dataset_utils import dataset_utils
 from ml4dynamics.dynamics import RD
 from ml4dynamics.models.models_jax import CustomTrainState, UNet
@@ -37,41 +37,21 @@ def main(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
   # model parameters
-  pde_type = config.name
-  alpha = config.react_diff.alpha
-  beta = config.react_diff.beta
-  gamma = config.react_diff.gamma
-  d = config.react_diff.d
   T = config.react_diff.T
   dt = config.react_diff.dt
   step_num = int(T / dt)
-  Lx = config.react_diff.Lx
   nx = config.react_diff.nx
   r = config.react_diff.r
   # solver parameters
   dagger_epochs = config.dagger.epochs
   inner_epochs = config.dagger.inner_epochs
+  beta = config.dagger.beta
   batch_size = config.train.batch_size_jax
   rng = random.PRNGKey(config.sim.seed)
   np.random.seed(rng)
-  case_num = config.sim.case_num
 
-  dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
-    alpha, beta, gamma, case_num
-  )
-  if pde_type == "react_diff":
-    h5_filename = f"data/react_diff/{dataset}.h5"
-
-  with h5py.File(h5_filename, "r") as h5f:
-    inputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
-    outputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
-  train_x, test_x, train_y, test_y = train_test_split(
-    inputs, outputs, test_size=0.2, random_state=config.sim.seed
-  )
+  inputs, outputs, train_x, test_x, train_y, test_y = utils.load_data(config)
   datasize = train_x.shape[0]
-  shuffled_indices = np.random.permutation(datasize)
-  train_x = train_x[shuffled_indices]
-  train_y = train_y[shuffled_indices]
 
   unet = UNet()
   init_rngs = {
@@ -123,26 +103,7 @@ def main(config_dict: ml_collections.ConfigDict):
 
     return loss, train_state
 
-  rd_fine = RD(
-    L=Lx,
-    N=nx**2 * 2,
-    T=T,
-    dt=dt,
-    alpha=alpha,
-    beta=beta,
-    gamma=gamma,
-    d=d,
-  )
-  rd_coarse = RD(
-    L=Lx,
-    N=(nx // r)**2 * 2,
-    T=T,
-    dt=dt,
-    alpha=alpha,
-    beta=beta,
-    gamma=gamma,
-    d=d,
-  )
+  rd_fine, rd_coarse = utils.create_fine_coarse_simulator(config)
   # fix a case for DAgger iteration
   key, rng = random.split(rng)
   max_freq = 10
@@ -155,10 +116,6 @@ def main(config_dict: ml_collections.ConfigDict):
   calc_correction = jax.jit(partial(
     dataset_utils.calc_correction, rd_fine, rd_coarse, nx, r
   ))
-  run_simulation = partial(
-    train_utils.run_simulation_coarse_grid_correction, train_state, rd_fine,
-    rd_coarse, nx, r, dt, beta
-  )
 
   dagger_iters = tqdm(range(dagger_epochs))
   for i in dagger_iters:
@@ -213,7 +170,9 @@ def main(config_dict: ml_collections.ConfigDict):
     # uv = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1))) / nx
     # uv = uv.transpose(2, 0, 1)
     start = time()
-    x_hist = run_simulation(uv)
+    x_hist = train_utils.run_simulation_coarse_grid_correction(
+      train_state, rd_fine, rd_coarse, nx, r, dt, beta, uv
+    )
     print(f"simulation takes {time() - start:.2f}s...")
     if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
       print("similation contains NaN!")
@@ -230,20 +189,27 @@ def main(config_dict: ml_collections.ConfigDict):
       output = output.at[j].set(calc_correction(input[j]) / dt)
 
     # visualization
-    n_plot = 3
-    fig, axs = plt.subplots(n_plot, n_plot)
-    axs = axs.flatten()
-    for j in range(n_plot**2):
-      axs[j].imshow(rd_fine.x_hist[j * 100, :nx**2].reshape(nx, nx), cmap=cm.jet)
-      axs[j].axis("off")
-    plt.savefig(f"results/fig/cloudmap_true.pdf")
-    plt.clf()
-    fig, axs = plt.subplots(n_plot, n_plot)
-    axs = axs.flatten()
-    for j in range(n_plot**2):
-      axs[j].imshow(x_hist[j * 500, 0], cmap=cm.jet)
-      axs[j].axis("off")
-    plt.savefig(f"results/fig/{i}th_cloudmap.pdf")
+    n_plot = 6
+    fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
+    for j in range(n_plot):
+      im = axs[0, j].imshow(
+        rd_fine.x_hist[j * 500, :nx**2].reshape(nx, nx), cmap=cm.jet
+      )
+      cbar = fig.colorbar(im, ax=axs[0, j], orientation='horizontal')
+      axs[0, j].axis("off")
+      im = axs[1, j].imshow(
+        x_hist[j * 500, 0], cmap=cm.jet
+      )
+      cbar = fig.colorbar(im, ax=axs[1, j], orientation='horizontal')
+      axs[1, j].axis("off")
+      im = axs[2, j].imshow(
+        rd_fine.x_hist[j * 500, :nx**2].reshape(nx, nx) - x_hist[j * 500, 0],
+        cmap=cm.jet
+      )
+      cbar = fig.colorbar(im, ax=axs[2, j], orientation='horizontal')
+      axs[2, j].axis("off")
+      
+    plt.savefig(f"results/fig/dagger_cloudmap_{i}.pdf")
     plt.clf()
 
     # generate new dataset

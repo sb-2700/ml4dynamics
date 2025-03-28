@@ -1,6 +1,5 @@
 from functools import partial
 
-import h5py
 import jax
 import jax.numpy as jnp
 import jax.random as random
@@ -13,10 +12,9 @@ import yaml
 from box import Box
 from matplotlib import cm
 from matplotlib import pyplot as plt
-from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-from ml4dynamics.dataset_utils import dataset_utils
+from ml4dynamics import utils
 from ml4dynamics.models.models_jax import CustomTrainState, UNet
 from ml4dynamics.trainers import train_utils
 from ml4dynamics.types import PRNGKey
@@ -119,37 +117,65 @@ def main(config: ml_collections.ConfigDict):
       )
       val_loss += loss
     print(f"val loss: {val_loss:.4f}")
+    run_simulation = partial(
+      train_utils.run_simulation_coarse_grid_correction, train_state, rd_fine,
+      rd_coarse, nx, r, dt, beta
+    )
+    start = time()
+    breakpoint()
+    x_hist = run_simulation(train_x[0].transpose(2, 0, 1))
+    rd_fine.run_simulation(
+      (train_x[0].transpose(2, 0, 1)).reshape(-1), rd_fine.adi
+    )
+    step_num = rd_fine.step_num
+    print(f"simulation takes {time() - start:.2f}s...")
+    if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
+      print("similation contains NaN!")
+      breakpoint()
+    print("L2 error: {:.4f}".format(
+      jnp.sum(
+        jnp.linalg.norm(x_hist.reshape(step_num, -1) - rd_fine.x_hist, axis=1)
+      )
+    ))
+
+    # visualization
+    n_plot = 6
+    fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
+    for j in range(n_plot):
+      im = axs[0, j].imshow(
+        rd_fine.x_hist[j * 500, :nx**2].reshape(nx, nx), cmap=cm.jet
+      )
+      cbar = fig.colorbar(im, ax=axs[0, j], orientation='horizontal')
+      axs[0, j].axis("off")
+      im = axs[1, j].imshow(
+        x_hist[j * 500, 0], cmap=cm.jet
+      )
+      cbar = fig.colorbar(im, ax=axs[1, j], orientation='horizontal')
+      axs[1, j].axis("off")
+      im = axs[2, j].imshow(
+        rd_fine.x_hist[j * 500, :nx**2].reshape(nx, nx) - x_hist[j * 500, 0],
+        cmap=cm.jet
+      )
+      cbar = fig.colorbar(im, ax=axs[2, j], orientation='horizontal')
+      axs[2, j].axis("off")
+      
+    plt.savefig(f"results/fig/tr_cloudmap.pdf")
+    plt.clf()
 
   config = Box(config_dict)
   pde_type = config.name
-  alpha = config.react_diff.alpha
   beta = config.react_diff.beta
-  gamma = config.react_diff.gamma
   nx = config.react_diff.nx
-  case_num = config.sim.case_num
+  r = config.react_diff.r
+  dt = config.react_diff.dt
   batch_size = config.train.batch_size_jax
   epochs = config.train.epochs
 
-  # load dataset
-  dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
-    alpha, beta, gamma, case_num
-  )
-  if pde_type == "react_diff":
-    h5_filename = f"data/react_diff/{dataset}.h5"
-
   print("start loading data...")
   start = time()
-  with h5py.File(h5_filename, "r") as h5f:
-    inputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
-    outputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
-  train_x, test_x, train_y, test_y = train_test_split(
-    inputs, outputs, test_size=0.2, random_state=config.sim.seed
-  )
-  datasize = train_x.shape[0]
-  shuffled_indices = np.random.permutation(datasize)
-  train_x = train_x[shuffled_indices]
-  train_y = train_y[shuffled_indices]
+  inputs, outputs, train_x, test_x, train_y, test_y = utils.load_data(config)
   print(f"finis loading data with {time() - start:.2f}s...")
+  rd_fine, rd_coarse = utils.create_fine_coarse_simulator(config)
 
   rng = jax.random.PRNGKey(config.sim.seed)
   models_array = ["ae", "ols", "mols", "aols", "tr"]

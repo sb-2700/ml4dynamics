@@ -11,41 +11,107 @@ import ml_collections
 import numpy as np
 import numpy.linalg as nalg
 import torch
-import yaml
+from box import Box
 from matplotlib import cm
 from matplotlib import pyplot as plt
 from jax import random as random
+from sklearn.model_selection import train_test_split
 
+from ml4dynamics import dynamics
 from ml4dynamics.types import PRNGKey
 
 jax.config.update("jax_enable_x64", True)
 torch.set_default_dtype(torch.float64)
 
 
-def read_and_preprocess(
-  filename: str = None,
-  device=None,
-):
+# def read_and_preprocess(
+#   filename: str = None,
+#   device=None,
+# ):
 
-  with h5py.File(filename, "r") as file:
-    config_yaml = file["config"].attrs["config"]
-    config = yaml.safe_load(config_yaml)
+#   with h5py.File(filename, "r") as file:
+#     config_yaml = file["config"].attrs["config"]
+#     config = yaml.safe_load(config_yaml)
 
-    input_fine = file["data"]["input_fine"][:]
-    output_fine = file["data"]["output_fine"][:]
-    # input_coarse = file["data"]["input_coarse"][:]
-    # output_coarse = file["data"]["output_coarse"][:]
-    metadata_h5py = file["metadata"]
-    metadata = {}
-    for key in metadata_h5py.keys():
-      metadata[key] = metadata_h5py[key][()]
+#     input_fine = file["data"]["input_fine"][:]
+#     output_fine = file["data"]["output_fine"][:]
+#     # input_coarse = file["data"]["input_coarse"][:]
+#     # output_coarse = file["data"]["output_coarse"][:]
+#     metadata_h5py = file["metadata"]
+#     metadata = {}
+#     for key in metadata_h5py.keys():
+#       metadata[key] = metadata_h5py[key][()]
 
-  nx = metadata["nx"]
-  ny = metadata["ny"]
-  traj_num, step_num, label_dim = output_fine.shape[:3]
-  input = torch.from_numpy(input_fine).to(torch.float64).to(device)
-  output = torch.from_numpy(output_fine).to(torch.float64).to(device)
-  return nx, ny, label_dim, traj_num, step_num, input, output
+#   nx = metadata["nx"]
+#   ny = metadata["ny"]
+#   traj_num, step_num, label_dim = output_fine.shape[:3]
+#   input = torch.from_numpy(input_fine).to(torch.float64).to(device)
+#   output = torch.from_numpy(output_fine).to(torch.float64).to(device)
+#   return nx, ny, label_dim, traj_num, step_num, input, output
+
+
+def load_data(config_dict: ml_collections.ConfigDict):
+
+  config = Box(config_dict)
+  # model parameters
+  pde_type = config.name
+  alpha = config.react_diff.alpha
+  beta = config.react_diff.beta
+  gamma = config.react_diff.gamma
+  case_num = config.sim.case_num
+  dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
+    alpha, beta, gamma, case_num
+  )
+  if pde_type == "react_diff":
+    h5_filename = f"data/react_diff/{dataset}.h5"
+
+  with h5py.File(h5_filename, "r") as h5f:
+    inputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
+    outputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
+  train_x, test_x, train_y, test_y = train_test_split(
+    inputs, outputs, test_size=0.2, random_state=config.sim.seed
+  )
+  datasize = train_x.shape[0]
+  shuffled_indices = np.random.permutation(datasize)
+  train_x = train_x[shuffled_indices]
+  train_y = train_y[shuffled_indices]
+  return inputs, outputs, train_x, test_x, train_y, test_y
+
+
+def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
+
+  config = Box(config_dict)
+  # model parameters
+  alpha = config.react_diff.alpha
+  beta = config.react_diff.beta
+  gamma = config.react_diff.gamma
+  d = config.react_diff.d
+  T = config.react_diff.T
+  dt = config.react_diff.dt
+  Lx = config.react_diff.Lx
+  nx = config.react_diff.nx
+  r = config.react_diff.r
+  rd_fine = dynamics.RD(
+    L=Lx,
+    N=nx**2 * 2,
+    T=T,
+    dt=dt,
+    alpha=alpha,
+    beta=beta,
+    gamma=gamma,
+    d=d,
+  )
+  rd_coarse = dynamics.RD(
+    L=Lx,
+    N=(nx // r)**2 * 2,
+    T=T,
+    dt=dt,
+    alpha=alpha,
+    beta=beta,
+    gamma=gamma,
+    d=d,
+  )
+  return rd_fine, rd_coarse
 
 
 ###############################################################################
