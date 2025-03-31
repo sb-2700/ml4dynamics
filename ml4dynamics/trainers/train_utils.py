@@ -7,7 +7,7 @@ from dlpack import asdlpack
 
 
 def run_simulation_coarse_grid_correction(
-  train_state, rd_fine, rd_coarse, nx: int, r: int, dt: float, beta: float,
+  train_state, rd_coarse, label: jnp.ndarray, nx: int, r: int, dt: float, beta: float,
   uv: jnp.ndarray
 ):
   r"""
@@ -32,7 +32,8 @@ def run_simulation_coarse_grid_correction(
 
   @jax.jit
   def iter(uv: jnp.array):
-    uv_expert = (rd_fine.adi(uv.reshape(-1))).reshape(2, nx, nx)
+    # uv_expert = (rd_fine.adi(uv.reshape(-1))).reshape(2, nx, nx)
+    uv_expert = jnp.transpose(label[i], (2, 0, 1))
     uv = uv.transpose(1, 2, 0)
     correction, _ = train_state.apply_fn_with_bn(
       {
@@ -57,7 +58,7 @@ def run_simulation_coarse_grid_correction(
     )
     return (uv + correction * dt) * (1 - beta) + beta * uv_expert
 
-  step_num = rd_fine.step_num
+  step_num = rd_coarse.step_num
   x_hist = jnp.zeros([step_num, 2, nx, nx])
   for i in range(step_num):
     x_hist = x_hist.at[i].set(uv)
