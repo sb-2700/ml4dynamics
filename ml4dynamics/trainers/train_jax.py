@@ -43,7 +43,9 @@ def main(config: ml_collections.ConfigDict):
         )
         loss = jnp.mean((y - y_pred)**2)
 
-        if model_type == "mols":
+        if model_type == "ae":
+          loss = jnp.mean((x - y_pred)**2)
+        elif model_type == "mols":
           squared_norms = jax.tree_map(lambda param: jnp.sum(param ** 2), params)
           loss += jax.tree_util.tree_reduce(lambda x, y: x + y, squared_norms) * config.tr.lambda_mols
         elif model_type == "aols":
@@ -117,12 +119,12 @@ def main(config: ml_collections.ConfigDict):
       )
       val_loss += loss
     print(f"val loss: {val_loss:.4f}")
+    beta = 0
     run_simulation = partial(
       train_utils.run_simulation_coarse_grid_correction, train_state, rd_fine,
       rd_coarse, nx, r, dt, beta
     )
     start = time()
-    breakpoint()
     x_hist = run_simulation(train_x[0].transpose(2, 0, 1))
     rd_fine.run_simulation(
       (train_x[0].transpose(2, 0, 1)).reshape(-1), rd_fine.adi
@@ -164,7 +166,6 @@ def main(config: ml_collections.ConfigDict):
 
   config = Box(config_dict)
   pde_type = config.name
-  beta = config.react_diff.beta
   nx = config.react_diff.nx
   r = config.react_diff.r
   dt = config.react_diff.dt
