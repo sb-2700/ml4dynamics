@@ -10,8 +10,8 @@ import yaml
 from box import Box
 from jax import random as random
 
+from ml4dynamics import utils
 from ml4dynamics.dataset_utils import dataset_utils
-from ml4dynamics.dynamics import RD
 
 
 jax.config.update("jax_enable_x64", True)
@@ -26,11 +26,9 @@ def generate_react_diff_correction_dataset(
   alpha = config.react_diff.alpha
   beta = config.react_diff.beta
   gamma = config.react_diff.gamma
-  d = config.react_diff.d
   T = config.react_diff.T
   dt = config.react_diff.dt
   step_num = int(T / dt)
-  Lx = config.react_diff.Lx
   nx = config.react_diff.nx
   r = config.react_diff.r
   # solver parameters
@@ -38,27 +36,7 @@ def generate_react_diff_correction_dataset(
   case_num = config.sim.case_num
 
   # react_diff simulator with periodic BC
-  rd_fine = RD(
-    L=Lx,
-    N=nx**2 * 2,
-    T=T,
-    dt=dt,
-    alpha=alpha,
-    beta=beta,
-    gamma=gamma,
-    d=d,
-  )
-
-  rd_coarse = RD(
-    L=Lx,
-    N=(nx // r)**2 * 2,
-    T=T,
-    dt=dt,
-    alpha=alpha,
-    beta=beta,
-    gamma=gamma,
-    d=d,
-  )
+  rd_fine, rd_coarse = utils.create_fine_coarse_simulator(config)
 
   inputs = np.zeros((case_num, step_num, 2, nx, nx))
   outputs = np.zeros((case_num, step_num, 2, nx, nx))
@@ -84,7 +62,7 @@ def generate_react_diff_correction_dataset(
     outputs[i] = output
 
   inputs = inputs.reshape(-1, 2, nx, nx)
-  outputs = outputs.reshape(-1, 2, nx, nx) / dt
+  outputs = outputs.reshape(-1, 2, nx, nx)
   if np.any(np.isnan(inputs)) or np.any(np.isnan(outputs)) or\
     np.any(np.isinf(inputs)) or np.any(np.isinf(outputs)):
     raise Exception("The data contains Inf or NaN")

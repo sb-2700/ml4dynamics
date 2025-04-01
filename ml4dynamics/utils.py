@@ -67,7 +67,7 @@ def load_data(config_dict: ml_collections.ConfigDict):
 
   with h5py.File(h5_filename, "r") as h5f:
     inputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
-    outputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
+    outputs = np.array(h5f["data"]["outputs"][()]).transpose(0, 2, 3, 1)
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=config.sim.seed
   )

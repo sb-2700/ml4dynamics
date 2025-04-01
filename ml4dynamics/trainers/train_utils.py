@@ -31,9 +31,7 @@ def run_simulation_coarse_grid_correction(
   """
 
   @jax.jit
-  def iter(uv: jnp.array):
-    # uv_expert = (rd_fine.adi(uv.reshape(-1))).reshape(2, nx, nx)
-    uv_expert = jnp.transpose(label[i], (2, 0, 1))
+  def iter(uv: jnp.array, expert: jnp.array=0):
     uv = uv.transpose(1, 2, 0)
     correction, _ = train_state.apply_fn_with_bn(
       {
@@ -56,13 +54,13 @@ def run_simulation_coarse_grid_correction(
         jnp.kron(uv[1], jnp.ones((r, r))).reshape(1, nx, nx),
       ]
     )
-    return (uv + correction * dt) * (1 - beta) + beta * uv_expert
+    return uv + (correction * (1 - beta) + beta * expert) * dt
 
   step_num = rd_coarse.step_num
   x_hist = jnp.zeros([step_num, 2, nx, nx])
   for i in range(step_num):
     x_hist = x_hist.at[i].set(uv)
-    uv = iter(uv)
+    uv = iter(uv, jnp.transpose(label[i], (2, 0, 1)))
 
   return x_hist
 
