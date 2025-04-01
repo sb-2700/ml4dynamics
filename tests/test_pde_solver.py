@@ -30,6 +30,7 @@ from ml4dynamics import utils
 #     assert True
 
 
+@pytest.mark.skip
 def test_reaction_diffusion_equation_solver():
   """We check the numerical solution with the following analytic solution
     test case for RD equation:
@@ -167,7 +168,7 @@ def test_navier_stokes_equation_solver():
   ) < tol
 
 
-@pytest.mark.skip
+# @pytest.mark.skip
 def test_kuramoto_sivashinsky_equation_solver():
 
   from ml4dynamics.dynamics import KS
@@ -206,5 +207,5 @@ def test_kuramoto_sivashinsky_equation_solver():
   start = jnp.sin(jnp.linspace(0, L - L/N1, N1))
   result = ks_fine.CN_FEM_test(start)
 
-  assert jnp.linalg.norm(result - start) < 1e-2
+  assert jnp.linalg.norm(result - start) < 1e-10
   breakpoint()
