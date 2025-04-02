@@ -39,7 +39,7 @@ class CustomTrainState(TrainState):
 """cVAE model definitions."""
 
 
-class Encoder(nn.Module):
+class vae_Encoder(nn.Module):
   """cVAE Encoder."""
 
   latents: int
@@ -54,7 +54,7 @@ class Encoder(nn.Module):
     return mean_x, logvar_x
 
 
-class Decoder(nn.Module):
+class vae_Decoder(nn.Module):
   """cVAE Decoder."""
 
   latents: int
@@ -83,8 +83,8 @@ class cVAE(nn.Module):
   #   self.decoder = None
 
   def setup(self):
-    self.encoder = Encoder(self.latents)
-    self.decoder = Decoder(self.latents, self.features)
+    self.encoder = vae_Encoder(self.latents)
+    self.decoder = vae_Decoder(self.latents, self.features)
 
   def __call__(self, x, c, z_rng):
     mean, logvar = self.encoder(x, c)
@@ -115,6 +115,13 @@ class Encoder(nn.Module):
 
   @nn.compact
   def __call__(self, x):
+    """
+    z1: [1, 256, 256, 2]
+    z2: [1, 128, 128, 2]
+    z3: [1, 64, 64, 4]
+    z4_dropout: [1, 32, 32, 8]
+    z5_dropout: [1, 16, 16, 16]
+    """
     z1 = nn.Conv(self.features, kernel_size=(3, 3))(x)
     z1 = nn.relu(z1)
     z1 = nn.Conv(self.features, kernel_size=(3, 3))(z1)
@@ -160,6 +167,13 @@ class Decoder(nn.Module):
 
   @nn.compact
   def __call__(self, z1, z2, z3, z4_dropout, z5_dropout):
+    """
+    z6: [1, 32, 32, 8]
+    z7: [1, 64, 64, 4]
+    z8: [1, 128, 128, 2]
+    z9: [1, 256, 256, 1]
+    y: [1, 256, 256, 2]
+    """
     z6_up = jax.image.resize(
       z5_dropout,
       shape=(
@@ -231,7 +245,11 @@ class UNet(nn.Module):
 
   @nn.compact
   def __call__(self, x):
-    z1, z2, z3, z4_dropout, z5_dropout = Encoder(self.training)(x)
-    y = Decoder(self.training)(z1, z2, z3, z4_dropout, z5_dropout)
+    z1, z2, z3, z4_dropout, z5_dropout = Encoder(
+      self.features, self.training
+    )(x)
+    y = Decoder(
+      self.features, self.training
+    )(z1, z2, z3, z4_dropout, z5_dropout)
 
     return y

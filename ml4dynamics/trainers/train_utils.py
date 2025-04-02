@@ -57,9 +57,9 @@ def run_simulation_coarse_grid_correction(
     return uv + (correction * (1 - beta) + beta * expert) * dt
 
   step_num = rd_coarse.step_num
-  x_hist = jnp.zeros([step_num, 2, nx, nx])
+  x_hist = np.zeros([step_num, 2, nx, nx])
   for i in range(step_num):
-    x_hist = x_hist.at[i].set(uv)
+    x_hist[i] = uv
     uv = iter(uv, jnp.transpose(label[i], (2, 0, 1)))
 
   return x_hist

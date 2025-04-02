@@ -27,7 +27,7 @@ from ml4dynamics.dynamics import KS
 #     assert True
 
 
-@pytest.mark.skip
+# @pytest.mark.skip
 def test_reaction_diffusion_equation_solver():
   """We check the numerical solution with the following analytic solution
     test case for RD equation:
