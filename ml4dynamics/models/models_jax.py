@@ -245,11 +245,9 @@ class UNet(nn.Module):
 
   @nn.compact
   def __call__(self, x):
-    z1, z2, z3, z4_dropout, z5_dropout = Encoder(
-      self.features, self.training
-    )(x)
-    y = Decoder(
-      self.features, self.training
-    )(z1, z2, z3, z4_dropout, z5_dropout)
+    z1, z2, z3, z4_dropout, z5_dropout = Encoder(self.features,
+                                                 self.training)(x)
+    y = Decoder(self.features,
+                self.training)(z1, z2, z3, z4_dropout, z5_dropout)
 
     return y

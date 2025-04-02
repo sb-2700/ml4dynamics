@@ -2,13 +2,12 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import torch
-
 from dlpack import asdlpack
 
 
 def run_simulation_coarse_grid_correction(
-  train_state, rd_coarse, label: jnp.ndarray, nx: int, r: int, dt: float, beta: float,
-  uv: jnp.ndarray
+  train_state, rd_coarse, label: jnp.ndarray, nx: int, r: int, dt: float,
+  beta: float, uv: jnp.ndarray
 ):
   r"""
   TODO: Come up with a better name, this is more or less a synthetic
@@ -31,7 +30,7 @@ def run_simulation_coarse_grid_correction(
   """
 
   @jax.jit
-  def iter(uv: jnp.array, expert: jnp.array=0):
+  def iter(uv: jnp.array, expert: jnp.array = 0):
     uv = uv.transpose(1, 2, 0)
     correction, _ = train_state.apply_fn_with_bn(
       {
@@ -66,10 +65,9 @@ def run_simulation_coarse_grid_correction(
 
 
 def run_simulation_coarse_grid_correction_torch(
-  model, rd_fine, rd_coarse, nx: int, r: int, dt: float, device,
-  uv: jnp.ndarray
+  model, rd_fine, rd_coarse, nx: int, r: int, dt: float, device, uv: jnp.ndarray
 ):
-  
+
   step_num = rd_fine.step_num
   x_hist = jnp.zeros([step_num, 2, nx, nx])
   for i in range(step_num):

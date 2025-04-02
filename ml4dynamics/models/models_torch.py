@@ -3,6 +3,7 @@ from torch import nn
 
 torch.set_default_dtype(torch.float64)
 
+
 def weights_init(m):
   classname = m.__class__.__name__
   if classname.find('Conv') != -1:

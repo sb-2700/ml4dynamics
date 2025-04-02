@@ -1,7 +1,7 @@
 import copy
+import gc
 from functools import partial
 
-import gc
 import h5py
 import haiku as hk
 import jax
@@ -12,9 +12,9 @@ import numpy as np
 import numpy.linalg as nalg
 import torch
 from box import Box
+from jax import random as random
 from matplotlib import cm
 from matplotlib import pyplot as plt
-from jax import random as random
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -23,7 +23,6 @@ from ml4dynamics.types import PRNGKey
 
 jax.config.update("jax_enable_x64", True)
 torch.set_default_dtype(torch.float64)
-
 
 # def read_and_preprocess(
 #   filename: str = None,
@@ -54,10 +53,10 @@ torch.set_default_dtype(torch.float64)
 def load_data(
   config_dict: ml_collections.ConfigDict,
   batch_size: int,
-  num_workers: int=16,
-  mode: str="jax"
+  num_workers: int = 16,
+  mode: str = "jax"
 ):
- 
+
   config = Box(config_dict)
   pde_type = config.name
   alpha = config.react_diff.alpha
@@ -69,7 +68,7 @@ def load_data(
   )
   if pde_type == "react_diff":
     h5_filename = f"data/react_diff/{dataset}.h5"
- 
+
   with h5py.File(h5_filename, "r") as h5f:
     inputs = torch.tensor(h5f["data"]["inputs"][()], dtype=torch.float64)
     outputs = torch.tensor(h5f["data"]["outputs"][()], dtype=torch.float64)
@@ -82,6 +81,7 @@ def load_data(
       device = torch.device(
         "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
       )
+      # for dataset which can be load to the GPU memory
       inputs = inputs.to(device)
       outputs = outputs.to(device)
   train_x, test_x, train_y, test_y = train_test_split(
@@ -89,11 +89,15 @@ def load_data(
   )
   train_dataset = TensorDataset(train_x, train_y)
   train_dataloader = DataLoader(
-    train_dataset, batch_size=batch_size, shuffle=True # , num_workers=num_workers
+    train_dataset,
+    batch_size=batch_size,
+    shuffle=True  # , num_workers=num_workers
   )
   test_dataset = TensorDataset(test_x, test_y)
   test_dataloader = DataLoader(
-    test_dataset, batch_size=batch_size, shuffle=True # , num_workers=num_workers
+    test_dataset,
+    batch_size=batch_size,
+    shuffle=True  # , num_workers=num_workers
   )
   return inputs, outputs, train_dataloader, test_dataloader
 

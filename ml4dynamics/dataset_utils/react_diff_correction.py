@@ -13,7 +13,6 @@ from jax import random as random
 from ml4dynamics import utils
 from ml4dynamics.dataset_utils import dataset_utils
 
-
 jax.config.update("jax_enable_x64", True)
 
 
