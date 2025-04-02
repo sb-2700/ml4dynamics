@@ -341,8 +341,8 @@ class UNet(nn.Module):
 
   def forward(self, x):
     # normalization procedure, guaranteeing that our model is homogeneous
-    scale = torch.max(torch.abs(x))
-    x = x / scale
+    # scale = torch.max(torch.abs(x))
+    # x = x / scale
     out1 = self.layer1(x)
     out2 = self.layer2(out1)
     out3 = self.layer3(out2)
@@ -367,5 +367,6 @@ class UNet(nn.Module):
     #out1_ = self.hlayer1(out1)
     dout2_out1 = torch.cat([dout2, out1_], 1)
     dout1 = self.dlayer1(dout2_out1)
-    dout1 = dout1 * scale
+    # dout1 = dout1 * scale
+    # breakpoint()
     return dout1

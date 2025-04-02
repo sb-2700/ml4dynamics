@@ -10,6 +10,7 @@ import jax.scipy.sparse.linalg as jsla
 import ml_collections
 import numpy as np
 import numpy.linalg as nalg
+from time import time
 import torch
 from box import Box
 from jax import random as random
@@ -19,6 +20,8 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 
 from ml4dynamics import dynamics
+from ml4dynamics.models.models_jax import CustomTrainState
+from ml4dynamics.trainers import train_utils
 from ml4dynamics.types import PRNGKey
 
 jax.config.update("jax_enable_x64", True)
@@ -70,30 +73,35 @@ def load_data(
     h5_filename = f"data/react_diff/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
-    inputs = torch.tensor(h5f["data"]["inputs"][()], dtype=torch.float64)
-    outputs = torch.tensor(h5f["data"]["outputs"][()], dtype=torch.float64)
+    inputs = h5f["data"]["inputs"][()]
+    outputs = h5f["data"]["outputs"][()]
     if mode == "jax":
       # shape = (*, nx, nx, 2)
-      inputs = inputs.permute(0, 2, 3, 1)
-      outputs = outputs.permute(0, 2, 3, 1)
+      inputs = inputs.transpose(0, 2, 3, 1)
+      outputs = outputs.transpose(0, 2, 3, 1)
     if mode == "torch":
       GPU = 0
       device = torch.device(
         "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
       )
-      # for dataset which can be load to the GPU memory
-      inputs = inputs.to(device)
-      outputs = outputs.to(device)
+      inputs = torch.from_numpy(inputs).to(device)
+      outputs = torch.from_numpy(outputs).to(device)
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=config.sim.seed
   )
-  train_dataset = TensorDataset(train_x, train_y)
+  train_dataset = TensorDataset(
+    torch.tensor(train_x, dtype=torch.float64),
+    torch.tensor(train_y, dtype=torch.float64)
+  )
   train_dataloader = DataLoader(
     train_dataset,
     batch_size=batch_size,
     shuffle=True  # , num_workers=num_workers
   )
-  test_dataset = TensorDataset(test_x, test_y)
+  test_dataset = TensorDataset(
+    torch.tensor(test_x, dtype=torch.float64),
+    torch.tensor(test_y, dtype=torch.float64)
+  )
   test_dataloader = DataLoader(
     test_dataset,
     batch_size=batch_size,
@@ -136,6 +144,134 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
     d=d,
   )
   return rd_fine, rd_coarse
+
+
+def eval_a_priori(
+  train_state: CustomTrainState,
+  train_dataloader: DataLoader,
+  test_dataloader: DataLoader,
+  inputs: jnp.ndarray,
+  outputs: jnp.ndarray,
+):
+  
+  total_loss = 0
+  count = 0
+  for batch_inputs, batch_outputs in train_dataloader:
+    predict, _ = train_state.apply_fn_with_bn(
+      {
+        "params": train_state.params,
+        "batch_stats": train_state.batch_stats
+      },
+      jnp.array(batch_inputs),
+      is_training=False
+    )
+    loss = jnp.mean((predict - jnp.array(batch_outputs))**2)
+    total_loss += loss
+    count += 1
+  print(f"train loss: {total_loss/count:.4e}")
+  total_loss = 0
+  count = 0
+  for batch_inputs, batch_outputs in test_dataloader:
+    predict, _ = train_state.apply_fn_with_bn(
+      {
+        "params": train_state.params,
+        "batch_stats": train_state.batch_stats
+      },
+      jnp.array(batch_inputs),
+      is_training=False
+    )
+    loss = jnp.mean((predict - jnp.array(batch_outputs))**2)
+    total_loss += loss
+    count += 1
+  print(f"test loss: {total_loss/count:.4e}")
+
+  # visualization
+  n_plot = 6
+  fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
+  index_array = [0, 800, 1600, 2400, 3200, 4000]
+  for j in range(n_plot):
+    predict, _ = train_state.apply_fn_with_bn(
+      {
+        "params": train_state.params,
+        "batch_stats": train_state.batch_stats
+      },
+      jnp.array(inputs[index_array[j]:index_array[j]+1]),
+      is_training=False
+    )
+    im = axs[0, j].imshow(outputs[index_array[j], ..., 0], cmap=cm.jet)
+    _ = fig.colorbar(im, ax=axs[0, j], orientation='horizontal')
+    axs[0, j].axis("off")
+    im = axs[1, j].imshow(predict[0, ..., 0], cmap=cm.jet)
+    _ = fig.colorbar(im, ax=axs[1, j], orientation='horizontal')
+    axs[1, j].axis("off")
+    im = axs[2, j].imshow(
+      outputs[index_array[j], ..., 0] - predict[0, ..., 0],
+      cmap=cm.jet
+    )
+    _ = fig.colorbar(im, ax=axs[2, j], orientation='horizontal')
+    axs[2, j].axis("off")
+
+  plt.savefig(f"results/fig/apriori.pdf")
+  plt.clf()
+
+
+def eval_a_posteriori(
+  config_dict: ml_collections.ConfigDict,
+  train_state: CustomTrainState,
+  inputs: jnp.ndarray,
+  outputs: jnp.ndarray,
+  fig_name: str = "cloudmap",
+):
+  
+  config = Box(config_dict)
+  nx = config.react_diff.nx
+  r = config.react_diff.r
+  dt = config.react_diff.dt
+  _, rd_coarse = create_fine_coarse_simulator(config)
+  beta = 0
+  run_simulation = partial(
+    train_utils.run_simulation_coarse_grid_correction, train_state, rd_coarse,
+    outputs, nx, r, dt, beta
+  )
+  start = time()
+  x_hist = run_simulation(inputs[0].transpose(2, 0, 1))
+  step_num = rd_coarse.step_num
+  print(f"simulation takes {time() - start:.2f}s...")
+  if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
+    print("similation contains NaN!")
+    breakpoint()
+  print(
+    "L2 error: {:.4e}".format(
+      np.sum(
+        np.linalg.norm(
+          x_hist.reshape(step_num, -1) -
+          (inputs.transpose(0, 3, 1, 2)).reshape(step_num, -1),
+          axis=1
+        )
+      )
+    )
+  )
+
+  # visualization
+  n_plot = 6
+  fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
+  index_array = [0, 800, 1600, 2400, 3200, 4000]
+  for j in range(n_plot):
+    im = axs[0, j].imshow(inputs[index_array[j], ..., 0], cmap=cm.jet)
+    _ = fig.colorbar(im, ax=axs[0, j], orientation='horizontal')
+    axs[0, j].axis("off")
+    im = axs[1, j].imshow(x_hist[index_array[j], 0], cmap=cm.jet)
+    _ = fig.colorbar(im, ax=axs[1, j], orientation='horizontal')
+    axs[1, j].axis("off")
+    im = axs[2, j].imshow(
+      inputs[index_array[j], ..., 0] - x_hist[index_array[j], 0],
+      cmap=cm.jet
+    )
+    _ = fig.colorbar(im, ax=axs[2, j], orientation='horizontal')
+    axs[2, j].axis("off")
+
+  plt.savefig(f"results/fig/{fig_name}.pdf")
+  plt.clf()
 
 
 ###############################################################################

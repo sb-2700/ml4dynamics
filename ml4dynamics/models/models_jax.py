@@ -234,7 +234,7 @@ class Decoder(nn.Module):
     z9 = nn.relu(z9)
 
     y = nn.Conv(2, kernel_size=(1, 1))(z9)
-    y = nn.sigmoid(y)
+    # y = nn.sigmoid(y)
 
     return y
 
