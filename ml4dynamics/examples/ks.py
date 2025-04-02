@@ -2,7 +2,7 @@ r"""
 Examples with Kuramoto–Sivashinsky equation
 
 $$
-  u_t + (c + u)u_x + uu_x + u_{xx} + \nu u_{xxxx} = 0.
+  u_t + (c + u)u_x + u_{xx} + \nu u_{xxxx} = 0.
 $$
 
 We perform sensitivity analysis of several statistics of the KS equation

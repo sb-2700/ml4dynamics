@@ -1,18 +1,15 @@
 """
 Test the data generator, make sure the data generated is physcial and
-correct. May already implement the mesh refinement study in our py
-notebook
+correct. More rigorous tests should be done for mesh-refinement study.
 """
 
 # We need to use functional programming so we can call the function we want
 import jax.numpy as jnp
 import pytest
-import yaml
-from box import Box
 from jax import random
-from matplotlib import pyplot as plt
 
 from ml4dynamics import utils
+from ml4dynamics.dynamics import KS
 
 # @pytest.mark.parametrize(
 #     ("hw", "param_count"),
@@ -170,42 +167,78 @@ def test_navier_stokes_equation_solver():
 
 # @pytest.mark.skip
 def test_kuramoto_sivashinsky_equation_solver():
+  r"""
+  periodic BC:
+  u(x, t) = \sin(x)
+  s(x, t) = -0.5 \sin(2x) - 0.8 \cos(x)
 
-  from ml4dynamics.dynamics import KS
+  Dirichlet-Neumann BC:
+  u(x, t) = 2\sin(x) - \sin(2x)
+  s(x, t) = 10\sin(2x) - 1.6\cos(x) - \sin(4x) + 1.6\cos(2x) + 3\sin(3x) - \sin(x)
+  """
 
-  with open("config/simulation.yaml", "r") as file:
-    config_dict = yaml.safe_load(file)
-  config = Box(config_dict)
-  nu = config.ks.nu
-  c = config.ks.c
-  L = config.ks.L
-  T = config.ks.T
-  init_scale = config.ks.init_scale
+  # periodic BC
+  nu = 1
+  c = 1.0
+  L = 2 * jnp.pi
+  T = 1
+  init_scale = 1.0
   # solver parameters
-  N1 = config.ks.nx
-  dt = config.ks.dt
-  key = random.PRNGKey(config.sim.seed)
+  N = 1024
+  dt = 0.005
+  step_num = int(T / dt) 
+  key = random.PRNGKey(0)
 
   # fine simulation
-  ks_fine = KS(
-    N=N1,
+  ks = KS(
+    N=N,
     T=T,
     dt=dt,
-    # dx=L / (N1 + 1),
-    dx = L / N1,
-    tol=1e-8,
     init_scale=init_scale,
-    tv_scale=1e-8,
     L=L,
     nu=nu,
     c=c,
-    key=key,
+    rng=key,
   )
 
-  ks_fine.source = 0.8 * jnp.sin(jnp.linspace(0, L - L/N1, N1)) -\
-    0.5 * jnp.sin(2 * jnp.linspace(0, L - L/N1, N1))
-  start = jnp.sin(jnp.linspace(0, L - L/N1, N1))
-  result = ks_fine.CN_FEM_test(start)
+  ks.source = -c * jnp.cos(jnp.linspace(0, L - L/N, N)) -\
+    0.5 * jnp.sin(2 * jnp.linspace(0, L - L/N, N))
+  x = jnp.sin(jnp.linspace(0, L - L/N, N))
+  start = jnp.sin(jnp.linspace(0, L - L/N, N))
+  for _ in range(step_num):
+    x = ks.CN_FEM_test(x)
 
-  assert jnp.linalg.norm(result - start) < 1e-10
-  breakpoint()
+  assert jnp.linalg.norm(x - start) < 2e-4
+
+  # Dirichlet-Neumann BC
+  N = 1024
+  dt = 0.005
+  step_num = int(T / dt) 
+
+  # fine simulation
+  ks = KS(
+    N=N-1,
+    T=T,
+    dt=dt,
+    init_scale=init_scale,
+    L=L,
+    nu=nu,
+    c=c,
+    BC="Dirichlet-Neumann",
+    rng=key,
+  )
+
+  ks.source = -2 * c * jnp.cos(jnp.linspace(L/N, L - L/N, N-1)) +\
+    10 * jnp.sin(2 * jnp.linspace(L/N, L - L/N, N-1)) +\
+    2 * c * jnp.cos(2 * jnp.linspace(L/N, L - L/N, N-1)) -\
+    jnp.sin(4 * jnp.linspace(L/N, L - L/N, N-1)) +\
+    3 * jnp.sin(3 * jnp.linspace(L/N, L - L/N, N-1)) -\
+    jnp.sin(jnp.linspace(L/N, L - L/N, N-1))
+  x = 2 * jnp.sin(jnp.linspace(L/N, L - L/N, N-1)) -\
+    jnp.sin(2 * jnp.linspace(L/N, L - L/N, N-1))
+  start = 2 * jnp.sin(jnp.linspace(L/N, L - L/N, N-1)) -\
+    jnp.sin(2 * jnp.linspace(L/N, L - L/N, N-1))
+  for _ in range(step_num):
+    x = ks.CN_FEM_test(x)
+
+  assert jnp.linalg.norm(x - start) < 7e-4

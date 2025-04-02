@@ -514,7 +514,7 @@ class KS(dynamics):
   The 1d version of the Kuramoto–Sivashinsky equation is:
 
   $$
-    u_t + (c + u)u_c + uu_x + u_{xx} + \nu u_{xxxx} = 0.
+    u_t + (c + u)u_x + u_{xx} + \nu u_{xxxx} = 0.
   $$
 
   """
