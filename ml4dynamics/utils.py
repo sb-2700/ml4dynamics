@@ -16,6 +16,7 @@ from matplotlib import cm
 from matplotlib import pyplot as plt
 from jax import random as random
 from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, TensorDataset
 
 from ml4dynamics import dynamics
 from ml4dynamics.types import PRNGKey
@@ -50,10 +51,14 @@ torch.set_default_dtype(torch.float64)
 #   return nx, ny, label_dim, traj_num, step_num, input, output
 
 
-def load_data(config_dict: ml_collections.ConfigDict):
-
+def load_data(
+  config_dict: ml_collections.ConfigDict,
+  batch_size: int,
+  num_workers: int=16,
+  mode: str="jax"
+):
+ 
   config = Box(config_dict)
-  # model parameters
   pde_type = config.name
   alpha = config.react_diff.alpha
   beta = config.react_diff.beta
@@ -64,18 +69,33 @@ def load_data(config_dict: ml_collections.ConfigDict):
   )
   if pde_type == "react_diff":
     h5_filename = f"data/react_diff/{dataset}.h5"
-
+ 
   with h5py.File(h5_filename, "r") as h5f:
-    inputs = np.array(h5f["data"]["inputs"][()]).transpose(0, 2, 3, 1)
-    outputs = np.array(h5f["data"]["outputs"][()]).transpose(0, 2, 3, 1)
+    inputs = torch.tensor(h5f["data"]["inputs"][()], dtype=torch.float64)
+    outputs = torch.tensor(h5f["data"]["outputs"][()], dtype=torch.float64)
+    if mode == "jax":
+      # shape = (*, nx, nx, 2)
+      inputs = inputs.permute(0, 2, 3, 1)
+      outputs = outputs.permute(0, 2, 3, 1)
+    if mode == "torch":
+      GPU = 0
+      device = torch.device(
+        "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
+      )
+      inputs = inputs.to(device)
+      outputs = outputs.to(device)
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=config.sim.seed
   )
-  datasize = train_x.shape[0]
-  shuffled_indices = np.random.permutation(datasize)
-  train_x = train_x[shuffled_indices]
-  train_y = train_y[shuffled_indices]
-  return inputs, outputs, train_x, test_x, train_y, test_y
+  train_dataset = TensorDataset(train_x, train_y)
+  train_dataloader = DataLoader(
+    train_dataset, batch_size=batch_size, shuffle=True # , num_workers=num_workers
+  )
+  test_dataset = TensorDataset(test_x, test_y)
+  test_dataloader = DataLoader(
+    test_dataset, batch_size=batch_size, shuffle=True # , num_workers=num_workers
+  )
+  return inputs, outputs, train_dataloader, test_dataloader
 
 
 def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):

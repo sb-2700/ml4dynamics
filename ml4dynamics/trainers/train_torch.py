@@ -1,19 +1,17 @@
 import os
 import time
 
-import h5py
 import ml_collections
 import numpy as np
 import torch
 import torch.nn as nn
 import yaml
 from box import Box
-from sklearn.model_selection import train_test_split
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-from ml4dynamics.models.models import Autoencoder, UNet
+from ml4dynamics import utils
+from ml4dynamics.models.models_torch import Autoencoder, UNet
 
 np.set_printoptions(precision=15)
 torch.set_default_dtype(torch.float64)
@@ -29,36 +27,16 @@ def train(config_dict: ml_collections.ConfigDict):
   T = config.react_diff.T
   dt = config.react_diff.dt
   step_num = int(T / dt)
-  nx = config.react_diff.nx
   case_num = config.sim.case_num
-  batch_size = config.train.batch_size_ae
-  # rng = np.random.PRNGKey(config.sim.seed)
-  dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
-    alpha, beta, gamma, case_num
-  )
-  if pde_type == "react_diff":
-    h5_filename = f"data/react_diff/{dataset}.h5"
   GPU = 0
   device = torch.device(
     "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
   )
-
-  with h5py.File(h5_filename, "r") as h5f:
-    inputs = torch.tensor(h5f["data"]["inputs"][()],
-                          dtype=torch.float64).to(device)
-    outputs = torch.tensor(h5f["data"]["inputs"][()],
-                           dtype=torch.float64).to(device)
-  print(f"Training {pde_type} model with data: {dataset} ...")
-  train_x, test_x, train_y, test_y = train_test_split(
-    inputs, outputs, test_size=0.2, random_state=config.sim.seed
+  dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
+    alpha, beta, gamma, case_num
   )
-  train_dataset = TensorDataset(train_x, train_y)
-  train_dataloader = DataLoader(
-    train_dataset, batch_size=batch_size, shuffle=True
-  )
-  test_dataset = TensorDataset(test_x, test_y)
-  test_dataloader = DataLoader(
-    test_dataset, batch_size=batch_size, shuffle=True
+  _, _, train_dataloader, _ = utils.load_data(
+    config_dict, config.train.batch_size_unet, mode="torch"
   )
 
   # setting training hyperparameters
@@ -69,7 +47,6 @@ def train(config_dict: ml_collections.ConfigDict):
   mols_epochs = 200
   aols_epochs = 200
   tr_epochs = 200
-  batch_size = step_num
   learning_rate = 1e-4
   factor = 0.8  # learning rate decay factor
   noise_scale = 1e-3  # parameter for adverserial ols
