@@ -13,7 +13,7 @@ np.set_printoptions(precision=15)
 jax.config.update("jax_enable_x64", True)
 
 
-def generate_RD_data(config_dict: ml_collections.ConfigDict):
+def generate_react_diff_data(config_dict: ml_collections.ConfigDict):
   """
   Generate reaction-diffusion simulation trajectories.
   Simulating the reaction-diffusion equation over a fine and corase grid with
@@ -210,4 +210,4 @@ if __name__ == "__main__":
 
   with open("config/simulation.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
-  generate_RD_data(config_dict)
+  generate_react_diff_data(config_dict)
