@@ -155,6 +155,7 @@ def train(config_dict: ml_collections.ConfigDict):
     verbose=False
   )
 
+  ae_epochs = 1
   T1 = time.perf_counter()
   iters = tqdm(range(ae_epochs))
   for step in iters:
@@ -190,6 +191,8 @@ def train(config_dict: ml_collections.ConfigDict):
   del optimizer_ae, scheduler_ae, loss_ae
 
   # Train the ols model
+  total_params = sum(p.numel() for p in model_ols.parameters())
+  print("total parameters:", total_params)
   iters = tqdm(range(ols_epochs))
   for _ in iters:
     for batch_inputs, batch_outputs in train_dataloader:

@@ -6,7 +6,6 @@ import jax
 import jax.numpy as jnp
 import jax.random as random
 import ml_collections
-import optax
 import yaml
 from box import Box
 from flax import traverse_util
@@ -14,13 +13,12 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 from ml4dynamics import utils
-from ml4dynamics.models.models_jax import CustomTrainState, UNet
 from ml4dynamics.types import PRNGKey
 
 jax.config.update("jax_enable_x64", True)
 
 
-def main(config: ml_collections.ConfigDict):
+def main(config_dict: ml_collections.ConfigDict):
 
   def train(
     model_type: str,
@@ -70,34 +68,12 @@ def main(config: ml_collections.ConfigDict):
 
       return loss, train_state
 
-    unet = UNet(2)
-    rng1, rng2 = random.split(rng)
-    init_rngs = {'params': rng1, 'dropout': rng2}
-    unet_variables = unet.init(init_rngs, jnp.ones([1, nx, nx, 2]))
-    step_per_epoch = 4000 * config.sim.case_num // config.train.batch_size_unet
-    schedule = optax.piecewise_constant_schedule(
-      init_value=config.train.lr,
-      boundaries_and_scales={
-        int(b): 0.5
-        for b in jnp.arange(
-          100 * step_per_epoch,
-          config.train.epochs * step_per_epoch,
-          100 * step_per_epoch)
-      }
-    )
-    optimizer = optax.adam(schedule)
-    train_state = CustomTrainState.create(
-      apply_fn=unet.apply,
-      params=unet_variables["params"],
-      tx=optimizer,
-      batch_stats=unet_variables["batch_stats"]
-    )
-    loss_hist = []
-
-    flat_params = traverse_util.flatten_dict(unet_variables["params"])
+    train_state, schedule = utils.prepare_unet_train_state(config_dict)
+    flat_params = traverse_util.flatten_dict(train_state.params)
     total_params = sum(jax.tree_util.tree_map(lambda x: x.size, flat_params).values())
     print(f"total parameters for {model_type}:", total_params)
     iters = tqdm(range(epochs))
+    loss_hist = []
     for epoch in iters:
       total_loss = 0
       for batch_inputs, batch_outputs in train_dataloader:
@@ -137,18 +113,13 @@ def main(config: ml_collections.ConfigDict):
 
   config = Box(config_dict)
   pde_type = config.name
-  nx = config.react_diff.nx
-  r = config.react_diff.r
-  dt = config.react_diff.dt
   epochs = config.train.epochs
-
   print("start loading data...")
   start = time()
   inputs, outputs, train_dataloader, test_dataloader = utils.load_data(
     config_dict, config.train.batch_size_unet, mode="jax"
   )
   print(f"finis loading data with {time() - start:.2f}s...")
-  _, rd_coarse = utils.create_fine_coarse_simulator(config)
   rng = jax.random.PRNGKey(config.sim.seed)
   # models_array = ["ae", "ols", "mols", "aols", "tr"]
   models_array = ["ols"]

@@ -10,8 +10,9 @@ import jax.scipy.sparse.linalg as jsla
 import ml_collections
 import numpy as np
 import numpy.linalg as nalg
-from time import time
+import optax
 import torch
+from time import time
 from box import Box
 from jax import random as random
 from matplotlib import cm
@@ -20,37 +21,12 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 
 from ml4dynamics import dynamics
-from ml4dynamics.models.models_jax import CustomTrainState
+from ml4dynamics.models.models_jax import CustomTrainState, UNet
 from ml4dynamics.trainers import train_utils
 from ml4dynamics.types import PRNGKey
 
 jax.config.update("jax_enable_x64", True)
 torch.set_default_dtype(torch.float64)
-
-# def read_and_preprocess(
-#   filename: str = None,
-#   device=None,
-# ):
-
-#   with h5py.File(filename, "r") as file:
-#     config_yaml = file["config"].attrs["config"]
-#     config = yaml.safe_load(config_yaml)
-
-#     input_fine = file["data"]["input_fine"][:]
-#     output_fine = file["data"]["output_fine"][:]
-#     # input_coarse = file["data"]["input_coarse"][:]
-#     # output_coarse = file["data"]["output_coarse"][:]
-#     metadata_h5py = file["metadata"]
-#     metadata = {}
-#     for key in metadata_h5py.keys():
-#       metadata[key] = metadata_h5py[key][()]
-
-#   nx = metadata["nx"]
-#   ny = metadata["ny"]
-#   traj_num, step_num, label_dim = output_fine.shape[:3]
-#   input = torch.from_numpy(input_fine).to(torch.float64).to(device)
-#   output = torch.from_numpy(output_fine).to(torch.float64).to(device)
-#   return nx, ny, label_dim, traj_num, step_num, input, output
 
 
 def load_data(
@@ -146,6 +122,37 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
   return rd_fine, rd_coarse
 
 
+def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
+
+  config = Box(config_dict)
+  nx = config.react_diff.nx
+  rng = random.PRNGKey(config.sim.seed)
+  unet = UNet(2)
+  rng1, rng2 = random.split(rng)
+  init_rngs = {'params': rng1, 'dropout': rng2}
+  unet_variables = unet.init(init_rngs, jnp.ones([1, nx, nx, 2]))
+  step_per_epoch = 4000 * config.sim.case_num // config.train.batch_size_unet
+  # TODO: need to specify the scheduler here for different training
+  schedule = optax.piecewise_constant_schedule(
+    init_value=config.train.lr,
+    boundaries_and_scales={
+      int(b): 0.1
+      for b in jnp.arange(
+        20 * step_per_epoch,
+        config.train.epochs * step_per_epoch,
+        20 * step_per_epoch)
+    }
+  )
+  optimizer = optax.adam(schedule)
+  train_state = CustomTrainState.create(
+    apply_fn=unet.apply,
+    params=unet_variables["params"],
+    tx=optimizer,
+    batch_stats=unet_variables["batch_stats"]
+  )
+  return train_state, schedule
+
+
 def eval_a_priori(
   train_state: CustomTrainState,
   train_dataloader: DataLoader,
@@ -198,21 +205,36 @@ def eval_a_priori(
       jnp.array(inputs[index_array[j]:index_array[j]+1]),
       is_training=False
     )
-    im = axs[0, j].imshow(outputs[index_array[j], ..., 0], cmap=cm.jet)
+    # use cm.twilight to emphasize the middle range
+    # use cm.coolwarm to emphasize the extreme range
+    im = axs[0, j].imshow(outputs[index_array[j], ..., 0], cmap=cm.twilight)
     _ = fig.colorbar(im, ax=axs[0, j], orientation='horizontal')
     axs[0, j].axis("off")
-    im = axs[1, j].imshow(predict[0, ..., 0], cmap=cm.jet)
+    im = axs[1, j].imshow(predict[0, ..., 0], cmap=cm.twilight)
     _ = fig.colorbar(im, ax=axs[1, j], orientation='horizontal')
     axs[1, j].axis("off")
     im = axs[2, j].imshow(
       outputs[index_array[j], ..., 0] - predict[0, ..., 0],
-      cmap=cm.jet
+      cmap=cm.twilight
     )
     _ = fig.colorbar(im, ax=axs[2, j], orientation='horizontal')
     axs[2, j].axis("off")
 
   plt.savefig(f"results/fig/apriori.pdf")
   plt.clf()
+
+  # visualize the dataset
+  n_plot = 6
+  fig, axs = plt.subplots(2, n_plot, figsize=(12, 5))
+  index_array = [0, 800, 1600, 2400, 3200, 4000]
+  for j in range(n_plot):
+    im = axs[0, j].imshow(inputs[index_array[j], ..., 0])
+    _ = fig.colorbar(im, ax=axs[0, j], orientation='horizontal')
+    axs[0, j].axis("off")
+    im = axs[1, j].imshow(outputs[index_array[j], ..., 0])
+    _ = fig.colorbar(im, ax=axs[1, j], orientation='horizontal')
+    axs[1, j].axis("off")
+  plt.savefig("results/fig/dataset.pdf")
 
 
 def eval_a_posteriori(
@@ -257,15 +279,15 @@ def eval_a_posteriori(
   fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
   index_array = [0, 800, 1600, 2400, 3200, 4000]
   for j in range(n_plot):
-    im = axs[0, j].imshow(inputs[index_array[j], ..., 0], cmap=cm.jet)
+    im = axs[0, j].imshow(inputs[index_array[j], ..., 0], cmap=cm.twilight)
     _ = fig.colorbar(im, ax=axs[0, j], orientation='horizontal')
     axs[0, j].axis("off")
-    im = axs[1, j].imshow(x_hist[index_array[j], 0], cmap=cm.jet)
+    im = axs[1, j].imshow(x_hist[index_array[j], 0], cmap=cm.twilight)
     _ = fig.colorbar(im, ax=axs[1, j], orientation='horizontal')
     axs[1, j].axis("off")
     im = axs[2, j].imshow(
       inputs[index_array[j], ..., 0] - x_hist[index_array[j], 0],
-      cmap=cm.jet
+      cmap=cm.twilight
     )
     _ = fig.colorbar(im, ax=axs[2, j], orientation='horizontal')
     axs[2, j].axis("off")
@@ -558,11 +580,14 @@ def assembly_NSmatrix(nx, ny, dt, dx, dy):
   LNy[0, 0] = -1
   LNy[-1, -1] = -1
   LNy[-1, -2] = 1
-  LNx = spa.csc_matrix(LNx / (dx**2))
-  LNy = spa.csc_matrix(LNy / (dy**2))
+  # LNx = spa.csc_matrix(LNx / (dx**2))
+  # LNy = spa.csc_matrix(LNy / (dy**2))
+  LNx = LNx / (dx**2)
+  LNy = LNy / (dy**2)
   # BE CAREFUL, SINCE THE LAPLACIAN MATRIX IN X Y DIRECTION IS NOT THE SAME
   #L2N = spa.kron(LNy, spa.eye(nx)) + spa.kron(spa.eye(ny), LNx)
-  L2N = spa.kron(LNx, spa.eye(ny)) + spa.kron(spa.eye(nx), LNy)
+  # L2N = spa.kron(LNx, spa.eye(ny)) + spa.kron(spa.eye(nx), LNy)
+  L2N = np.kron(LNx, np.eye(ny)) + np.kron(np.eye(nx), LNy)
   L = copy.deepcopy(L2N)
   #for i in range(ny):
   #    L[(i+1)*nx - 1, (i+1)*nx - 1] = L[(i+1)*nx - 1, (i+1)*nx - 1] - 2
@@ -573,8 +598,8 @@ def assembly_NSmatrix(nx, ny, dt, dx, dy):
 
 
 def projection_correction(
-  u,
-  v,
+  u: jnp.ndarray,
+  v: jnp.ndarray,
   t,
   dx=1 / 32,
   dy=1 / 32,
@@ -620,9 +645,10 @@ def projection_correction(
   #  divergence of new velocity field
   divu = (u[1:-1, 1:-1] - u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
   # GMRES with initial guess pressure in last time step
-  p = jsla.gmres(A=L, b=divu.reshape(nx * ny), x0=p).reshape([nx, ny])
+  # p = jsla.gmres(A=L, b=divu.reshape(nx * ny), x0=p).reshape([nx, ny])
   # BiSTABCG with initial guess pressure in last time step
-  p = jsla.bicgstab(A=L, b=divu.reshape(nx * ny), x0=p).reshape([nx, ny])
+  # p = jsla.bicgstab(A=L, b=divu.reshape(nx * ny), x0=p).reshape([nx, ny])
+  p = jax.scipy.linalg.solve(L, divu.reshape(nx * ny)).reshape([nx, ny])
 
   u[1:-2, 1:-1] = u[1:-2, 1:-1] - (p[1:, :] - p[:-1, :]) / dx
   v[1:-1, 1:-1] = v[1:-1, 1:-1] - (p[:, 1:] - p[:, :-1]) / dy
