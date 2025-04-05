@@ -73,9 +73,14 @@ def main(config_dict: ml_collections.ConfigDict):
   # results, these operator should have test file
   res_op = jnp.zeros((N2, N1))
   int_op = jnp.zeros((N1, N2))
+  # NOTE: this restriction operator is useless for filter, as at returns
+  # vanishing SGS stress
   res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 1].set(1)
   int_op = int_op.at[jnp.arange(N2) * r + 1, jnp.arange(N2)].set(1)
-
+  for i in range(N2):
+    res_op = res_op.at[i, i * r:i * r + 6].set(1)
+  res_op /= 7
+  int_op = jnp.linalg.pinv(res_op)
   assert jnp.allclose(res_op @ int_op, jnp.eye(N2))
 
   # prepare the training data
@@ -241,7 +246,6 @@ def main(config_dict: ml_collections.ConfigDict):
   # hist, xedges, yedges = np.histogram2d(
   #   inputs.reshape(-1), outputs.reshape(-1), bins=bins
   # )
-  # breakpoint()
   # for _ in range(50):
   #   index = jnp.argmax(hist)
   #   hist[index // bins, index % bins] = 0
@@ -477,7 +481,6 @@ def main(config_dict: ml_collections.ConfigDict):
   plt.yscale("log")
   plt.savefig(f"results/fig/ks_c{c}T{T}n{case_num}_{train_mode}_loss.pdf")
   plt.clf()
-  breakpoint()
 
   valid_loss = 0
   for i in range(0, len(test_ds["input"]), batch_size):
