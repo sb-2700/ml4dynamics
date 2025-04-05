@@ -1132,7 +1132,7 @@ class NS_channel(dynamics):
     for i in range(ny):
       self.L[-1 - i, -1 - i] = self.L[-1 - i, -1 - i] - 2 / (dx**2)
 
-  def projection_correction(self, uv, y0=0.325):
+  def projection_correction(self, uv, p=None, y0=0.325):
     """projection method to solve the incompressible NS equation
       The convection discretization is given by central difference
       u_ij (u_i+1,j - u_i-1,j)/2dx + \Sigma v_ij (u_i,j+1 - u_i,j-1)/2dx"""
@@ -1177,11 +1177,8 @@ class NS_channel(dynamics):
     #  divergence of new velocity field
     divu = (u[1:-1, 1:-1] -
             u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
-    # GMRES with initial guess pressure in last time step
-    p = spa.linalg.spsolve(self.L, divu.reshape(nx * ny)).reshape([nx, ny])
-    # p = jsla.gmres(A=L, b=divu.reshape(nx * ny), x0=p).reshape([nx, ny])
-    # BiSTABCG with initial guess pressure in last time step
-    # p = jsla.bicgstab(A=L, b=divu.reshape(nx * ny), x0=p).reshape([nx, ny])
+    if not p:
+      p = jax.scipy.linalg.solve(L, divu.reshape(nx * ny)).reshape([nx, ny])
 
     u[1:-2, 1:-1] = u[1:-2, 1:-1] - (p[1:, :] - p[:-1, :]) / dx
     v[1:-1, 1:-1] = v[1:-1, 1:-1] - (p[:, 1:] - p[:, :-1]) / dy

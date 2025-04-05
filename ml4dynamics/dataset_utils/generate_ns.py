@@ -74,9 +74,14 @@ def generate_ns_data(config_dict: ml_collections.ConfigDict):
       j = j + 1
 
   if j == case_num:
-    U = np.zeros([case_num, step_num // writeInterval, 2, nx + 2, ny + 2])
-    U[:, :, 0] = u_hist_
-    U[:, :, 1, :, 1:] = v_hist_
+    # old data size, save all the data on the grid points
+    # U = np.zeros([case_num, step_num // writeInterval, 2, nx + 2, ny + 2])
+    # U[:, :, 0] = u_hist_
+    # U[:, :, 1, :, 1:] = v_hist_
+    U = np.zeros([case_num, step_num // writeInterval, 2, nx, ny])
+    U[:, :, 0] = u_hist_[:, :, 1:-1, 1:-1]
+    U[:, :, 1] = v_hist_[:, :, 1:-1, 1:]
+    breakpoint()
     data = {
       "metadata": {
         "type": "ns",
@@ -91,11 +96,11 @@ def generate_ns_data(config_dict: ml_collections.ConfigDict):
       },
       "data": {
         "input_fine":
-        U,  # shape [case_num, step_num // writeInterval, 2, nx+2, ny+2]
+        U.reshape(-1, 2, nx, ny),  # shape [case_num * step_num // writeInterval, 2, nx+2, ny+2]
         "output_fine":
-        p_hist_[:, :, None],  # shape [case_num, step_num // writeInterval, 1, nx, ny]
+        p_hist_.reshape(-1, 1, nx, ny),  # shape [case_num * step_num // writeInterval, 1, nx, ny]
         # "input_coarse":
-        # u_coarse,  # shape [case_num, step_num // writeInterval, 2, nx//2, ny//2]
+        # u_coarse,  # shape [case_num * step_num // writeInterval, 2, nx//2, ny//2]
         # "output_coarse":
         # label_coarse,  # shape [case_num, step_num // writeInterval, 2, nx//2, ny//2]
       },
@@ -115,8 +120,8 @@ def generate_ns_data(config_dict: ml_collections.ConfigDict):
         metadata_group.create_dataset(key, data=value)
 
       data_group = f.create_group("data")
-      data_group.create_dataset("input_fine", data=data["data"]["input_fine"])
-      data_group.create_dataset("output_fine", data=data["data"]["output_fine"])
+      data_group.create_dataset("inputs", data=data["data"]["input_fine"])
+      data_group.create_dataset("outputs", data=data["data"]["output_fine"])
       # data_group.create_dataset(
       #   "input_coarse", data=data["data"]["input_coarse"]
       # )

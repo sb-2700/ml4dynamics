@@ -163,6 +163,7 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
   features: int = 2
+  output_features: int = 2
   training: bool = True
 
   @nn.compact
@@ -233,21 +234,22 @@ class Decoder(nn.Module):
     z9 = nn.BatchNorm(use_running_average=not self.training)(z9)
     z9 = nn.relu(z9)
 
-    y = nn.Conv(2, kernel_size=(1, 1))(z9)
+    y = nn.Conv(self.output_features, kernel_size=(1, 1))(z9)
     # y = nn.sigmoid(y)
 
     return y
 
 
 class UNet(nn.Module):
-  features: int = 2
+  input_features: int = 2
+  output_features: int = 2
   training: bool = True
 
   @nn.compact
   def __call__(self, x):
-    z1, z2, z3, z4_dropout, z5_dropout = Encoder(self.features,
+    z1, z2, z3, z4_dropout, z5_dropout = Encoder(self.input_features,
                                                  self.training)(x)
-    y = Decoder(self.features,
+    y = Decoder(self.input_features, self.output_features,
                 self.training)(z1, z2, z3, z4_dropout, z5_dropout)
 
     return y

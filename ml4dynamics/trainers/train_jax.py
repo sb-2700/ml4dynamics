@@ -112,7 +112,7 @@ def main(config_dict: ml_collections.ConfigDict):
     )
 
   config = Box(config_dict)
-  pde_type = config.name
+  pde_type = config.case
   epochs = config.train.epochs
   print("start loading data...")
   start = time()
