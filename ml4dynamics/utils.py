@@ -37,16 +37,19 @@ def load_data(
 ):
 
   config = Box(config_dict)
-  pde_type = config.name
-  alpha = config.react_diff.alpha
-  beta = config.react_diff.beta
-  gamma = config.react_diff.gamma
+  pde_type = config.case
   case_num = config.sim.case_num
-  dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
-    alpha, beta, gamma, case_num
-  )
   if pde_type == "react_diff":
-    h5_filename = f"data/react_diff/{dataset}.h5"
+    alpha = config.react_diff.alpha
+    beta = config.react_diff.beta
+    gamma = config.react_diff.gamma
+    dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
+      alpha, beta, gamma, case_num
+    )
+  elif pde_type == "ns":
+    Re = config.ns.Re
+    dataset = f"Re{Re}_n{case_num}"
+  h5_filename = f"data/{pde_type}/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
     inputs = h5f["data"]["inputs"][()]
@@ -122,25 +125,43 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
   return rd_fine, rd_coarse
 
 
+def create_ns_simulator(config_dict: ml_collections.ConfigDict):
+
+  config = Box(config_dict)
+  # model parameters
+  ns_model = dynamics.NS_channel(
+    Lx=config.ns.Lx,
+    nx=config.ns.nx,
+    ny=config.ns.ny,
+    T=config.ns.T,
+    dt=config.ns.dt,
+    Re=config.ns.Re,
+  )
+  return ns_model
+
+
 def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
   nx = config.react_diff.nx
   rng = random.PRNGKey(config.sim.seed)
-  unet = UNet(2)
+  if config.case == "react_diff":
+    unet = UNet(input_features=2, output_features=2)
+  elif config.case == "ns":
+    unet = UNet(input_features=2, output_features=1)
   rng1, rng2 = random.split(rng)
   init_rngs = {'params': rng1, 'dropout': rng2}
   unet_variables = unet.init(init_rngs, jnp.ones([1, nx, nx, 2]))
-  step_per_epoch = 4000 * config.sim.case_num // config.train.batch_size_unet
+  step_per_epoch = 1000 * config.sim.case_num // config.train.batch_size_unet
   # TODO: need to specify the scheduler here for different training
   schedule = optax.piecewise_constant_schedule(
     init_value=config.train.lr,
     boundaries_and_scales={
       int(b): 0.1
       for b in jnp.arange(
-        20 * step_per_epoch,
+        500 * step_per_epoch,
         config.train.epochs * step_per_epoch,
-        20 * step_per_epoch)
+        500 * step_per_epoch)
     }
   )
   optimizer = optax.adam(schedule)
@@ -193,9 +214,13 @@ def eval_a_priori(
   print(f"test loss: {total_loss/count:.4e}")
 
   # visualization
-  n_plot = 6
+  n_plot = 4
   fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
-  index_array = [0, 800, 1600, 2400, 3200, 4000]
+  fraction = 0.05
+  pad = 0.001
+  index_array = np.arange(
+    0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
+  )
   for j in range(n_plot):
     predict, _ = train_state.apply_fn_with_bn(
       {
@@ -207,33 +232,46 @@ def eval_a_priori(
     )
     # use cm.twilight to emphasize the middle range
     # use cm.coolwarm to emphasize the extreme range
-    im = axs[0, j].imshow(outputs[index_array[j], ..., 0], cmap=cm.twilight)
-    _ = fig.colorbar(im, ax=axs[0, j], orientation='horizontal')
+    im = axs[0, j].imshow(outputs[index_array[j], ..., 0].T, cmap=cm.twilight)
+    _ = fig.colorbar(
+      im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
+    )
     axs[0, j].axis("off")
-    im = axs[1, j].imshow(predict[0, ..., 0], cmap=cm.twilight)
-    _ = fig.colorbar(im, ax=axs[1, j], orientation='horizontal')
+    im = axs[1, j].imshow(predict[0, ..., 0].T, cmap=cm.twilight)
+    _ = fig.colorbar(
+      im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
+    )
     axs[1, j].axis("off")
     im = axs[2, j].imshow(
-      outputs[index_array[j], ..., 0] - predict[0, ..., 0],
+      outputs[index_array[j], ..., 0].T - predict[0, ..., 0].T,
       cmap=cm.twilight
     )
-    _ = fig.colorbar(im, ax=axs[2, j], orientation='horizontal')
+    _ = fig.colorbar(
+      im, ax=axs[2, j], orientation='horizontal', fraction=fraction, pad=pad
+    )
     axs[2, j].axis("off")
 
+  fig.tight_layout(pad=0.0)
   plt.savefig(f"results/fig/apriori.pdf")
   plt.clf()
 
   # visualize the dataset
-  n_plot = 6
   fig, axs = plt.subplots(2, n_plot, figsize=(12, 5))
-  index_array = [0, 800, 1600, 2400, 3200, 4000]
+  index_array = np.arange(
+    0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
+  )
   for j in range(n_plot):
-    im = axs[0, j].imshow(inputs[index_array[j], ..., 0])
-    _ = fig.colorbar(im, ax=axs[0, j], orientation='horizontal')
+    im = axs[0, j].imshow(inputs[index_array[j], ..., 0].T)
+    _ = fig.colorbar(
+      im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
+    )
     axs[0, j].axis("off")
-    im = axs[1, j].imshow(outputs[index_array[j], ..., 0])
-    _ = fig.colorbar(im, ax=axs[1, j], orientation='horizontal')
+    im = axs[1, j].imshow(outputs[index_array[j], ..., 0].T)
+    _ = fig.colorbar(
+      im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
+    )
     axs[1, j].axis("off")
+  fig.tight_layout(pad=0.0)
   plt.savefig("results/fig/dataset.pdf")
 
 
@@ -246,15 +284,21 @@ def eval_a_posteriori(
 ):
   
   config = Box(config_dict)
-  nx = config.react_diff.nx
-  r = config.react_diff.r
-  dt = config.react_diff.dt
-  _, rd_coarse = create_fine_coarse_simulator(config)
   beta = 0
-  run_simulation = partial(
+  if config.case == "react_diff":
+    r = config.react_diff.r
+    _, rd_coarse = create_fine_coarse_simulator(config)
+    run_simulation = partial(
     train_utils.run_simulation_coarse_grid_correction, train_state, rd_coarse,
-    outputs, nx, r, dt, beta
+    outputs, r, beta
   )
+  elif config.case == "ns":
+    ns_model = create_ns_simulator(config)
+    run_simulation = partial(
+      train_utils.run_ns_simulation_pressue_correction, train_state, ns_model,
+      outputs, beta
+    )
+
   start = time()
   x_hist = run_simulation(inputs[0].transpose(2, 0, 1))
   step_num = rd_coarse.step_num
@@ -277,21 +321,31 @@ def eval_a_posteriori(
   # visualization
   n_plot = 6
   fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
-  index_array = [0, 800, 1600, 2400, 3200, 4000]
+  fraction = 0.05
+  pad = 0.001
+  index_array = np.arange(
+    0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
+  )
   for j in range(n_plot):
     im = axs[0, j].imshow(inputs[index_array[j], ..., 0], cmap=cm.twilight)
-    _ = fig.colorbar(im, ax=axs[0, j], orientation='horizontal')
+    _ = fig.colorbar(
+      im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
+    )
     axs[0, j].axis("off")
     im = axs[1, j].imshow(x_hist[index_array[j], 0], cmap=cm.twilight)
-    _ = fig.colorbar(im, ax=axs[1, j], orientation='horizontal')
+    _ = fig.colorbar(
+      im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
+    )
     axs[1, j].axis("off")
     im = axs[2, j].imshow(
       inputs[index_array[j], ..., 0] - x_hist[index_array[j], 0],
       cmap=cm.twilight
     )
-    _ = fig.colorbar(im, ax=axs[2, j], orientation='horizontal')
+    _ = fig.colorbar(
+      im, ax=axs[2, j], orientation='horizontal', fraction=fraction, pad=pad
+    )
     axs[2, j].axis("off")
-
+  fig.tight_layout(pad=0.0)
   plt.savefig(f"results/fig/{fig_name}.pdf")
   plt.clf()
 

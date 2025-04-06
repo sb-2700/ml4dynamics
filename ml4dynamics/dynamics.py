@@ -1177,7 +1177,7 @@ class NS_channel(dynamics):
     #  divergence of new velocity field
     divu = (u[1:-1, 1:-1] -
             u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
-    if not p:
+    if not p.all():
       p = jax.scipy.linalg.solve(L, divu.reshape(nx * ny)).reshape([nx, ny])
 
     u[1:-2, 1:-1] = u[1:-2, 1:-1] - (p[1:, :] - p[:-1, :]) / dx

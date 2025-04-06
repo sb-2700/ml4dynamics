@@ -74,6 +74,8 @@ def generate_ns_data(config_dict: ml_collections.ConfigDict):
       j = j + 1
 
   if j == case_num:
+    # TODO: need to modified this part to store the whole simulation data on
+    # the grid
     # old data size, save all the data on the grid points
     # U = np.zeros([case_num, step_num // writeInterval, 2, nx + 2, ny + 2])
     # U[:, :, 0] = u_hist_
@@ -81,7 +83,6 @@ def generate_ns_data(config_dict: ml_collections.ConfigDict):
     U = np.zeros([case_num, step_num // writeInterval, 2, nx, ny])
     U[:, :, 0] = u_hist_[:, :, 1:-1, 1:-1]
     U[:, :, 1] = v_hist_[:, :, 1:-1, 1:]
-    breakpoint()
     data = {
       "metadata": {
         "type": "ns",

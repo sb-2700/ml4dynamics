@@ -574,7 +574,6 @@ def main(config_dict: ml_collections.ConfigDict):
     dpi=500
   )
   plt.clf()
-  breakpoint()
 
   utils.a_posteriori_analysis(
     config,

@@ -6,7 +6,7 @@ from dlpack import asdlpack
 
 
 def run_simulation_coarse_grid_correction(
-  train_state, rd_coarse, label: jnp.ndarray, nx: int, r: int, dt: float,
+  train_state, rd_coarse, label: jnp.ndarray, r: int,
   beta: float, uv: jnp.ndarray
 ):
   r"""
@@ -55,6 +55,8 @@ def run_simulation_coarse_grid_correction(
     )
     return uv + (correction * (1 - beta) + beta * expert) * dt
 
+  nx = uv.shape[1]
+  dt = rd_coarse.dt
   step_num = rd_coarse.step_num
   x_hist = np.zeros([step_num, 2, nx, nx])
   for i in range(step_num):
@@ -65,9 +67,11 @@ def run_simulation_coarse_grid_correction(
 
 
 def run_simulation_coarse_grid_correction_torch(
-  model, rd_fine, rd_coarse, nx: int, r: int, dt: float, device, uv: jnp.ndarray
+  model, rd_fine, rd_coarse, r: int, device, uv: jnp.ndarray
 ):
 
+  nx = uv.shape[1]
+  dt = rd_coarse.dt
   step_num = rd_fine.step_num
   x_hist = jnp.zeros([step_num, 2, nx, nx])
   for i in range(step_num):
@@ -96,5 +100,34 @@ def run_simulation_coarse_grid_correction_torch(
       torch.from_dlpack(asdlpack(uv)).reshape((1, *uv.shape)).to(device)
     )
     uv += jnp.array(jnp.from_dlpack(asdlpack(correction[0].detach()))) * dt
+
+  return x_hist
+
+
+def run_ns_simulation_pressue_correction(
+  train_state, ns_model, label: jnp.ndarray, beta: float, uv: jnp.ndarray
+):
+  
+  nx, ny = uv.shape[1:]
+  step_num = ns_model.step_num
+  x_hist = np.zeros([step_num, 2, nx, ny])
+  for i in range(step_num):
+    x_hist[i] = uv
+    uv = uv.transpose(1, 2, 0)
+    correction, _ = train_state.apply_fn_with_bn(
+      {
+        "params": train_state.params,
+        "batch_stats": train_state.batch_stats
+      },
+      uv.reshape(1, *uv.shape),
+      is_training=False
+    )
+    # uv = ns_model.projection_correction(uv, jnp.transpose(label[i], (2, 0, 1)))
+    u = np.zeros((nx + 2, ny + 2), dtype=jnp.float64)
+    v = np.zeros((nx + 2, ny + 1), dtype=jnp.float64)
+    u[1:-1, 1:-1] = uv[..., 0]
+    v[1:-1, 1:] = uv[..., 1]
+    uv = np.hstack([u.reshape(-1), v.reshape(-1)])
+    uv = ns_model.projection_correction(uv, correction[0, ..., 0])
 
   return x_hist
