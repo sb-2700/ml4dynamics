@@ -48,27 +48,29 @@ def main():
   
   u_godunov = burgers_godunov(u0)
 
-  def burgers_spectral():
+  def burgers_spectral(u0):
     
-    dealias = True
+    dealias = False
     if dealias:
       k_max = nx//2 * 2//3
 
     k = jnp.fft.fftfreq(nx, d=1.0/nx) * 2*jnp.pi/L
-    k = jnp.fft.fftshift(k)
 
     @jax.jit
-    def spectral_step(u, dt):
-      u_hat = jnp.fft.fft(u)
+    def spectral_step(u_hat):
       
       def rhs(u_hat):
+        u_hat = jnp.hstack(
+          [u_hat[:nx//2], jnp.zeros_like(u_hat), u_hat[nx//2:]]
+        )
+        u = jnp.fft.ifft(u_hat)
         if dealias:
           u_hat_trunc = jnp.fft.fftshift(u_hat)
           u_hat_trunc = jnp.where(jnp.abs(k) > k_max, 0, u_hat_trunc)
           u_hat_trunc = jnp.fft.ifftshift(u_hat_trunc)
           u = jnp.fft.ifft(u_hat_trunc)
         nonlinear = 0.5 * u**2
-        nonlinear_hat = jnp.fft.fft(nonlinear)
+        nonlinear_hat = jnp.fft.fft(nonlinear)[:nx]
         return -1j * k * nonlinear_hat
       
       k1 = rhs(u_hat)
@@ -79,29 +81,31 @@ def main():
       u_hat_new = u_hat + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
       return u_hat_new
 
-    u_spectral = np.zeros((step_num, nx))
+    u_spectral = np.zeros((step_num, nx), dtype=np.complex128)
+    u0_hat = jnp.fft.fft(u0)
     for i in range(step_num):
-        u_spectral[i] = u0
-        u0 = spectral_step(u0)
+        u_spectral[i] = u0_hat
+        u0_hat = spectral_step(u0_hat)
 
     return u_spectral
 
 
-  u_spectral = burgers_spectral(u0, step_num, dt)
-  breakpoint()
+  u_spectral = burgers_spectral(u0)
 
   mass_initial = jnp.sum(u0) * dx
-  mass_final = jnp.sum(u_godunov[-1]) * dx
-  print(f"mass conservation: {abs(mass_final - mass_initial):.2e}")
+  mass_godunov = jnp.sum(u_godunov[-1]) * dx
+  mass_spectral = jnp.sum(jnp.fft.ifft(u_spectral[-1])) * dx
+  assert jnp.isclose(mass_initial, mass_godunov)
+  assert jnp.isclose(mass_initial, mass_spectral)
 
   plt.figure(figsize=(10,6))
   plt.plot(x, u_godunov[-1], label='Godunov')
-  # plt.plot(x, u_spectral, '--', label='Spectral')
+  plt.plot(x, jnp.real(jnp.fft.ifft(u_spectral[-1])), '--', label='Spectral')
   plt.title('Burgers Equation Solutions')
   plt.xlabel('x')
   plt.ylabel('u')
   plt.legend()
-  plt.savefig('results/fig/burgers_solution.pdf')
+  plt.savefig('results/fig/burgers_solution.png')
 
   # def track_conservation(method, u0, nt):
   #     mass = []
