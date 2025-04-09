@@ -1,4 +1,3 @@
-import os
 from functools import partial
 from typing import Tuple
 
@@ -17,7 +16,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from ml4dynamics import utils
-from ml4dynamics.dynamics import KS
+from ml4dynamics.models.models_jax import model
 from ml4dynamics.types import OptState, PRNGKey
 
 
@@ -25,11 +24,8 @@ def main(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
   # model parameters
-  nu = config.ks.nu
   c = config.ks.c
-  L = config.ks.L
   T = config.ks.T
-  init_scale = config.ks.init_scale
   BC = config.ks.BC
   # solver parameters
   if BC == "periodic":
@@ -38,207 +34,10 @@ def main(config_dict: ml_collections.ConfigDict):
     N1 = config.ks.nx - 1
   r = config.ks.r
   N2 = N1 // r
-  dt = config.ks.dt
   rng = random.PRNGKey(config.sim.seed)
   case_num = config.sim.case_num
-  sgs_model = config.train.sgs
-
-  # fine simulation
-  ks_fine = KS(
-    L=L,
-    N=N1,
-    T=T,
-    dt=dt,
-    nu=nu,
-    c=c,
-    BC=BC,
-    init_scale=init_scale,
-    rng=rng,
-  )
-  # coarse simulator
-  ks_coarse = KS(
-    L=L,
-    N=N2,
-    T=T,
-    dt=dt,
-    nu=nu,
-    c=c,
-    BC=BC,
-    init_scale=init_scale,
-    rng=rng,
-  )
-
-  # define the restriction and interpolation operator
-  # TODO: try to change the restriction and projection operator to test the
-  # results, these operator should have test file
-  res_op = jnp.zeros((N2, N1))
-  int_op = jnp.zeros((N1, N2))
-  # NOTE: this restriction operator is useless for filter, as at returns
-  # vanishing SGS stress
-  res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 1].set(1)
-  int_op = int_op.at[jnp.arange(N2) * r + 1, jnp.arange(N2)].set(1)
-  for i in range(N2):
-    res_op = res_op.at[i, i * r:i * r + 6].set(1)
-  res_op /= 7
-  int_op = jnp.linalg.pinv(res_op)
-  assert jnp.allclose(res_op @ int_op, jnp.eye(N2))
-
-  # prepare the training data
-  if os.path.isfile(
-    'data/ks/c{:.1f}T{}n{}_{}.npz'.format(c, T, case_num, sgs_model)
-  ):
-    data = np.load(
-      'data/ks/c{:.1f}T{}n{}_{}.npz'.format(c, T, case_num, sgs_model)
-    )
-    inputs = data["input"]
-    outputs = data["output"]
-  else:
-    inputs = jnp.zeros((case_num, int(T / dt), N2))
-    outputs = jnp.zeros((case_num, int(T / dt), N2))
-    for i in range(case_num):
-      print(i)
-      rng, key = random.split(rng)
-      # NOTE: the initialization here is important, DO NOT use the random
-      # i.i.d. Gaussian noise as the initial condition
-      if BC == "periodic":
-        dx = L / N1
-        u0 = ks_fine.attractor + init_scale * random.normal(key) *\
-          jnp.sin(10 * jnp.pi * jnp.linspace(0, L - L/N1, N1) / L)
-      elif BC == "Dirichlet-Neumann":
-        dx = L / (N1 + 1)
-        x = jnp.linspace(dx, L - dx, N1)
-        # different choices of initial conditions
-        # u0 = ks_fine.attractor + init_scale * random.normal(key) *\
-        #   jnp.sin(10 * jnp.pi * x / L)
-        # u0 = random.uniform(key) * jnp.sin(8 * jnp.pi * x / 128) +\
-        #   random.uniform(rng) * jnp.sin(16 * jnp.pi * x / 128)
-        r0 = random.uniform(key) * 20 + 44
-        u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
-      ks_fine.run_simulation(u0, ks_fine.CN_FEM)
-      input = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
-      output = jnp.zeros_like(input)
-      for j in range(ks_fine.step_num):
-        if sgs_model == "filter":
-          output = ks_fine.x_hist**2 @ res_op.T - input**2
-        elif sgs_model == "correction":
-          next_step_fine = ks_fine.CN_FEM(
-            ks_fine.x_hist[j]
-          )  # shape = [N1, step_num]
-          next_step_coarse = ks_coarse.CN_FEM(
-            input[j]
-          )  # shape = [step_num, N2]
-          output = output.at[j].set(res_op @ next_step_fine - next_step_coarse)
-      inputs = inputs.at[i].set(input)
-      outputs = outputs.at[i].set(output)
-
-    inputs = inputs.reshape(-1, N2)
-    outputs = outputs.reshape(-1, N2) / dt
-    if jnp.any(jnp.isnan(inputs)) or jnp.any(jnp.isnan(outputs)) or\
-      jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs)):
-      raise Exception("The data contains Inf or NaN")
-    np.savez(
-      'data/ks/c{:.1f}T{}n{}_{}.npz'.format(c, T, case_num, sgs_model),
-      input=inputs,
-      output=outputs
-    )
-
-  # preprocess the input-output pair for training
-  if config.train.input == "uglobal":
-    # training global ROM
-    input_dim = output_dim = N2
-    inputs = inputs.reshape(-1, input_dim)
-    outputs = outputs.reshape(-1, output_dim)
-  else:
-    # training local ROM with local input
-    input_dim = output_dim = 1
-    if BC == "periodic":
-      dx = L / N2
-    elif BC == "Dirichlet-Neumann":
-      dx = L / (N2 + 1)
-    u = jnp.array(inputs)
-    u_x = (jnp.roll(inputs, 1, axis=1) - jnp.roll(inputs, -1, axis=1)) / dx / 2
-    u_xx = (
-      (jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) - 2 * inputs
-    ) / dx**2
-    u_xxxx = ((jnp.roll(inputs, 2, axis=1) + jnp.roll(inputs, -2, axis=1)) -\
-        4*(jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) +\
-        6 * inputs) / dx**4
-    outputs = outputs.reshape(-1, output_dim)
-    if config.train.input == "ux":
-      inputs = u_x.reshape(-1, input_dim)
-    elif config.train.input == "uxx":
-      inputs = u_xx.reshape(-1, input_dim)
-    elif config.train.input == "uxxxx":
-      inputs = u_xxxx.reshape(-1, input_dim)
-    else:
-      inputs = u.reshape(-1, input_dim)
-
-  # stratify the data to balance it
-  if config.train.stratify == "input_output":
-    bins = config.train.bins
-    subsample = config.train.subsample
-    hist, xedges, yedges = np.histogram2d(
-      inputs.reshape(-1), outputs.reshape(-1), bins=bins
-    )
-    bin_data = {}
-    for i in range(bins):
-      for j in range(bins):
-        if hist[i, j] > 0:
-          bin_mask = (xedges[i] <= inputs) & (inputs < xedges[i + 1]) &\
-            (yedges[j] <= outputs) & (outputs < yedges[j + 1])
-          bin_pts = np.column_stack((inputs[bin_mask], outputs[bin_mask]))
-          bin_data[(i, j)] = bin_pts
-    stratify_inputs = jnp.zeros((1, 1))
-    stratify_outputs = jnp.zeros((1, 1))
-    for _ in bin_data.keys():
-      if bin_data[_].shape[0] < subsample:
-        stratify_inputs = jnp.vstack([stratify_inputs, bin_data[_][:, 0:1]])
-        stratify_outputs = jnp.vstack([stratify_outputs, bin_data[_][:, 1:]])
-      else:
-        samples = np.random.choice(
-          jnp.arange(bin_data[_].shape[0]), size=subsample, replace=False
-        )
-        stratify_inputs = jnp.vstack(
-          [stratify_inputs, bin_data[_][samples, 0:1]]
-        )
-        stratify_outputs = jnp.vstack(
-          [stratify_outputs, bin_data[_][samples, 1:]]
-        )
-    inputs = stratify_inputs
-    outputs = stratify_outputs
-
-  if config.train.stratify == "input":
-    bins = config.train.bins
-    subsample = config.train.subsample
-    hist, xedges, yedges = np.histogram2d(
-      inputs.reshape(-1), outputs.reshape(-1), bins=bins
-    )
-    bin_data = {}
-    for i in range(bins):
-      for j in range(bins):
-        if hist[i, j] > 0:
-          bin_mask = (xedges[i] <= inputs) & (inputs < xedges[i + 1]) &\
-            (yedges[j] <= outputs) & (outputs < yedges[j + 1])
-          bin_pts = np.column_stack((inputs[bin_mask], outputs[bin_mask]))
-          bin_data[(i, j)] = bin_pts
-    stratify_inputs = jnp.zeros((1, 1))
-    stratify_outputs = jnp.zeros((1, 1))
-    for _ in bin_data.keys():
-      if bin_data[_].shape[0] < subsample:
-        stratify_inputs = jnp.vstack([stratify_inputs, bin_data[_][:, 0:1]])
-        stratify_outputs = jnp.vstack([stratify_outputs, bin_data[_][:, 1:]])
-      else:
-        samples = np.random.choice(
-          jnp.arange(bin_data[_].shape[0]), size=subsample, replace=False
-        )
-        stratify_inputs = jnp.vstack(
-          [stratify_inputs, bin_data[_][samples, 0:1]]
-        )
-        stratify_outputs = jnp.vstack(
-          [stratify_outputs, bin_data[_][samples, 1:]]
-        )
-    inputs = stratify_inputs
-    outputs = stratify_outputs
+  ks_fine, ks_coarse = utils.create_fine_coarse_simulator(config)
+  inputs, outputs, input_dim, output_dim = utils.data_process(config_dict)
 
   # NOTE: visualize and compare the full and stratified dataset
   # bins = config.train.bins
@@ -394,8 +193,6 @@ def main(config_dict: ml_collections.ConfigDict):
     TODO: currently we are using different structure for regression and
     generative modeling, need to unify
     """
-    from ml4dynamics.model_jax import model
-
     print("initialize vae model")
     vae = model(config.train.vae.latents, N2)
     rng, key = random.split(rng)
