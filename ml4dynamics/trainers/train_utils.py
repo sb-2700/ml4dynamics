@@ -128,6 +128,12 @@ def run_ns_simulation_pressue_correction(
     u[1:-1, 1:-1] = uv[..., 0]
     v[1:-1, 1:] = uv[..., 1]
     uv = np.hstack([u.reshape(-1), v.reshape(-1)])
-    uv = ns_model.projection_correction(uv, correction[0, ..., 0])
+    uv = ns_model.projection_correction(uv, correction[0, ..., 0], beta)
+    u = uv[: (nx + 2) * (ny + 2)].reshape(nx + 2, ny + 2)
+    v = uv[(nx + 2) * (ny + 2):].reshape(nx + 2, ny + 1)
+    uv_ = jnp.zeros((2, nx, ny), dtype=jnp.float64)
+    uv_ = uv_.at[0].set(u[1:-1, 1:-1])
+    uv_ = uv_.at[1].set(v[1:-1, 1:])
+    uv = uv_
 
   return x_hist

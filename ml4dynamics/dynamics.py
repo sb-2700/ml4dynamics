@@ -1121,18 +1121,25 @@ class NS_channel(dynamics):
     LNy[0, 0] = -1
     LNy[-1, -1] = -1
     LNy[-1, -2] = 1
-    LNx = spa.csc_matrix(LNx / (dx**2))
-    LNy = spa.csc_matrix(LNy / (dy**2))
-    # BE CAREFUL, SINCE THE LAPLACIAN MATRIX IN X Y DIRECTION IS NOT THE SAME
-    #L2N = spa.kron(LNy, spa.eye(nx)) + spa.kron(spa.eye(ny), LNx)
-    L2N = spa.kron(LNx, spa.eye(ny)) + spa.kron(spa.eye(nx), LNy)
+    # LNx = spa.csc_matrix(LNx / (dx**2))
+    # LNy = spa.csc_matrix(LNy / (dy**2))
+    # # BE CAREFUL, SINCE THE LAPLACIAN MATRIX IN X Y DIRECTION IS NOT THE SAME
+    # #L2N = spa.kron(LNy, spa.eye(nx)) + spa.kron(spa.eye(ny), LNx)
+    # L2N = spa.kron(LNx, spa.eye(ny)) + spa.kron(spa.eye(nx), LNy)
+    # self.L = copy.deepcopy(L2N)
+    # #for i in range(ny):
+    # #    L[(i+1)*nx - 1, (i+1)*nx - 1] = L[(i+1)*nx - 1, (i+1)*nx - 1] - 2
+    # for i in range(ny):
+    #   self.L[-1 - i, -1 - i] = self.L[-1 - i, -1 - i] - 2 / (dx**2)
+
+    # jax implementation
+    L2N = np.kron(LNx / (dx**2), np.eye(ny)) +\
+      np.kron(np.eye(nx), LNy / (dy**2))
     self.L = copy.deepcopy(L2N)
-    #for i in range(ny):
-    #    L[(i+1)*nx - 1, (i+1)*nx - 1] = L[(i+1)*nx - 1, (i+1)*nx - 1] - 2
     for i in range(ny):
       self.L[-1 - i, -1 - i] = self.L[-1 - i, -1 - i] - 2 / (dx**2)
 
-  def projection_correction(self, uv, p=None, y0=0.325):
+  def projection_correction(self, uv, p=None, beta=0, y0=0.325):
     """projection method to solve the incompressible NS equation
       The convection discretization is given by central difference
       u_ij (u_i+1,j - u_i-1,j)/2dx + \Sigma v_ij (u_i,j+1 - u_i,j-1)/2dx"""
@@ -1177,8 +1184,11 @@ class NS_channel(dynamics):
     #  divergence of new velocity field
     divu = (u[1:-1, 1:-1] -
             u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
+    p_ = jax.scipy.linalg.solve(self.L, divu.reshape(nx * ny)).reshape([nx, ny])
     if not p.all():
-      p = jax.scipy.linalg.solve(L, divu.reshape(nx * ny)).reshape([nx, ny])
+      p = p + beta * (p_ - p)
+    else:
+      p = p_
 
     u[1:-2, 1:-1] = u[1:-2, 1:-1] - (p[1:, :] - p[:-1, :]) / dx
     v[1:-1, 1:-1] = v[1:-1, 1:-1] - (p[:, 1:] - p[:, :-1]) / dy

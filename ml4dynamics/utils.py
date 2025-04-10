@@ -198,7 +198,7 @@ def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
   schedule = optax.piecewise_constant_schedule(
     init_value=config.train.lr,
     boundaries_and_scales={
-      int(b): 0.5
+      int(b): 0.1
       for b in jnp.arange(
         config.train.decay * step_per_epoch,
         config.train.epochs * step_per_epoch,
@@ -446,24 +446,26 @@ def eval_a_posteriori(
 ):
   
   config = Box(config_dict)
+  step_num = model.step_num
+  inputs = inputs[:step_num]
+  outputs = outputs[:step_num]
   beta = 0
   if config.case == "react_diff":
     r = config.sim.r
-    _, rd_coarse = create_fine_coarse_simulator(config)
+    _, model = create_fine_coarse_simulator(config)
     run_simulation = partial(
-    train_utils.run_simulation_coarse_grid_correction, train_state, rd_coarse,
+    train_utils.run_simulation_coarse_grid_correction, train_state, model,
     outputs, r, beta
   )
   elif config.case == "ns":
-    ns_model = create_ns_simulator(config)
+    model = create_ns_simulator(config)
     run_simulation = partial(
-      train_utils.run_ns_simulation_pressue_correction, train_state, ns_model,
+      train_utils.run_ns_simulation_pressue_correction, train_state, model,
       outputs, beta
     )
 
   start = time()
   x_hist = run_simulation(inputs[0].transpose(2, 0, 1))
-  step_num = rd_coarse.step_num
   print(f"simulation takes {time() - start:.2f}s...")
   if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
     print("similation contains NaN!")
@@ -486,7 +488,7 @@ def eval_a_posteriori(
   fraction = 0.05
   pad = 0.001
   index_array = np.arange(
-    0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
+    0, n_plot * step_num // n_plot - 1, step_num // n_plot
   )
   for j in range(n_plot):
     im = axs[0, j].imshow(inputs[index_array[j], ..., 0], cmap=cm.twilight)
@@ -508,7 +510,7 @@ def eval_a_posteriori(
     )
     axs[2, j].axis("off")
   fig.tight_layout(pad=0.0)
-  plt.savefig(f"results/fig/{fig_name}.pdf")
+  plt.savefig(f"results/fig/{fig_name}.png")
   plt.clf()
 
 
