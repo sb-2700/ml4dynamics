@@ -1,4 +1,3 @@
-import argparse
 from datetime import datetime
 from functools import partial
 
@@ -74,7 +73,8 @@ def main():
       input_ = input_ / (r**2)
       output = output / (r**2)
       output[..., 0] = output[..., 0] - input_[..., 0]**3
-    inputs[i] = input_
+      input = input
+    inputs[i] = input
     outputs[i] = output
 
   if sgs_model == "correction":

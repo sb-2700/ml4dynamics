@@ -2,7 +2,6 @@ import copy
 from datetime import datetime
 
 import h5py
-import ml_collections
 import numpy as np
 import numpy.random as r
 import yaml
@@ -11,12 +10,13 @@ from box import Box
 import ml4dynamics.utils as utils
 
 
-def generate_ns_data(config_dict: ml_collections.ConfigDict):
-
+def main():
+  with open(f"config/ns.yaml", "r") as file:
+    config_dict = yaml.safe_load(file)
   config = Box(config_dict)
-  nx = config.ns.nx
-  ny = config.ns.ny
-  Re = config.ns.Re
+  nx = config.sim.nx
+  ny = config.sim.ny
+  Re = config.sim.Re
   dx = 1 / ny
   dy = 1 / ny
   case_num = config.sim.case_num
@@ -80,9 +80,9 @@ def generate_ns_data(config_dict: ml_collections.ConfigDict):
     # U = np.zeros([case_num, step_num // writeInterval, 2, nx + 2, ny + 2])
     # U[:, :, 0] = u_hist_
     # U[:, :, 1, :, 1:] = v_hist_
-    U = np.zeros([case_num, step_num // writeInterval, 2, nx, ny])
-    U[:, :, 0] = u_hist_[:, :, 1:-1, 1:-1]
-    U[:, :, 1] = v_hist_[:, :, 1:-1, 1:]
+    U = np.zeros([case_num, step_num // writeInterval, nx, ny, 2])
+    U[..., 0] = u_hist_[:, :, 1:-1, 1:-1]
+    U[..., 1] = v_hist_[:, :, 1:-1, 1:]
     data = {
       "metadata": {
         "type": "ns",
@@ -97,9 +97,9 @@ def generate_ns_data(config_dict: ml_collections.ConfigDict):
       },
       "data": {
         "input_fine":
-        U.reshape(-1, 2, nx, ny),  # shape [case_num * step_num // writeInterval, 2, nx+2, ny+2]
+        U.reshape(-1, nx, ny, 2),  # shape [case_num * step_num // writeInterval, nx+2, ny+2, 2]
         "output_fine":
-        p_hist_.reshape(-1, 1, nx, ny),  # shape [case_num * step_num // writeInterval, 1, nx, ny]
+        p_hist_.reshape(-1, nx, ny, 1),  # shape [case_num * step_num // writeInterval, nx, ny, 1]
         # "input_coarse":
         # u_coarse,  # shape [case_num * step_num // writeInterval, 2, nx//2, ny//2]
         # "output_coarse":
@@ -138,6 +138,4 @@ def generate_ns_data(config_dict: ml_collections.ConfigDict):
 
 
 if __name__ == "__main__":
-  with open("config/simulation.yaml", "r") as file:
-    config_dict = yaml.safe_load(file)
-  generate_ns_data(config_dict)
+  main()
