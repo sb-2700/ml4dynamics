@@ -43,8 +43,9 @@ def load_data(
     alpha = config.sim.alpha
     beta = config.sim.beta
     gamma = config.sim.gamma
-    dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
-      alpha, beta, gamma, case_num
+    sgs = config.sim.sgs
+    dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}_{}".format(
+      alpha, beta, gamma, case_num, sgs
     )
   elif pde_type == "ns":
     Re = config.sim.Re
@@ -54,11 +55,9 @@ def load_data(
   with h5py.File(h5_filename, "r") as h5f:
     inputs = h5f["data"]["inputs"][()]
     outputs = h5f["data"]["outputs"][()]
-    if mode == "jax":
-      # shape = (*, nx, nx, 2)
-      inputs = inputs.transpose(0, 2, 3, 1)
-      outputs = outputs.transpose(0, 2, 3, 1)
     if mode == "torch":
+      inputs = inputs.transpose(0, 3, 1, 2)
+      outputs = outputs.transpose(0, 3, 1, 2)
       GPU = 0
       device = torch.device(
         "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
@@ -101,7 +100,7 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
     Lx = config.sim.Lx
     nx = config.sim.nx
     r = config.sim.r
-    model_fine = dynamics.RD(
+    model_fine = dynamics.react_diff(
       L=Lx,
       N=nx**2 * 2,
       T=T,
@@ -111,7 +110,7 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
       gamma=config.sim.gamma,
       d=d,
     )
-    model_coarse = dynamics.RD(
+    model_coarse = dynamics.react_diff(
       L=Lx,
       N=(nx // r)**2 * 2,
       T=T,
@@ -446,17 +445,19 @@ def eval_a_posteriori(
 ):
   
   config = Box(config_dict)
-  step_num = model.step_num
-  inputs = inputs[:step_num]
-  outputs = outputs[:step_num]
   beta = 0
   if config.case == "react_diff":
     r = config.sim.r
     _, model = create_fine_coarse_simulator(config)
-    run_simulation = partial(
-    train_utils.run_simulation_coarse_grid_correction, train_state, model,
-    outputs, r, beta
-  )
+    if config.sim.sgs == "correction":
+      run_simulation = partial(
+      train_utils.run_simulation_coarse_grid_correction, train_state, model,
+      outputs, r, beta
+      )
+    elif config.sim.sgs == "filter":
+      run_simulation = partial(
+        train_utils.run_simulation_sgs, train_state, model, outputs, beta
+      )   
   elif config.case == "ns":
     model = create_ns_simulator(config)
     run_simulation = partial(
@@ -465,7 +466,10 @@ def eval_a_posteriori(
     )
 
   start = time()
-  x_hist = run_simulation(inputs[0].transpose(2, 0, 1))
+  step_num = model.step_num
+  inputs = inputs[:step_num]
+  outputs = outputs[:step_num]
+  x_hist = run_simulation(inputs[0])
   print(f"simulation takes {time() - start:.2f}s...")
   if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
     print("similation contains NaN!")
@@ -496,13 +500,13 @@ def eval_a_posteriori(
       im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
     )
     axs[0, j].axis("off")
-    im = axs[1, j].imshow(x_hist[index_array[j], 0], cmap=cm.twilight)
+    im = axs[1, j].imshow(x_hist[index_array[j], ..., 0], cmap=cm.twilight)
     _ = fig.colorbar(
       im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
     )
     axs[1, j].axis("off")
     im = axs[2, j].imshow(
-      inputs[index_array[j], ..., 0] - x_hist[index_array[j], 0],
+      (inputs - x_hist)[index_array[j], ..., 0],
       cmap=cm.twilight
     )
     _ = fig.colorbar(

@@ -137,7 +137,6 @@ def generate_ns_data(config_dict: ml_collections.ConfigDict):
       f.attrs["readme"] = data["readme"]
 
 
-
 if __name__ == "__main__":
   with open("config/simulation.yaml", "r") as file:
     config_dict = yaml.safe_load(file)

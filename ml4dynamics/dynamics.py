@@ -823,11 +823,16 @@ class KS(dynamics):
     return -gradient, loss
 
 
-class RD(dynamics):
+class react_diff(dynamics):
   r"""
   
   $$
-
+    \frac{\patial \mathbf{u}}{\partial t} = D \Delta \mfu + 
+    \phi(\mathbf{u}), \quad T \in [0, 20], 	\\
+		\phi(\mathbf{u}) = \phi(u, v) = \begin{pmatrix}
+			u - u^3 - v + \alpha	\\
+			\beta(u - v)
+    \end{pmatrix}
   $$
 
   The dimension of the state variable is given by $N = 2n^2$ where $n$ is the
@@ -850,7 +855,7 @@ class RD(dynamics):
     tv_scale=1e-8,
     plot=False
   ):
-    super(RD,
+    super(react_diff,
           self).__init__(model_type, N, T, dt, tol, init_scale, tv_scale, plot)
 
     self.L = L

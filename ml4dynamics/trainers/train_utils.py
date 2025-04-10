@@ -6,7 +6,7 @@ from dlpack import asdlpack
 
 
 def run_simulation_coarse_grid_correction(
-  train_state, rd_coarse, label: jnp.ndarray, r: int,
+  train_state, coarse_model, label: jnp.ndarray, r: int,
   beta: float, uv: jnp.ndarray
 ):
   r"""
@@ -46,7 +46,7 @@ def run_simulation_coarse_grid_correction(
       uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] + uv[:, 0::2, 1::2] +
       uv[:, 1::2, 1::2]
     ) / 4
-    uv = rd_coarse.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
+    uv = coarse_model.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
     uv = jnp.vstack(
       [
         jnp.kron(uv[0], jnp.ones((r, r))).reshape(1, nx, nx),
@@ -56,8 +56,8 @@ def run_simulation_coarse_grid_correction(
     return uv + (correction * (1 - beta) + beta * expert) * dt
 
   nx = uv.shape[1]
-  dt = rd_coarse.dt
-  step_num = rd_coarse.step_num
+  dt = coarse_model.dt
+  step_num = coarse_model.step_num
   x_hist = np.zeros([step_num, 2, nx, nx])
   for i in range(step_num):
     x_hist[i] = uv
@@ -67,11 +67,11 @@ def run_simulation_coarse_grid_correction(
 
 
 def run_simulation_coarse_grid_correction_torch(
-  model, rd_fine, rd_coarse, r: int, device, uv: jnp.ndarray
+  model, rd_fine, coarse_model, r: int, device, uv: jnp.ndarray
 ):
 
   nx = uv.shape[1]
-  dt = rd_coarse.dt
+  dt = coarse_model.dt
   step_num = rd_fine.step_num
   x_hist = jnp.zeros([step_num, 2, nx, nx])
   for i in range(step_num):
@@ -80,7 +80,7 @@ def run_simulation_coarse_grid_correction_torch(
       uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] + uv[:, 0::2, 1::2] +
       uv[:, 1::2, 1::2]
     ) / 4
-    uv = rd_coarse.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
+    uv = coarse_model.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
     uv = np.vstack(
       [
         np.kron(uv[0], np.ones((r, r))).reshape(1, nx, nx),
@@ -100,6 +100,37 @@ def run_simulation_coarse_grid_correction_torch(
       torch.from_dlpack(asdlpack(uv)).reshape((1, *uv.shape)).to(device)
     )
     uv += jnp.array(jnp.from_dlpack(asdlpack(correction[0].detach()))) * dt
+
+  return x_hist
+
+
+def run_simulation_sgs(
+  train_state, coarse_model, label: jnp.ndarray, beta: float, uv: jnp.ndarray
+):
+
+  @jax.jit
+  def iter(uv: jnp.array, expert: jnp.array = 0):
+    correction, _ = train_state.apply_fn_with_bn(
+      {
+        "params": train_state.params,
+        "batch_stats": train_state.batch_stats
+      },
+      uv[None],
+      is_training=False
+    )
+    uv = coarse_model.adi(
+      uv.transpose(2, 0, 1).reshape(-1)
+    ).reshape(2, nx, nx).transpose(1, 2, 0)
+    return uv + (correction[0] * (1 - beta) + beta * expert) * dt * dx**2
+
+  nx = uv.shape[1]
+  dt = coarse_model.dt
+  dx = coarse_model.dx
+  step_num = coarse_model.step_num
+  x_hist = np.zeros([step_num, nx, nx, 2])
+  for i in range(step_num):
+    x_hist[i] = uv
+    uv = iter(uv, label[i])
 
   return x_hist
 
