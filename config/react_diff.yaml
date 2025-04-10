@@ -19,20 +19,9 @@ upload: false
 output_path: 2D_diff-react_NA_NA
 
 # name of the run, accessed by loggers
-case: ns
+case: react_diff
 
-ks:
-  nu: 1
-  c: 1.2
-  T: 200
-  dt: .1
-  L: 128
-  nx: 1024
-  r: 4
-  init_scale: 1.
-  BC: Dirichlet-Neumann
-
-react_diff:
+sim:
   alpha: 0.01
   beta: 1.0
   gamma: 0.05
@@ -43,18 +32,6 @@ react_diff:
   nx: 256
   r: 2
   n: 2              # number of components
-
-ns:
-  nx: 128
-  ny: 32
-  Lx: 4.0
-  Ly: 1.0
-  Re: 100
-  dim: 2
-  T: 10
-  dt: .01
-
-sim:
   seed: 42
   case_num: 1       # number of simulations to perform
   warm_up: 200      # warm up step for simulation

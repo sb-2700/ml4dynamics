@@ -1,11 +1,10 @@
+import argparse
 import pickle
 from functools import partial
 from time import time
 
 import jax
 import jax.numpy as jnp
-import jax.random as random
-import ml_collections
 import yaml
 from box import Box
 from flax import traverse_util
@@ -13,17 +12,14 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 from ml4dynamics import utils
-from ml4dynamics.types import PRNGKey
 
 jax.config.update("jax_enable_x64", True)
 
 
-def main(config_dict: ml_collections.ConfigDict):
-
+def main():
   def train(
     model_type: str,
     epochs: int,
-    rng: PRNGKey,
   ):
 
     @partial(jax.jit, static_argnums=(3, ))
@@ -101,7 +97,8 @@ def main(config_dict: ml_collections.ConfigDict):
       val_loss += loss
     print(f"val loss: {val_loss:.4e}")
     plt.plot(loss_hist)
-    plt.savefig(f"results/fig/loss_hist_{model_type}.pdf")
+    plt.yscale("log")
+    plt.savefig(f"results/fig/loss_hist_{model_type}.png")
     plt.clf()
 
     utils.eval_a_priori(
@@ -110,6 +107,17 @@ def main(config_dict: ml_collections.ConfigDict):
     utils.eval_a_posteriori(
       config_dict, train_state, inputs, outputs, f"tr_aposteriori_{model_type}"
     )
+
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+    "-c",
+    "--config",
+    default=None,
+    help="Set the configuration file path."
+  )
+  args = parser.parse_args()
+  with open(f"config/{args.config}.yaml", "r") as file:
+    config_dict = yaml.safe_load(file)
 
   config = Box(config_dict)
   pde_type = config.case
@@ -120,18 +128,13 @@ def main(config_dict: ml_collections.ConfigDict):
     config_dict, config.train.batch_size_unet, mode="jax"
   )
   print(f"finis loading data with {time() - start:.2f}s...")
-  rng = jax.random.PRNGKey(config.sim.seed)
   # models_array = ["ae", "ols", "mols", "aols", "tr"]
   models_array = ["ols"]
 
   for _ in models_array:
-    rng, key = random.split(rng)
     print(f"Training {_}...")
-    train(_, epochs, key)
+    train(_, epochs)
 
 
 if __name__ == "__main__":
-
-  with open("config/simulation.yaml", "r") as file:
-    config_dict = yaml.safe_load(file)
-  main(config_dict)
+  main()

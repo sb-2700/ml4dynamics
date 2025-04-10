@@ -21,30 +21,7 @@ output_path: 2D_diff-react_NA_NA
 # name of the run, accessed by loggers
 case: ns
 
-ks:
-  nu: 1
-  c: 1.2
-  T: 200
-  dt: .1
-  L: 128
-  nx: 1024
-  r: 4
-  init_scale: 1.
-  BC: Dirichlet-Neumann
-
-react_diff:
-  alpha: 0.01
-  beta: 1.0
-  gamma: 0.05
-  d: 2
-  T: 5
-  dt: 0.001
-  Lx: 6.4
-  nx: 256
-  r: 2
-  n: 2              # number of components
-
-ns:
+sim:
   nx: 128
   ny: 32
   Lx: 4.0
@@ -53,8 +30,6 @@ ns:
   dim: 2
   T: 10
   dt: .01
-
-sim:
   seed: 42
   case_num: 1       # number of simulations to perform
   warm_up: 200      # warm up step for simulation
@@ -67,21 +42,11 @@ plot:
   channel_idx: 0    # Index of the variable to be plotted
 
 train:
-  stratify: False
-  sgs: correction # filter, correction
-  bins: 50
-  subsample: 200
-  mode: gaussian # regression, gaussian, generative
-  linear: True # whether add a linear residue layer
-  n_g: 1 # number of gaussian mixture components
-  input: uxx # uglobal, u, ux, uxx, uxxxx
-  lr: 0.01
-  batch_size: 1000000
+  lr: 0.1
   batch_size_unet: 200
   buffer_size: 10
-  epochs: 500
-  epochs_ae: 200
-  decay: 50 # number of epochs to decay the learning rate
+  epochs: 1000
+  decay: 500 # number of epochs to decay the learning rate
   save: 100
   vae:
     latents: 128

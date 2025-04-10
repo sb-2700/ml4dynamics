@@ -40,14 +40,14 @@ def load_data(
   pde_type = config.case
   case_num = config.sim.case_num
   if pde_type == "react_diff":
-    alpha = config.react_diff.alpha
-    beta = config.react_diff.beta
-    gamma = config.react_diff.gamma
+    alpha = config.sim.alpha
+    beta = config.sim.beta
+    gamma = config.sim.gamma
     dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
       alpha, beta, gamma, case_num
     )
   elif pde_type == "ns":
-    Re = config.ns.Re
+    Re = config.sim.Re
     dataset = f"Re{Re}_n{case_num}"
   h5_filename = f"data/{pde_type}/{dataset}.h5"
 
@@ -92,37 +92,74 @@ def load_data(
 def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
+  rng = random.PRNGKey(config.sim.seed)
   # model parameters
-  alpha = config.react_diff.alpha
-  beta = config.react_diff.beta
-  gamma = config.react_diff.gamma
-  d = config.react_diff.d
-  T = config.react_diff.T
-  dt = config.react_diff.dt
-  Lx = config.react_diff.Lx
-  nx = config.react_diff.nx
-  r = config.react_diff.r
-  rd_fine = dynamics.RD(
-    L=Lx,
-    N=nx**2 * 2,
-    T=T,
-    dt=dt,
-    alpha=alpha,
-    beta=beta,
-    gamma=gamma,
-    d=d,
-  )
-  rd_coarse = dynamics.RD(
-    L=Lx,
-    N=(nx // r)**2 * 2,
-    T=T,
-    dt=dt,
-    alpha=alpha,
-    beta=beta,
-    gamma=gamma,
-    d=d,
-  )
-  return rd_fine, rd_coarse
+  if config.case == "react_diff":
+    d = config.sim.d
+    T = config.sim.T
+    dt = config.sim.dt
+    Lx = config.sim.Lx
+    nx = config.sim.nx
+    r = config.sim.r
+    model_fine = dynamics.RD(
+      L=Lx,
+      N=nx**2 * 2,
+      T=T,
+      dt=dt,
+      alpha=config.sim.alpha,
+      beta=config.sim.beta,
+      gamma=config.sim.gamma,
+      d=d,
+    )
+    model_coarse = dynamics.RD(
+      L=Lx,
+      N=(nx // r)**2 * 2,
+      T=T,
+      dt=dt,
+      alpha=config.sim.alpha,
+      beta=config.sim.beta,
+      gamma=config.sim.gamma,
+      d=d,
+    )
+  elif config.case == "ks":
+    c = config.ks.c
+    L = config.ks.L
+    T = config.ks.T
+    init_scale = config.ks.init_scale
+    BC = config.ks.BC
+    # solver parameters
+    if BC == "periodic":
+      N1 = config.ks.nx
+    elif BC == "Dirichlet-Neumann":
+      N1 = config.ks.nx - 1
+    r = config.ks.r
+    N2 = N1 // r
+    dt = config.ks.dt
+    # fine simulation
+    model_fine = dynamics.KS(
+      L=L,
+      N=N1,
+      T=T,
+      dt=dt,
+      nu=config.ks.nu,
+      c=c,
+      BC=BC,
+      init_scale=init_scale,
+      rng=rng,
+    )
+    # coarse simulator
+    model_coarse = dynamics.KS(
+      L=L,
+      N=N2,
+      T=T,
+      dt=dt,
+      nu=config.ks.nu,
+      c=c,
+      BC=BC,
+      init_scale=init_scale,
+      rng=rng,
+    )
+  return model_fine, model_coarse
 
 
 def create_ns_simulator(config_dict: ml_collections.ConfigDict):
@@ -130,12 +167,12 @@ def create_ns_simulator(config_dict: ml_collections.ConfigDict):
   config = Box(config_dict)
   # model parameters
   ns_model = dynamics.NS_channel(
-    Lx=config.ns.Lx,
-    nx=config.ns.nx,
-    ny=config.ns.ny,
-    T=config.ns.T,
-    dt=config.ns.dt,
-    Re=config.ns.Re,
+    Lx=config.sim.Lx,
+    nx=config.sim.nx,
+    ny=config.sim.ny,
+    T=config.sim.T,
+    dt=config.sim.dt,
+    Re=config.sim.Re,
   )
   return ns_model
 
@@ -143,25 +180,29 @@ def create_ns_simulator(config_dict: ml_collections.ConfigDict):
 def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
-  nx = config.react_diff.nx
   rng = random.PRNGKey(config.sim.seed)
   if config.case == "react_diff":
     unet = UNet(input_features=2, output_features=2)
+    nx = ny = config.sim.nx
+    n_sample = 4000
   elif config.case == "ns":
     unet = UNet(input_features=2, output_features=1)
+    n_sample = 800
+    nx = config.sim.nx
+    ny = config.sim.ny
   rng1, rng2 = random.split(rng)
   init_rngs = {'params': rng1, 'dropout': rng2}
-  unet_variables = unet.init(init_rngs, jnp.ones([1, nx, nx, 2]))
-  step_per_epoch = 1000 * config.sim.case_num // config.train.batch_size_unet
+  unet_variables = unet.init(init_rngs, jnp.ones([1, nx, ny, 2]))
+  step_per_epoch = n_sample * config.sim.case_num // config.train.batch_size_unet
   # TODO: need to specify the scheduler here for different training
   schedule = optax.piecewise_constant_schedule(
     init_value=config.train.lr,
     boundaries_and_scales={
-      int(b): 0.1
+      int(b): 0.5
       for b in jnp.arange(
-        500 * step_per_epoch,
+        config.train.decay * step_per_epoch,
         config.train.epochs * step_per_epoch,
-        500 * step_per_epoch)
+        config.train.decay * step_per_epoch)
     }
   )
   optimizer = optax.adam(schedule)
@@ -172,6 +213,127 @@ def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
     batch_stats=unet_variables["batch_stats"]
   )
   return train_state, schedule
+
+
+def data_process(config_dict: ml_collections.ConfigDict):
+  config = Box(config_dict)
+  BC = config.ks.BC
+  L = config.ks.L
+  T = config.ks.T
+  c = config.ks.c
+  # solver parameters
+  if BC == "periodic":
+    N1 = config.ks.nx
+  elif BC == "Dirichlet-Neumann":
+    N1 = config.ks.nx - 1
+  r = config.ks.r
+  N2 = N1 // r
+  sgs_model = config.train.sgs
+  case_num = config.sim.case_num
+  data = np.load(f'data/ks/c{c:.1f}T{T}n{case_num}_{sgs_model}.npz')
+  inputs = data["input"]
+  outputs = data["output"]
+  # preprocess the input-output pair for training
+  if config.train.input == "uglobal":
+    # training global ROM
+    input_dim = output_dim = N2
+    inputs = inputs.reshape(-1, input_dim)
+    outputs = outputs.reshape(-1, output_dim)
+  else:
+    # training local ROM with local input
+    input_dim = output_dim = 1
+    if BC == "periodic":
+      dx = L / N2
+    elif BC == "Dirichlet-Neumann":
+      dx = L / (N2 + 1)
+    u = jnp.array(inputs)
+    u_x = (jnp.roll(inputs, 1, axis=1) - jnp.roll(inputs, -1, axis=1)) / dx / 2
+    u_xx = (
+      (jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) - 2 * inputs
+    ) / dx**2
+    u_xxxx = ((jnp.roll(inputs, 2, axis=1) + jnp.roll(inputs, -2, axis=1)) -\
+        4*(jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) +\
+        6 * inputs) / dx**4
+    outputs = outputs.reshape(-1, output_dim)
+    if config.train.input == "ux":
+      inputs = u_x.reshape(-1, input_dim)
+    elif config.train.input == "uxx":
+      inputs = u_xx.reshape(-1, input_dim)
+    elif config.train.input == "uxxxx":
+      inputs = u_xxxx.reshape(-1, input_dim)
+    else:
+      inputs = u.reshape(-1, input_dim)
+  return inputs, outputs, input_dim, output_dim
+
+
+def data_stratification(config_dict: ml_collections.ConfigDict):
+  config = Box(config_dict)
+  # stratify the data to balance it
+  if config.train.stratify == "input_output":
+    bins = config.train.bins
+    subsample = config.train.subsample
+    hist, xedges, yedges = np.histogram2d(
+      inputs.reshape(-1), outputs.reshape(-1), bins=bins
+    )
+    bin_data = {}
+    for i in range(bins):
+      for j in range(bins):
+        if hist[i, j] > 0:
+          bin_mask = (xedges[i] <= inputs) & (inputs < xedges[i + 1]) &\
+            (yedges[j] <= outputs) & (outputs < yedges[j + 1])
+          bin_pts = np.column_stack((inputs[bin_mask], outputs[bin_mask]))
+          bin_data[(i, j)] = bin_pts
+    stratify_inputs = jnp.zeros((1, 1))
+    stratify_outputs = jnp.zeros((1, 1))
+    for _ in bin_data.keys():
+      if bin_data[_].shape[0] < subsample:
+        stratify_inputs = jnp.vstack([stratify_inputs, bin_data[_][:, 0:1]])
+        stratify_outputs = jnp.vstack([stratify_outputs, bin_data[_][:, 1:]])
+      else:
+        samples = np.random.choice(
+          jnp.arange(bin_data[_].shape[0]), size=subsample, replace=False
+        )
+        stratify_inputs = jnp.vstack(
+          [stratify_inputs, bin_data[_][samples, 0:1]]
+        )
+        stratify_outputs = jnp.vstack(
+          [stratify_outputs, bin_data[_][samples, 1:]]
+        )
+    inputs = stratify_inputs
+    outputs = stratify_outputs
+
+  if config.train.stratify == "input":
+    bins = config.train.bins
+    subsample = config.train.subsample
+    hist, xedges, yedges = np.histogram2d(
+      inputs.reshape(-1), outputs.reshape(-1), bins=bins
+    )
+    bin_data = {}
+    for i in range(bins):
+      for j in range(bins):
+        if hist[i, j] > 0:
+          bin_mask = (xedges[i] <= inputs) & (inputs < xedges[i + 1]) &\
+            (yedges[j] <= outputs) & (outputs < yedges[j + 1])
+          bin_pts = np.column_stack((inputs[bin_mask], outputs[bin_mask]))
+          bin_data[(i, j)] = bin_pts
+    stratify_inputs = jnp.zeros((1, 1))
+    stratify_outputs = jnp.zeros((1, 1))
+    for _ in bin_data.keys():
+      if bin_data[_].shape[0] < subsample:
+        stratify_inputs = jnp.vstack([stratify_inputs, bin_data[_][:, 0:1]])
+        stratify_outputs = jnp.vstack([stratify_outputs, bin_data[_][:, 1:]])
+      else:
+        samples = np.random.choice(
+          jnp.arange(bin_data[_].shape[0]), size=subsample, replace=False
+        )
+        stratify_inputs = jnp.vstack(
+          [stratify_inputs, bin_data[_][samples, 0:1]]
+        )
+        stratify_outputs = jnp.vstack(
+          [stratify_outputs, bin_data[_][samples, 1:]]
+        )
+    inputs = stratify_inputs
+    outputs = stratify_outputs
 
 
 def eval_a_priori(
@@ -252,7 +414,7 @@ def eval_a_priori(
     axs[2, j].axis("off")
 
   fig.tight_layout(pad=0.0)
-  plt.savefig(f"results/fig/apriori.pdf")
+  plt.savefig(f"results/fig/apriori.png")
   plt.clf()
 
   # visualize the dataset
@@ -272,7 +434,7 @@ def eval_a_priori(
     )
     axs[1, j].axis("off")
   fig.tight_layout(pad=0.0)
-  plt.savefig("results/fig/dataset.pdf")
+  plt.savefig("results/fig/dataset.png")
 
 
 def eval_a_posteriori(
@@ -286,7 +448,7 @@ def eval_a_posteriori(
   config = Box(config_dict)
   beta = 0
   if config.case == "react_diff":
-    r = config.react_diff.r
+    r = config.sim.r
     _, rd_coarse = create_fine_coarse_simulator(config)
     run_simulation = partial(
     train_utils.run_simulation_coarse_grid_correction, train_state, rd_coarse,
