@@ -31,7 +31,6 @@ def run_simulation_coarse_grid_correction(
 
   @jax.jit
   def iter(uv: jnp.array, expert: jnp.array = 0):
-    uv = uv.transpose(1, 2, 0)
     correction, _ = train_state.apply_fn_with_bn(
       {
         "params": train_state.params,
@@ -40,28 +39,30 @@ def run_simulation_coarse_grid_correction(
       uv.reshape(1, *uv.shape),
       is_training=False
     )
-    correction = correction.reshape(nx, nx, -1).transpose(2, 0, 1)
-    uv = uv.transpose(2, 0, 1)
-    tmp = (
-      uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] + uv[:, 0::2, 1::2] +
-      uv[:, 1::2, 1::2]
-    ) / 4
-    uv = coarse_model.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
+    correction = correction.reshape(nx, nx, -1)
+    tmp = jnp.zeros((nx // r, nx // r, 2))
+    for k in range(r):
+      for j in range(r):
+        tmp += uv[k::r, j::r]
+    tmp = tmp / (r**2)
+    uv = coarse_model.adi(
+      tmp.transpose(2, 0, 1).reshape(-1)
+    ).reshape(2, nx // r, nx // r)
     uv = jnp.vstack(
       [
         jnp.kron(uv[0], jnp.ones((r, r))).reshape(1, nx, nx),
         jnp.kron(uv[1], jnp.ones((r, r))).reshape(1, nx, nx),
       ]
-    )
+    ).reshape(nx, nx, 2)
     return uv + (correction * (1 - beta) + beta * expert) * dt
 
   nx = uv.shape[1]
   dt = coarse_model.dt
   step_num = coarse_model.step_num
-  x_hist = np.zeros([step_num, 2, nx, nx])
+  x_hist = np.zeros([step_num, nx, nx, 2])
   for i in range(step_num):
     x_hist[i] = uv
-    uv = iter(uv, jnp.transpose(label[i], (2, 0, 1)))
+    uv = iter(uv, label[i])
 
   return x_hist
 
@@ -139,12 +140,11 @@ def run_ns_simulation_pressue_correction(
   train_state, ns_model, label: jnp.ndarray, beta: float, uv: jnp.ndarray
 ):
   
-  nx, ny = uv.shape[1:]
+  nx, ny = uv.shape[:-1]
   step_num = ns_model.step_num
-  x_hist = np.zeros([step_num, 2, nx, ny])
+  x_hist = np.zeros([step_num, nx, ny, 2])
   for i in range(step_num):
     x_hist[i] = uv
-    uv = uv.transpose(1, 2, 0)
     correction, _ = train_state.apply_fn_with_bn(
       {
         "params": train_state.params,
@@ -162,9 +162,9 @@ def run_ns_simulation_pressue_correction(
     uv = ns_model.projection_correction(uv, correction[0, ..., 0], beta)
     u = uv[: (nx + 2) * (ny + 2)].reshape(nx + 2, ny + 2)
     v = uv[(nx + 2) * (ny + 2):].reshape(nx + 2, ny + 1)
-    uv_ = jnp.zeros((2, nx, ny), dtype=jnp.float64)
-    uv_ = uv_.at[0].set(u[1:-1, 1:-1])
-    uv_ = uv_.at[1].set(v[1:-1, 1:])
+    uv_ = jnp.zeros((nx, ny, 2), dtype=jnp.float64)
+    uv_ = uv_.at[..., 0].set(u[1:-1, 1:-1])
+    uv_ = uv_.at[..., 1].set(v[1:-1, 1:])
     uv = uv_
 
   return x_hist
