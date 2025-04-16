@@ -140,6 +140,7 @@ def run_ns_simulation_pressue_correction(
   train_state, ns_model, label: jnp.ndarray, beta: float, uv: jnp.ndarray
 ):
   
+  uv = jnp.array(uv)
   nx, ny = uv.shape[:-1]
   step_num = ns_model.step_num
   x_hist = np.zeros([step_num, nx, ny, 2])
@@ -153,18 +154,9 @@ def run_ns_simulation_pressue_correction(
       uv.reshape(1, *uv.shape),
       is_training=False
     )
-    # uv = ns_model.projection_correction(uv, jnp.transpose(label[i], (2, 0, 1)))
-    u = np.zeros((nx + 2, ny + 2), dtype=jnp.float64)
-    v = np.zeros((nx + 2, ny + 1), dtype=jnp.float64)
-    u[1:-1, 1:-1] = uv[..., 0]
-    v[1:-1, 1:] = uv[..., 1]
-    uv = np.hstack([u.reshape(-1), v.reshape(-1)])
-    uv = ns_model.projection_correction(uv, correction[0, ..., 0], beta)
-    u = uv[: (nx + 2) * (ny + 2)].reshape(nx + 2, ny + 2)
-    v = uv[(nx + 2) * (ny + 2):].reshape(nx + 2, ny + 1)
-    uv_ = jnp.zeros((nx, ny, 2), dtype=jnp.float64)
-    uv_ = uv_.at[..., 0].set(u[1:-1, 1:-1])
-    uv_ = uv_.at[..., 1].set(v[1:-1, 1:])
-    uv = uv_
+    u, v, _ = ns_model.projection_correction(
+      uv[..., 0], uv[..., 1], correction[0, ..., 0]
+    )
+    uv = jnp.concatenate([u[..., None], v[..., None]], axis=-1)
 
   return x_hist

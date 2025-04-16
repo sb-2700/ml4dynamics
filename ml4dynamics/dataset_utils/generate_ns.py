@@ -1,5 +1,6 @@
 import copy
 from datetime import datetime
+from functools import partial
 
 import h5py
 import jax
@@ -46,6 +47,10 @@ def main():
     i = i + 1
     print('generating the {}-th trajectory...'.format(j))
     y0 = r.rand() * 0.4 + 0.3
+    iter = partial(
+      utils.projection_correction,
+      dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, eps=eps, dt=dt, Re=Re, BC=BC
+    )
     u_inlet = np.exp(-(np.linspace(dy / 2, 1 - dy / 2, ny) - y0)**2)
     u = jnp.tile(u_inlet, (nx, 1))
     v = jnp.zeros([nx, ny])
@@ -58,21 +63,16 @@ def main():
     v_hist = np.zeros([(step_num + warm_up) // writeInterval, nx, ny])
     p_hist = np.zeros([(step_num + warm_up) // writeInterval, nx, ny])
 
-    flag = True
     for k in range(step_num + warm_up):
       t = k * dt
-      u, v, p = utils.projection_correction(
-        u, v, p, dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, eps=eps, dt=dt,
-        Re=Re, BC=BC
-      )
-      if flag == False:
-        break
+      u, v, p = iter(u, v, p)
       if k % writeInterval == 0:
         u_hist[k // writeInterval, :, :] = copy.deepcopy(u)
         v_hist[k // writeInterval, :, :] = copy.deepcopy(v)
         p_hist[k // writeInterval, :, :] = copy.deepcopy(p)
 
-    if flag:
+    if not np.isnan(u_hist).any() and not np.isnan(v_hist).any(
+    ) and not np.isnan(p_hist).any():
       # successful generating traj
       u_hist_[j] = copy.deepcopy(u_hist[warm_up // writeInterval:])
       v_hist_[j] = copy.deepcopy(v_hist[warm_up // writeInterval:])

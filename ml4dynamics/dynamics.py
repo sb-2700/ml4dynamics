@@ -1088,6 +1088,7 @@ class NS_channel(dynamics):
     T=10,
     dt=0.01,
     Re=100,
+    BC="Dirichlet",
     tol=1e-8,
     init_scale=4,
     tv_scale=1e-8,
@@ -1103,124 +1104,171 @@ class NS_channel(dynamics):
     self.N = (nx + 2) * (2 * ny + 3)
     self.dt = dt
     self.Re = Re
-    self.assembly_matrix()
+    self.BC = BC
+    self.assembly_NSmatrix(self.nx, self.ny, self.dx, self.dy, self.BC)
 
-  def assembly_matrix(self):
-    nx = self.nx
-    ny = self.ny
-    dx = self.dx
-    dy = self.dy
-    LNx = np.eye(nx) * (-2)
-    LNy = np.eye(ny) * (-2)
-    for i in range(1, nx - 1):
-      LNx[i, i - 1] = 1
-      LNx[i, i + 1] = 1
-    for i in range(1, ny - 1):
-      LNy[i, i - 1] = 1
-      LNy[i, i + 1] = 1
-    LNx[0, 1] = 1
-    LNx[0, 0] = -1
-    LNx[-1, -1] = -1
-    LNx[-1, -2] = 1
-    LNy[0, 1] = 1
-    LNy[0, 0] = -1
-    LNy[-1, -1] = -1
-    LNy[-1, -2] = 1
-    # LNx = spa.csc_matrix(LNx / (dx**2))
-    # LNy = spa.csc_matrix(LNy / (dy**2))
-    # # BE CAREFUL, SINCE THE LAPLACIAN MATRIX IN X Y DIRECTION IS NOT THE SAME
-    # #L2N = spa.kron(LNy, spa.eye(nx)) + spa.kron(spa.eye(ny), LNx)
-    # L2N = spa.kron(LNx, spa.eye(ny)) + spa.kron(spa.eye(nx), LNy)
-    # self.L = copy.deepcopy(L2N)
-    # #for i in range(ny):
-    # #    L[(i+1)*nx - 1, (i+1)*nx - 1] = L[(i+1)*nx - 1, (i+1)*nx - 1] - 2
-    # for i in range(ny):
-    #   self.L[-1 - i, -1 - i] = self.L[-1 - i, -1 - i] - 2 / (dx**2)
+  def assembly_NSmatrix(self, nx, ny, dx, dy, BC: str = "Dirichlet"):
+    """assemble matrices used in the calculation
+      LD: Laplacian operator with Dirichlet BC
+      LN: Laplacian operator with Neuman BC, notice that this operator may have
+      different form depends on the position of the boundary, here we use the
+      case that boundary is between the outmost two grids
+      L:  Laplacian operator associated with current BC with three Neuman BCs on
+      upper, lower, left boundary and a Dirichlet BC on right
+      """
 
-    # jax implementation
-    L2N = np.kron(LNx / (dx**2), np.eye(ny)) +\
-      np.kron(np.eye(nx), LNy / (dy**2))
-    self.L = copy.deepcopy(L2N)
-    for i in range(ny):
-      self.L[-1 - i, -1 - i] = self.L[-1 - i, -1 - i] - 2 / (dx**2)
+    def Laplacian_Neumann(n):
+      LN = jnp.roll(jnp.eye(n), 1, axis=1) + jnp.roll(jnp.eye(n), -1, axis=1) -\
+        jnp.eye(n) * 2
+      LN = LN.at[0, 0].set(-1)
+      LN = LN.at[0, -1].set(0)
+      LN = LN.at[-1, -1].set(-1)
+      LN = LN.at[-1, 0].set(0)
+      return LN
 
-  def projection_correction(self, uv, p=None, beta=0, y0=0.325):
+    LNx = Laplacian_Neumann(nx)
+    LNy = Laplacian_Neumann(ny)
+    L = jnp.kron(LNx / (dx**2), jnp.eye(ny)) + jnp.kron(jnp.eye(nx), LNy / (dy**2))
+    if BC == "Dirichlet":
+      for i in range(ny):
+        L = L.at[-1 - i, -1 - i].add(- 2 / (dx**2))
+    elif BC == "Neumann":
+      L = jnp.vstack([L, jnp.ones_like(L[0:1])])
+      L = jnp.hstack([L, jnp.ones_like(L[:, 0:1])])
+      L = L.at[-1, -1].set(0)
+    self.L = L
+
+  def projection_correction(
+    self,
+    u: jnp.ndarray,
+    v: jnp.ndarray,
+    p: jnp.ndarray,
+    dx=1 / 32,
+    dy=1 / 32,
+    nx=128,
+    ny=32,
+    y0=0.325,
+    eps=1e-7,
+    dt=.01,
+    Re=100,
+    BC: str = "Dirichlet",
+  ):
     """projection method to solve the incompressible NS equation
       The convection discretization is given by central difference
-      u_ij (u_i+1,j - u_i-1,j)/2dx + \Sigma v_ij (u_i,j+1 - u_i,j-1)/2dx"""
+      u_ij (u_i+1,j - u_i-1,j)/2dx + \Sigma v_ij (u_i,j+1 - u_i,j-1)/2dx
+      
+    The collocation point of p locates at the center of the cell (1/2, 1/2)
+    The collocation point of u locates at the right of p (1, 1/2)
+    The collocation point of v locates at the top of p (1/2, 1)
+    v[:, -1] = 0 for the no-slip boundary condition
 
-    nx = self.nx
-    ny = self.ny
-    dx = self.dx
-    dy = self.dy
-    dt = self.dt
-    Re = self.Re
-    u = uv[:(nx + 2) * (ny + 2)].reshape((nx + 2, ny + 2))
-    v = uv[(nx + 2) * (ny + 2):].reshape((nx + 2, ny + 1))
-    t = 0
+    """
 
-    # central difference for first derivative
-    u_x = (u[2:, 1:-1] - u[:-2, 1:-1]) / dx / 2
-    u_y = (u[1:-1, 2:] - u[1:-1, :-2]) / dy / 2
-    v_x = (v[2:, 1:-1] - v[:-2, 1:-1]) / dx / 2
-    v_y = (v[1:-1, 2:] - v[1:-1, :-2]) / dy / 2
+    def _u_padx(u: jnp.ndarray):
+      return jnp.vstack([u_inlet, u, u[-1]])
+    
+    def _v_padx(v: jnp.ndarray):
+      return jnp.vstack([2 * v_inlet - v[0], v, v[-1]])
+    
+    def _u_pady(u: jnp.ndarray):
+      return jnp.hstack([-u[:, 0:1], u, -u[:, -1:]])
+    
+    def _v_pady(v: jnp.ndarray):
+      return jnp.hstack([jnp.zeros_like(v[:, 0:1]), v, -v[:, -2:-1]])
 
-    # five pts scheme for Laplacian
-    u_xx = (-2 * u[1:-1, 1:-1] + u[2:, 1:-1] + u[:-2, 1:-1]) / (dx**2)
-    u_yy = (-2 * u[1:-1, 1:-1] + u[1:-1, 2:] + u[1:-1, :-2]) / (dy**2)
-    #u_xy = (u[2:,2:]+u[:-2,:-2]-2*u[1:-1,1:-1])/(dx**2)/2 - \
-    #        (u_xx+u_yy)/2
-    v_xx = (-2 * v[1:-1, 1:-1] + v[2:, 1:-1] + v[:-2, 1:-1]) / (dx**2)
-    v_yy = (-2 * v[1:-1, 1:-1] + v[1:-1, 2:] + v[1:-1, :-2]) / (dy**2)
-    #v_xy = (v[2:,2:]+v[:-2,:-2]-2*v[1:-1,1:-1])/(dx**2)/2 - \
-    #        (v_xx+v_yy)/2
+    def _v2u(v: jnp.ndarray):
+      """interpolate v to u"""
+      v_pady = jnp.hstack([jnp.zeros_like(v[:, 0:1]), v])
+      v = jnp.vstack([v_pady, v_pady[-1]])
+      return (v[1:, 1:] + v[:-1, 1:] + v[1:, :-1] + v[:-1, :-1]) / 4
+    
+    def _u2v(u: jnp.ndarray):
+      """interpolate u to v"""
+      u_padx = jnp.vstack([u_inlet, u])
+      u = jnp.hstack([u_padx, -u_padx[:, -1:]])
+      return (u[1:, 1:] + u[:-1, 1:] + u[1:, :-1] + u[:-1, :-1]) / 4
 
-    # interpolate u, v on v, u respectively, we interpolate using the four neighbor nodes
-    u2v = (u[:-2, 1:-2] + u[1:-1, 1:-2] + u[:-2, 2:-1] + u[1:-1, 2:-1]) / 4
-    v2u = (v[1:-1, :-1] + v[2:, :-1] + v[1:-1, 1:] + v[2:, 1:]) / 4
+    def grad_p(p: jnp.ndarray, dpdn: float = 0):
+      """calculate the gradient of the pressure
+      
+      p: (nx, ny)
+      dpdx: (nx - 1, ny)
+      dpdy: (nx, ny - 1)
+      dpdx[-1] = dpdy[:, -1] = 0 since p satisfies the Neuman BC 
+      """
+      if BC == "Dirichlet":
+        p_padx = jnp.vstack([p, -p[-1:]])
+      elif BC == "Neumann":
+        p_padx = jnp.vstack([p, p[-1:] + dpdn * dx])
+      dpdx = (p_padx[1:] - p_padx[:-1]) / dx
+      dpdy = (p[:, 1:] - p[:, :-1]) / dy
+      return dpdx, dpdy
+    
+    def div_uv(u: jnp.ndarray, v: jnp.ndarray):
+      """calculate the divergence of the velocity field"""
+      u_padx = jnp.vstack([u_inlet, u])
+      dudx = (u_padx[1:] - u_padx[:-1]) / dx
+      v_pady = jnp.hstack([jnp.zeros_like(v[:, 0:1]), v])
+      dvdy = (v_pady[:, 1:] - v_pady[:, :-1]) / dy
+      return dudx + dvdy
+    
+    def laplace_uv(u: jnp.ndarray, v: jnp.ndarray):
+      """calculate the Laplacian of the velocity field"""
 
-    # prediction step: forward Euler
-    u[1:-1, 1:-1] = u[
-      1:-1, 1:-1] + dt * ((u_xx + u_yy) / Re - u[1:-1, 1:-1] * u_x - v2u * u_y)
-    v[1:-1, 1:-1] = v[
-      1:-1, 1:-1] + dt * ((v_xx + v_yy) / Re - u2v * v_x - v[1:-1, 1:-1] * v_y)
+      u_padx = _u_padx(u)
+      u_pad = _u_pady(u_padx)
+      lapl_u = (u_pad[2:, 1:-1] - 2 * u_pad[1:-1, 1:-1] + u_pad[:-2, 1:-1]) / dx**2 +\
+        (u_pad[1:-1, 2:] - 2 * u_pad[1:-1, 1:-1] + u_pad[1:-1, :-2]) / dy**2
+      v_padx = _v_padx(v)
+      v_pad = _v_pady(v_padx)
+      lapl_v = (v_pad[1:-1, 2:] - 2 * v_pad[1:-1, 1:-1] + v_pad[1:-1, :-2]) / dy**2 +\
+        (v_pad[2:, 1:-1] - 2 * v_pad[1:-1, 1:-1] + v_pad[:-2, 1:-1]) / dx**2
+      return lapl_u, lapl_v
+    
+    def transport(u: jnp.ndarray, v: jnp.ndarray):
+      """calculate the transport term of the velocity field"""
+      u_padx = _u_padx(u)
+      u_pady = _u_pady(u)
+      uu_x = (u_padx[2:] - u_padx[:-2]) / dx / 2 * u
+      vu_y = (u_pady[:, 2:] - u_pady[:, :-2]) / dy / 2 * _v2u(v)
+      v_padx = _v_padx(v)
+      v_pady = _v_pady(v)
+      uv_x = (v_padx[2:] - v_padx[:-2]) / dx / 2 * _u2v(u)
+      vv_y = (v_pady[:, 2:] - v_pady[:, :-2]) / dy / 2 * v
 
-    # correction step: calculating the residue of Poisson equation as the
-    #  divergence of new velocity field
-    divu = (u[1:-1, 1:-1] -
-            u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
-    p_ = jax.scipy.linalg.solve(self.L, divu.reshape(nx * ny)).reshape([nx, ny])
-    if not p.all():
-      p = p + beta * (p_ - p)
-    else:
-      p = p_
+      return uu_x + vu_y, uv_x + vv_y
 
-    u[1:-2, 1:-1] = u[1:-2, 1:-1] - (p[1:, :] - p[:-1, :]) / dx
-    v[1:-1, 1:-1] = v[1:-1, 1:-1] - (p[:, 1:] - p[:, :-1]) / dy
-    u[-2, 1:-1] = u[-2, 1:-1] + 2 * p[-1, :] / dx
+    u_inlet = np.exp(-(np.linspace(dy / 2, 1 - dy / 2, ny) - y0)**2)
+    v_inlet = jnp.zeros(ny)
 
-    # check the corrected velocity field is divergence free
-    divu = (u[1:-1, 1:-1] -
-            u[:-2, 1:-1]) / dx + (v[1:-1, 1:] - v[1:-1, :-1]) / dy
-    if jnp.linalg.norm(divu) > self.tol:
-      print(jnp.linalg.norm(divu))
-      print(t)
+    dpdx, dpdy = grad_p(p)
+    lapl_u, lapl_v = laplace_uv(u, v)
+    du, dv = transport(u, v)
+    u += -dpdx * dt
+    v = v.at[:, :-1].add(-dpdy * dt)
+    u += dt * (lapl_u / Re - du)
+    v += dt * (lapl_v / Re - dv)
+    v = v.at[:, -1].set(0)
+
+    # pressure correction
+    res = div_uv(u, v) / dt
+    if BC == "Dirichlet":
+      p_res = jnp.linalg.solve(self.L, res.reshape(-1)).reshape([nx, ny])
+      dpdn = 0
+    elif BC == "Neumann":
+      dpdn = -res.sum() / ny * dx
+      res = res.at[-1].add(dpdn / dx)
+      p_res = jnp.linalg.solve(
+        self.L, jnp.hstack([res.reshape(-1), jnp.zeros(1)])
+      )[:-1].reshape([nx, ny])
+
+    dpdx, dpdy = grad_p(p_res, -dpdn)
+    u += -dpdx * dt
+    v = v.at[:, :-1].add(-dpdy * dt)
+
+    res_ = div_uv(u, v)
+    if jnp.linalg.norm(res_) > eps:
+      print(jnp.linalg.norm(res_))
       print("Velocity field is not divergence free!!!")
-      breakpoint()
-      raise Exception("Velocity field is not divergence free!!!")
 
-    # update Dirichlet BC on left, upper, lower boundary
-    u[:, 0] = -u[:, 1]
-    u[:, -1] = -u[:, -2]
-    v[0, 1:-1] = 2 * np.exp(-50 * (np.linspace(dy, 1 - dy, ny - 1) - y0)**2
-                            ) * np.sin(t) - v[1, 1:-1]
-    # update Neuman BC on right boundary
-    u[-1, :] = u[-3, :]
-    v[-1, :] = v[
-      -2, :]  # alternative choice to use Neuman BC for v on the right boundary
-    #v[-1, 1:-1] = v[-1, 1:-1] + (p[-1, 1:] - p[-1, :-1])/dy
-
-    uv[:(nx + 2) * (ny + 2)] = u.reshape(-1)
-    uv[(nx + 2) * (ny + 2):] = v.reshape(-1)
-
-    return uv
+    return u, v, p + p_res

@@ -8,7 +8,6 @@ import jax.numpy as jnp
 import jax.scipy.sparse.linalg as jsla
 import ml_collections
 import numpy as np
-import numpy.linalg as nalg
 import optax
 import torch
 from time import time
@@ -742,7 +741,7 @@ def RD_cn(
     res = F(u_next, v_next, u, v)
 
     count = 0
-    while nalg.norm(res) > tol:
+    while jnp.linalg.norm(res) > tol:
       D_[:n * n, :n *
          n] = D_[:n * n, :n *
                  n] + dt / 2 * (spa.diags(3 * (u_next**2)) - spa.eye(n * n))
@@ -934,8 +933,8 @@ def projection_correction(
   v = v.at[:, :-1].add(-dpdy * dt)
 
   res_ = div_uv(u, v)
-  if nalg.norm(res_) > eps:
-    print(nalg.norm(res_))
+  if jnp.linalg.norm(res_) > 1e-12:
+    print(jnp.linalg.norm(res_))
     print("Velocity field is not divergence free!!!")
 
   return u, v, p + p_res
