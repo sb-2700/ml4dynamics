@@ -2,12 +2,16 @@ import copy
 from datetime import datetime
 
 import h5py
+import jax
+import jax.numpy as jnp
 import numpy as np
 import numpy.random as r
 import yaml
 from box import Box
 
 import ml4dynamics.utils as utils
+
+jax.config.update("jax_enable_x64", True)
 
 
 def main():
@@ -19,6 +23,7 @@ def main():
   Re = config.sim.Re
   dx = 1 / ny
   dy = 1 / ny
+  BC = config.sim.BC
   case_num = config.sim.case_num
   eps = 1e-7
   dt = .01
@@ -30,9 +35,9 @@ def main():
   r.seed(0)
   print('Generating NS data with n = {}, Re = {} ...'.format(nx, Re))
 
-  utils.assembly_NSmatrix(nx, ny, dt, dx, dy)
-  u_hist_ = np.zeros([case_num, step_num // writeInterval, nx + 2, ny + 2])
-  v_hist_ = np.zeros([case_num, step_num // writeInterval, nx + 2, ny + 1])
+  utils.assembly_NSmatrix(nx, ny, dx, dy, BC)
+  u_hist_ = np.zeros([case_num, step_num // writeInterval, nx, ny])
+  v_hist_ = np.zeros([case_num, step_num // writeInterval, nx, ny])
   p_hist_ = np.zeros([case_num, step_num // writeInterval, nx, ny])
 
   j = 0
@@ -41,23 +46,24 @@ def main():
     i = i + 1
     print('generating the {}-th trajectory...'.format(j))
     y0 = r.rand() * 0.4 + 0.3
-    u = np.zeros([nx + 2, ny + 2])
-    v = np.zeros([nx + 2, ny + 1])
-    p = np.zeros([nx, ny])  # staggered grid, the size of grid p is undetermined
-    divu = np.zeros(
-      [nx, ny]
-    )  # source term in poisson equation: divergence of the predicted velocity field
-    u[0, 1:-1] = np.exp(-50 * (np.linspace(dy / 2, 1 - dy / 2, ny) - y0)**2)
-    u_hist = np.zeros([(step_num + warm_up) // writeInterval, nx + 2, ny + 2])
-    v_hist = np.zeros([(step_num + warm_up) // writeInterval, nx + 2, ny + 1])
+    u_inlet = np.exp(-(np.linspace(dy / 2, 1 - dy / 2, ny) - y0)**2)
+    u = jnp.tile(u_inlet, (nx, 1))
+    v = jnp.zeros([nx, ny])
+    p = jnp.zeros([nx, ny])  # staggered grid, the size of grid p is undetermined
+    # source term in poisson equation: divergence of the predicted velocity field
+    # divu = np.zeros(
+    #   [nx, ny]
+    # )  
+    u_hist = np.zeros([(step_num + warm_up) // writeInterval, nx, ny])
+    v_hist = np.zeros([(step_num + warm_up) // writeInterval, nx, ny])
     p_hist = np.zeros([(step_num + warm_up) // writeInterval, nx, ny])
 
     flag = True
     for k in range(step_num + warm_up):
       t = k * dt
-      u, v, p, flag = utils.projection_correction(
-        u, v, t, dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, eps=eps, dt=dt,
-        Re=Re, flag=flag
+      u, v, p = utils.projection_correction(
+        u, v, p, dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, eps=eps, dt=dt,
+        Re=Re, BC=BC
       )
       if flag == False:
         break
@@ -74,15 +80,9 @@ def main():
       j = j + 1
 
   if j == case_num:
-    # TODO: need to modified this part to store the whole simulation data on
-    # the grid
-    # old data size, save all the data on the grid points
-    # U = np.zeros([case_num, step_num // writeInterval, 2, nx + 2, ny + 2])
-    # U[:, :, 0] = u_hist_
-    # U[:, :, 1, :, 1:] = v_hist_
     U = np.zeros([case_num, step_num // writeInterval, nx, ny, 2])
-    U[..., 0] = u_hist_[:, :, 1:-1, 1:-1]
-    U[..., 1] = v_hist_[:, :, 1:-1, 1:]
+    U[..., 0] = u_hist_
+    U[..., 1] = v_hist_
     data = {
       "metadata": {
         "type": "ns",
