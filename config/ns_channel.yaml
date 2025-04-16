@@ -26,7 +26,8 @@ sim:
   ny: 32
   Lx: 4.0
   Ly: 1.0
-  Re: 100
+  Re: 300
+  BC: Dirichlet
   dim: 2
   T: 10
   dt: .01
@@ -45,7 +46,7 @@ train:
   lr: 0.1
   batch_size_unet: 200
   buffer_size: 10
-  epochs: 1000
+  epochs: 000
   decay: 500 # number of epochs to decay the learning rate
   save: 100
   vae:

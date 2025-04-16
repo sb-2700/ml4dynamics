@@ -19,21 +19,20 @@ upload: false
 output_path: 2D_diff-react_NA_NA
 
 # name of the run, accessed by loggers
-case: react_diff
+case: ks
 
 sim:
-  alpha: 0.01
-  beta: 1.0
-  gamma: 0.05
-  d: 2
-  T: 5
-  dt: 0.001
-  Lx: 6.4
-  nx: 256
+  nu: 1
+  c: 1.6
+  T: 400
+  dt: .1
+  L: 128
+  nx: 1024
   r: 4
-  sgs: filter       # filter, correction
+  init_scale: 1.
+  BC: Dirichlet-Neumann
   seed: 42
-  case_num: 10      # number of simulations to perform
+  case_num: 1       # number of simulations to perform
   warm_up: 200      # warm up step for simulation
   patience: 5       # patience for NaN simulation
   writeInterval: 2
@@ -45,18 +44,20 @@ plot:
 
 train:
   stratify: False
+  sgs: correction # filter, correction
   bins: 50
   subsample: 200
   mode: gaussian # regression, gaussian, generative
   linear: True # whether add a linear residue layer
   n_g: 1 # number of gaussian mixture components
   input: uxx # uglobal, u, ux, uxx, uxxxx
-  lr: 0.1
+  lr: 0.01
   batch_size: 1000000
   batch_size_unet: 200
   buffer_size: 10
-  epochs: 10
-  decay: 100 # number of epochs to decay the learning rate
+  epochs: 500
+  epochs_ae: 200
+  decay: 50 # number of epochs to decay the learning rate
   save: 100
   vae:
     latents: 128

@@ -16,7 +16,7 @@ jax.config.update("jax_enable_x64", True)
 
 
 def main():
-  with open(f"config/ns.yaml", "r") as file:
+  with open(f"config/ns_channel.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
   config = Box(config_dict)
   nx = config.sim.nx
@@ -26,7 +26,6 @@ def main():
   dy = 1 / ny
   BC = config.sim.BC
   case_num = config.sim.case_num
-  eps = 1e-7
   dt = .01
   step_num = 2000
   t = step_num * dt
@@ -34,7 +33,7 @@ def main():
   warm_up = 500
   writeInterval = 2
   r.seed(0)
-  print('Generating NS data with n = {}, Re = {} ...'.format(nx, Re))
+  print('Generating channel NS data with nx = {}, Re = {} ...'.format(nx, Re))
 
   utils.assembly_NSmatrix(nx, ny, dx, dy, BC)
   u_hist_ = np.zeros([case_num, step_num // writeInterval, nx, ny])
@@ -49,7 +48,7 @@ def main():
     y0 = r.rand() * 0.4 + 0.3
     iter = partial(
       utils.projection_correction,
-      dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, eps=eps, dt=dt, Re=Re, BC=BC
+      dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, dt=dt, Re=Re, BC=BC
     )
     u_inlet = np.exp(-(np.linspace(dy / 2, 1 - dy / 2, ny) - y0)**2)
     u = jnp.tile(u_inlet, (nx, 1))
@@ -65,7 +64,7 @@ def main():
 
     for k in range(step_num + warm_up):
       t = k * dt
-      u, v, p = iter(u, v, p)
+      u, v, p = iter(u, v, p, t)
       if k % writeInterval == 0:
         u_hist[k // writeInterval, :, :] = copy.deepcopy(u)
         v_hist[k // writeInterval, :, :] = copy.deepcopy(v)
@@ -114,7 +113,7 @@ def main():
     }
 
     with h5py.File(
-      f"data/ns/Re{Re}_n{case_num}.h5", "w"
+      f"data/ns/channel{BC}_Re{Re}_nx{nx}_n{case_num}.h5", "w"
     ) as f:
       metadata_group = f.create_group("metadata")
       for key, value in data["metadata"].items():
@@ -123,12 +122,6 @@ def main():
       data_group = f.create_group("data")
       data_group.create_dataset("inputs", data=data["data"]["input_fine"])
       data_group.create_dataset("outputs", data=data["data"]["output_fine"])
-      # data_group.create_dataset(
-      #   "input_coarse", data=data["data"]["input_coarse"]
-      # )
-      # data_group.create_dataset(
-      #   "output_coarse", data=data["data"]["output_coarse"]
-      # )
 
       config_group = f.create_group("config")
       config_yaml = yaml.dump(data["config"])
