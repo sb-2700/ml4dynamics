@@ -4,9 +4,9 @@ from box import Box
 from matplotlib import cm
 from matplotlib import pyplot as plt
 
-from ml4dynamics.dynamics import NS_channel
+from ml4dynamics.dynamics import ns_channel
 
-with open("config/simulation.yaml", "r") as file:
+with open("config/ns_channel.yaml", "r") as file:
   config_dict = yaml.safe_load(file)
 config = Box(config_dict)
 # model parameters
@@ -21,7 +21,7 @@ dt = config.ns.dt
 step_num = int(T / dt)
 
 # NS channel simulator with no-slip BC
-ns_fine = NS_channel(
+ns_fine = ns_channel(
   Lx=Lx,
   nx=nx,
   ny=ny,
@@ -42,10 +42,10 @@ fig, axs = plt.subplots(n_plot, n_plot)
 axs = axs.flatten()
 for i in range(n_plot**2):
   axs[i].imshow(
-    ns_fine.x_hist[i * 100, :(nx + 2) * (ny + 2)].reshape(nx + 2, ny + 2),
-    cmap=cm.jet
+    ns_fine.x_hist[i * 100, :nx * ny].reshape(nx, ny),
+    cmap=cm.twilight
   )
   axs[i].axis("off")
-plt.savefig("test.pdf")
+plt.savefig("ns_channel.png")
 
 breakpoint()

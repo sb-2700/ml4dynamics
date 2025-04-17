@@ -135,7 +135,7 @@ for i in range(c_array.shape[0]):
   u2_std = u2_std.at[:, i].set(jnp.std(u2mean_tmp, axis=1))
   print(u2bar[:, i])
   if n_sample <= 2:
-    plt.savefig(f"results/fig/hist{c_array[i]:.2f}.pdf")
+    plt.savefig(f"results/fig/hist{c_array[i]:.2f}.png")
   plt.clf()
 _, axs = plt.subplots(1, 2, figsize=(10, 4))
 for j in range(len(ks_models)):
@@ -161,4 +161,4 @@ axs[0].set_ylabel(r"$\langle \overline{u} \rangle$")
 axs[1].set_ylabel(r"$\langle \overline{u^2} \rangle$")
 axs[0].legend()
 axs[1].legend()
-plt.savefig("results/fig/ks_c_stats.pdf")
+plt.savefig("results/fig/ks_c_stats.png")

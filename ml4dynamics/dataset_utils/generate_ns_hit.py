@@ -1,4 +1,3 @@
-import copy
 from datetime import datetime
 
 import h5py
@@ -19,13 +18,15 @@ def main():
     config_dict = yaml.safe_load(file)
   config = Box(config_dict)
   Re = config.sim.Re
-  nx = config.sim.nx
-  model = dynamics.NS(L=2 * jnp.pi, N=nx, T=10, dt=0.01, nu=1/Re)
+  n = config.sim.n
+  T = config.sim.T
+  dt = config.sim.dt
+  L = config.sim.L
+  model = dynamics.ns_hit(L=L * jnp.pi, N=n, nu=1/Re, T=T, dt=dt)
   case_num = config.sim.case_num
-  step_num = 2000
   patience = 50  # we admit 50 times blow up generations
-  writeInterval = 2
-  print('Generating NS HIT data with n = {}, Re = {} ...'.format(nx, Re))
+  writeInterval = 1
+  print('Generating NS HIT data with n = {}, Re = {} ...'.format(n, Re))
 
   j = 0
   i = 0
@@ -33,31 +34,33 @@ def main():
     i = i + 1
     print('generating the {}-th trajectory...'.format(j))
     model.w_hat = jnp.zeros((model.N, model.N//2+1))
-    model.w_hat[:8, :8] = random.normal(random.PRNGKey(0), (8, 8)) * model.init_scale
+    model.w_hat = model.w_hat.at[:8, :8].set(
+      random.normal(random.PRNGKey(0), (8, 8)) * model.init_scale
+    )
     model.set_x_hist(model.w_hat, model.CN)
 
-    if not jnp.isnan(model.w_hat).any():
+    if not jnp.isnan(model.x_hist).any():
       # successful generating traj
-      
       j = j + 1
 
   if j == case_num:
-    U = np.zeros([case_num, step_num // writeInterval, nx, nx, 1])
-    U[..., 0] = model.w_hat
     data = {
       "metadata": {
         "type": "ns",
         "t0": 0.0,
-        "t1": t,
+        "t1": T,
+        "Re": Re,
+        "L": L,
         "dt": dt * writeInterval,
-        "nx": nx,
+        "nx": n,
         "description": "Navier-Stokes PDE dataset",
         "author": "Jiaxi Zhao",
         "creation_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       },
       "data": {
         "input_fine":
-        w.reshape(-1, nx, ny, 2),  # shape [case_num * step_num // writeInterval, nx+2, ny+2, 2]
+        model.x_hist.transpose(2, 0, 1)[..., None],  
+        # shape [case_num * step_num // writeInterval, nx+2, ny+2, 2]
       },
       "config":
       config_dict,

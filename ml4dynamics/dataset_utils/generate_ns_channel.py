@@ -31,7 +31,7 @@ def main():
   t = step_num * dt
   patience = 50  # we admit 50 times blow up generations
   warm_up = 500
-  writeInterval = 2
+  writeInterval = 1
   r.seed(0)
   print('Generating channel NS data with nx = {}, Re = {} ...'.format(nx, Re))
 
@@ -45,10 +45,10 @@ def main():
   while j < case_num and i < patience:
     i = i + 1
     print('generating the {}-th trajectory...'.format(j))
-    y0 = r.rand() * 0.4 + 0.3
+    y0 = 0.325
     iter = partial(
       utils.projection_correction,
-      dx=dx, dy=dy, nx=nx, ny=ny, y0=y0, dt=dt, Re=Re, BC=BC
+      dx=dx, dy=dy, nx=nx, ny=ny, dt=dt, Re=Re, BC=BC
     )
     u_inlet = np.exp(-(np.linspace(dy / 2, 1 - dy / 2, ny) - y0)**2)
     u = jnp.tile(u_inlet, (nx, 1))

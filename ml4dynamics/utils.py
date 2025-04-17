@@ -47,7 +47,9 @@ def load_data(
     )
   elif pde_type == "ns":
     Re = config.sim.Re
-    dataset = f"Re{Re}_n{case_num}"
+    nx = config.sim.nx
+    BC = config.sim.BC
+    dataset = f"channel{BC}_Re{Re}_nx{nx}_n{case_num}"
   h5_filename = f"data/{pde_type}/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
@@ -163,7 +165,7 @@ def create_ns_simulator(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
   # model parameters
-  ns_model = dynamics.NS_channel(
+  ns_model = dynamics.ns_channel(
     Lx=config.sim.Lx,
     nx=config.sim.nx,
     ny=config.sim.ny,
@@ -809,15 +811,16 @@ def projection_correction(
   u: jnp.ndarray,
   v: jnp.ndarray,
   p: jnp.ndarray,
+  t: float,
   dx=1 / 32,
   dy=1 / 32,
   nx=128,
   ny=32,
   y0=0.325,
-  eps=1e-7,
   dt=.01,
   Re=100,
   BC: str = "Dirichlet",
+  correction: bool = False,
 ):
   """projection method to solve the incompressible NS equation
     The convection discretization is given by central difference
@@ -903,9 +906,13 @@ def projection_correction(
     vv_y = (v_pady[:, 2:] - v_pady[:, :-2]) / dy / 2 * v
 
     return uu_x + vu_y, uv_x + vv_y
+  
+  def inlet(y: jnp.ndarray):
+    """set the inlet velocity"""
+    return y * (1 - y) * jnp.exp(-10*(y - y0)**2)
 
-  u_inlet = np.exp(-(np.linspace(dy / 2, 1 - dy / 2, ny) - y0)**2)
-  v_inlet = jnp.zeros(ny)
+  u_inlet = inlet(np.linspace(dy / 2, 1 - dy / 2, ny))
+  v_inlet = inlet(np.linspace(dy, 1, ny)) * jnp.cos(t)
 
   dpdx, dpdy = grad_p(p)
   lapl_u, lapl_v = laplace_uv(u, v)
@@ -916,28 +923,30 @@ def projection_correction(
   v += dt * (lapl_v / Re - dv)
   v = v.at[:, -1].set(0)
 
-  # pressure correction
-  res = div_uv(u, v) / dt
-  if BC == "Dirichlet":
-    p_res = jnp.linalg.solve(L, res.reshape(-1)).reshape([nx, ny])
-    dpdn = 0
-  elif BC == "Neumann":
-    dpdn = -res.sum() / ny * dx
-    res = res.at[-1].add(dpdn / dx)
-    p_res = jnp.linalg.solve(
-      L, jnp.hstack([res.reshape(-1), jnp.zeros(1)])
-    )[:-1].reshape([nx, ny])
+  if not correction:
+    # pressure correction
+    res = div_uv(u, v) / dt
+    if BC == "Dirichlet":
+      p_res = jnp.linalg.solve(L, res.reshape(-1)).reshape([nx, ny])
+      dpdn = 0
+    elif BC == "Neumann":
+      dpdn = -res.sum() / ny * dx
+      res = res.at[-1].add(dpdn / dx)
+      p_res = jnp.linalg.solve(
+        L, jnp.hstack([res.reshape(-1), jnp.zeros(1)])
+      )[:-1].reshape([nx, ny])
 
-  dpdx, dpdy = grad_p(p_res, -dpdn)
-  u += -dpdx * dt
-  v = v.at[:, :-1].add(-dpdy * dt)
+    dpdx, dpdy = grad_p(p_res, -dpdn)
+    u += -dpdx * dt
+    v = v.at[:, :-1].add(-dpdy * dt)
+    p += p_res
 
   res_ = div_uv(u, v)
   if jnp.linalg.norm(res_) > 1e-12:
     print(jnp.linalg.norm(res_))
     print("Velocity field is not divergence free!!!")
 
-  return u, v, p + p_res
+  return u, v, p
 
 
 def a_posteriori_analysis(
@@ -1139,7 +1148,7 @@ def a_posteriori_analysis(
 
 
 def plot_with_horizontal_colorbar(
-  im_array, fig_size=(10, 4), title_array=None, file_path=None
+  im_array, fig_size=(10, 4), title_array=None, file_path=None, dpi=100
 ):
 
   fig, axs = plt.subplots(
@@ -1153,7 +1162,7 @@ def plot_with_horizontal_colorbar(
   for i in range(im_array.shape[0]):
     for j in range(im_array.shape[1]):
       im.append(
-        axs[i * im_array.shape[1] + j].imshow(im_array[i, j], cmap=cm.viridis)
+        axs[i * im_array.shape[1] + j].imshow(im_array[i, j], cmap=cm.twilight)
       )
       if title_array is not None:
         axs[i * im_array.shape[1] +
@@ -1171,7 +1180,7 @@ def plot_with_horizontal_colorbar(
   fig.tight_layout(pad=0.0)
 
   if file_path is not None:
-    plt.savefig(file_path, dpi=300)
+    plt.savefig(file_path, dpi=dpi)
   plt.clf()
 
 

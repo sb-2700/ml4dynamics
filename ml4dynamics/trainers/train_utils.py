@@ -155,7 +155,7 @@ def run_ns_simulation_pressue_correction(
       is_training=False
     )
     u, v, _ = ns_model.projection_correction(
-      uv[..., 0], uv[..., 1], correction[0, ..., 0]
+      uv[..., 0], uv[..., 1], correction[0, ..., 0], correction=True
     )
     uv = jnp.concatenate([u[..., None], v[..., None]], axis=-1)
 

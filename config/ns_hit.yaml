@@ -22,9 +22,9 @@ output_path: 2D_diff-react_NA_NA
 case: ns
 
 sim:
-  nx: 128
-  Lx: 2
-  Re: 10000
+  n: 256
+  L: 2
+  Re: 40000
   dim: 2
   T: 10
   dt: .01

@@ -9,8 +9,6 @@ import jax
 import jax.numpy as jnp
 import jax.random as random
 import numpy as np
-import scipy.sparse as spa
-import torch
 from jax.numpy.linalg import solve
 from matplotlib import pyplot as plt
 from scipy.integrate import solve_ivp
@@ -340,8 +338,8 @@ class dynamics(object):
     r = self.step_num // n
     J = self.Jacobi
     print('size of the least square system: {}'.format(n * N))
-    R = torch.eye(n * N).to(self.device)
-    b = torch.zeros((n - 1) * N).to(self.device)
+    R = jnp.eye(n * N)
+    b = jnp.zeros((n - 1) * N)
     # here we move the external defined dfds function to a class method, currently only implemented for
     # NS equation and Lorenz equation, would be better to implement also for other dynamics
     dfds = self.dfds
@@ -350,13 +348,13 @@ class dynamics(object):
       if discretization == 'FE':
         # forward Euler discretization
         R[i * N:(i + 1) * N, (i + 1) * N:(i + 2) *
-          N] = -torch.eye(N).to(self.device
+          N] = -jnp.eye(N).to(self.device
                                 ) - dt * J(self.x_hist[..., (n - 2 - i) * r])
         b[i * N:(i + 1) * N] = dfds(self.x_hist[..., (n - 2 - i) * r]) * dt
       elif discretization == 'BE':
         # backward Euler discretization
         R[i * N:(i + 1) * N,
-          (i + 1) * N:(i + 2) * N] = -torch.eye(N).to(self.device)
+          (i + 1) * N:(i + 2) * N] = -jnp.eye(N)
         R[i * N:(i + 1) * N,
           i * N:(i + 1) * N] = R[i * N:(i + 1) * N, i * N:(i + 1) *
                                  N] - dt * J(self.x_hist[..., (n - 1 - i) * r])
@@ -364,7 +362,7 @@ class dynamics(object):
       elif discretization == 'CN':
         # CN discretization
         R[i * N:(i + 1) * N,
-          (i + 1) * N:(i + 2) * N] = -torch.eye(N).to(self.device) - dt * J(
+          (i + 1) * N:(i + 2) * N] = -jnp.eye(N) - dt * J(
             self.x_hist[..., (n - 2 - i) * r]
           ) / 2
         R[i * N:(i + 1) * N, i * N:(i + 1) *
@@ -376,7 +374,7 @@ class dynamics(object):
         ) / 2 * dt
     T2 = time.perf_counter()
     print('Assembly time: {:4e}'.format(T2 - T1))
-    #print('Condition number: {:.2e}'.format(torch.linalg.cond(R[:(n-1)*N])))
+    #print('Condition number: {:.2e}'.format(jnp.linalg.cond(R[:(n-1)*N])))
     #T3 = time.perf_counter()
     #print('Conditioning time: {:4e}'.format(T3 - T2))
     #print('Norm of the residue vector: {:.2e}'.format(jnp.linalg.norm(b)))
@@ -470,14 +468,14 @@ class Lorenz(dynamics):
 
   def f(self, t, x):
     # parallel version
-    fx = torch.zeros(x.shape)
+    fx = jnp.zeros(x.shape)
     fx[0] = self.sigma * (x[1] - x[0])
     fx[1] = x[0] * (self.rho - x[2]) - x[1]
     fx[2] = x[0] * x[1] - self.beta * x[2]
     return fx
 
   def Jacobi(self, x):
-    jacobi = torch.zeros([self.N, self.N])
+    jacobi = jnp.zeros([self.N, self.N])
     jacobi[0, 0] = -self.sigma
     jacobi[0, 1] = self.sigma
     jacobi[1, 0] = self.rho - x[2]
@@ -493,17 +491,17 @@ class Lorenz(dynamics):
         The attractor is set for the purpose to calculate the Lyapunov exponent and 
         the intrinsic dimension of the dynamics
         """
-    self.attractor = torch.zeros(self.N)
+    self.attractor = jnp.zeros(self.N)
     if self.rho > 1:
-      self.attractor[0] = -torch.sqrt(self.beta * (self.rho - 1))
-      self.attractor[1] = -torch.sqrt(self.beta * (self.rho - 1))
+      self.attractor[0] = -jnp.sqrt(self.beta * (self.rho - 1))
+      self.attractor[1] = -jnp.sqrt(self.beta * (self.rho - 1))
       self.attractor[2] = self.rho - 1
     self.attractor_flag = True
 
   def dfds(self, x):
     # ijnput: x is the 3D state vector of the Lorenz model,
     # output: dfd\rho where \rho is the Rayleigh number of the Lorenz model
-    output = torch.zeros(x.shape)
+    output = jnp.zeros(x.shape)
     output[1] = x[0]
     return output
 
@@ -915,12 +913,12 @@ class react_diff(dynamics):
     return jnp.hstack([u.reshape(-1), v.reshape(-1)])
 
 
-class NS(dynamics):
+class ns_hit(dynamics):
 
   def __init__(
     self,
     model_type='NS',
-    L=2 * jnp.pi,
+    L=2 * np.pi,
     N=128,
     T=10,
     dt=0.01,
@@ -928,48 +926,46 @@ class NS(dynamics):
     tol=1e-8,
     init_scale=4,
     tv_scale=1e-8,
-    device=torch.device('cpu'),
     plot=False
   ):
-    super(NS,
+    super(ns_hit,
           self).__init__(model_type, N, T, dt, tol, init_scale, tv_scale, plot)
 
-    self.device = device
     self.L = L
     self.dx = self.L / self.N
-    self.nu = torch.Tensor([dt]).to(self.device)
-    self.nu = torch.Tensor([nu]).to(self.device)
+    self.dt = dt
+    self.nu = nu
     self.assembly_spectral()
 
   def assembly_spectral(self):
     # assembly array for spectral method
     N = self.N
     L = self.L
-    x = torch.linspace(0, L - L / N, N)
-    y = torch.linspace(0, L - L / N, N)
-    self.X, self.Y = torch.meshgrid(x, y, indexing='ij')
-    self.X = self.X.to(self.device)
-    self.Y = self.Y.to(self.device)
-    kx = jnp.fft.rfftfreq(N, d=L / N) * 2 * jnp.pi
-    ky = jnp.fft.fftfreq(N, d=L / N) * 2 * jnp.pi
-    self.kx, self.ky = torch.meshgrid(ky, kx, indexing='ij')
-    self.kx = self.kx.to(self.device)
-    self.ky = self.ky.to(self.device)
-    k2x = jnp.fft.rfftfreq(N * 2, d=L / N * 2) * 2 * jnp.pi
-    k2y = jnp.fft.fftfreq(N * 2, d=L / N * 2) * 2 * jnp.pi
-    self.k2x, self.k2y = torch.meshgrid(k2y, k2x, indexing='ij')
-    self.k2x = self.k2x.to(self.device)
-    self.k2y = self.k2y.to(self.device)
-    self.laplacian = -(self.kx**2 + self.ky**2).to(self.device)
-    self.laplacian_ = self.laplacian.clone()
+    x = np.linspace(0, L - L / N, N)
+    y = np.linspace(0, L - L / N, N)
+    self.X, self.Y = np.meshgrid(x, y, indexing='ij')
+    self.X = self.X
+    self.Y = self.Y
+    kx = np.fft.rfftfreq(N, d=L / N) * 2 * np.pi
+    ky = np.fft.fftfreq(N, d=L / N) * 2 * np.pi
+    self.kx, self.ky = np.meshgrid(ky, kx, indexing='ij')
+    self.kx = self.kx
+    self.ky = self.ky
+    k2x = np.fft.rfftfreq(N * 2, d=L / N * 2) * 2 * np.pi
+    k2y = np.fft.fftfreq(N * 2, d=L / N * 2) * 2 * np.pi
+    self.k2x, self.k2y = np.meshgrid(k2y, k2x, indexing='ij')
+    self.k2x = self.k2x
+    self.k2y = self.k2y
+    self.laplacian = -(self.kx**2 + self.ky**2)
+    self.laplacian_ = self.laplacian.copy()
     self.laplacian_[0, 0] = 1
 
   def assembly_matrix(self):
     N = self.N
     L = self.L
     dx = self.dx
-    L1 = torch.zeros(N, N, device=self.device)
-    L2 = torch.zeros(N, N, device=self.device)
+    L1 = np.zeros((N, N))
+    L2 = np.zeros((N, N))
 
     # assembly matrix for FDM
     # this is for periodic boundary condition#
@@ -981,31 +977,30 @@ class NS(dynamics):
       L2[i, (i - 1) % N] = 1
 
     L1 = L1 / 2 / dx
-    eye_device = torch.eye(N).to(self.device)
-    self.Lx = torch.kron(L1, eye_device)
-    self.Ly = torch.kron(eye_device, L1)
+    self.Lx = np.kron(L1, np.eye(N))
+    self.Ly = np.kron(np.eye(N), L1)
     L2 = L2 / dx**2
-    self.L2 = torch.kron(L2, eye_device) + torch.kron(eye_device, L2)
-    self.L2_inv = torch.linalg.pinv(self.L2)
+    self.L2 = np.kron(L2, np.eye(N)) + np.kron(np.eye(N), L2)
+    self.L2_inv = np.linalg.pinv(self.L2)
     #self.L2 = self.L2.to_sparse_csr()
 
   def Jacobi(self, w):
     # This Jacobi matrix is based on flatten the 2D state variable w
-    # ijnput: w is the vorticity in physical space, a 1D tensor of size N \times N,
+    # input: w is the vorticity in physical space of size N \times N,
     # output:
-    w_hat = jnp.fft.rfft2(w)
+    w_hat = np.fft.rfft2(w)
     psi = -w_hat / self.laplacian_
-    u = torch.zeros([2, self.N**2], device=self.device)
-    u[0] = jnp.fft.irfft2(1j * psi * self.ky).reshape(self.N**2)
-    u[1] = jnp.fft.irfft2(1j * psi * self.kx).reshape(self.N**2)
+    u = np.zeros([2, self.N**2], device=self.device)
+    u[0] = np.fft.irfft2(1j * psi * self.ky).reshape(self.N**2)
+    u[1] = np.fft.irfft2(1j * psi * self.kx).reshape(self.N**2)
     w = w.reshape(self.N**2)
     jacobi = self.nu * self.L2 - \
-            (torch.diag(u[0]) @  self.Lx + torch.diag(u[1]) @ self.Ly) - \
-            (torch.diag(self.Lx @ w) @ self.Ly - torch.diag(self.Ly @ w) @ self.Lx) @ self.L2_inv
+            (np.diag(u[0]) @  self.Lx + np.diag(u[1]) @ self.Ly) - \
+            (np.diag(self.Lx @ w) @ self.Ly - np.diag(self.Ly @ w) @ self.Lx) @ self.L2_inv
     return jacobi
 
   def dfds(self, w):
-    # ijnput: w is the vorticity in physical space, a 1D tensor of size N \times N,
+    # input: w is the vorticity in physical space, a 1D tensor of size N \times N,
     # output: \Delta w is the Laplacian of the vorticity in physical space, a 1D tensor of size N \times N,
     return self.L2 @ w.reshape(self.N**2)
 
@@ -1013,23 +1008,23 @@ class NS(dynamics):
     # Crank-Nicolson scheme for spectral method with periodic boundary condition
     dt = self.dt
     nu = self.nu
-    w_hat2 = torch.zeros(
-      w_hat.shape[0] * 2, w_hat.shape[1] * 2 - 1, dtype=torch.complex128
-    ).to(self.device)
-    psi_hat2 = torch.zeros(
-      w_hat.shape[0] * 2, w_hat.shape[1] * 2 - 1, dtype=torch.complex128
-    ).to(self.device)
-    w_hat2[:w_hat.shape[0], :w_hat.shape[1]] = w_hat.clone()
+    w_hat2 = np.zeros(
+      (w_hat.shape[0] * 2, w_hat.shape[1] * 2 - 1), dtype=np.complex128
+    )
+    psi_hat2 = np.zeros(
+      (w_hat.shape[0] * 2, w_hat.shape[1] * 2 - 1), dtype=np.complex128
+    )
+    w_hat2[:w_hat.shape[0], :w_hat.shape[1]] = w_hat.copy()
     psi_hat2[:w_hat.shape[0], :w_hat.shape[1]] = -w_hat / self.laplacian_
-    wx2 = jnp.fft.irfft2(1j * w_hat2 * self.k2x)
-    wy2 = jnp.fft.irfft2(1j * w_hat2 * self.k2y)
-    psix2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2x)
-    psiy2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2y)
-    #force = jnp.cos(2*Y) * 0.0
-    #print(jnp.linalg.norm(wx2*psiy2-wy2*psix2))
+    wx2 = np.fft.irfft2(1j * w_hat2 * self.k2x)
+    wy2 = np.fft.irfft2(1j * w_hat2 * self.k2y)
+    psix2 = np.fft.irfft2(1j * psi_hat2 * self.k2x)
+    psiy2 = np.fft.irfft2(1j * psi_hat2 * self.k2y)
+    #force = np.cos(2*Y) * 0.0
+    #print(np.linalg.norm(wx2*psiy2-wy2*psix2))
     w_hat = (
       (1 + dt / 2 * nu * self.laplacian) * w_hat - dt *
-      jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)[:w_hat.shape[0], :w_hat.shape[1]]
+      np.fft.rfft2(wx2 * psiy2 - wy2 * psix2)[:w_hat.shape[0], :w_hat.shape[1]]
     ) / (1 - dt / 2 * nu * self.laplacian)
     return w_hat
 
@@ -1040,34 +1035,33 @@ class NS(dynamics):
 
   def set_x_hist(self, w, iter):
     step_num = self.step_num
-    self.xhat_hist = torch.zeros(
-      w.shape[0], w.shape[1], step_num, dtype=torch.complex128
-    ).to(self.device)
-    self.x_hist = torch.zeros(
-      jnp.fft.irfft2(w).shape[0],
-      jnp.fft.irfft2(w).shape[1], step_num
-    ).to(self.device)
-    self.u_hist = torch.zeros([2, self.N, self.N, step_num]).to(self.device)
-    self.ke = torch.zeros(step_num).to(self.device)
-    self.err_hist = torch.zeros(step_num).to(self.device)
-    self.kappa = torch.Tensor([4]).to(self.device)
+    self.xhat_hist = np.zeros(
+      (w.shape[0], w.shape[1], step_num), dtype=np.complex128
+    )
+    self.x_hist = np.zeros(
+      (np.fft.irfft2(w).shape[0], np.fft.irfft2(w).shape[1], step_num)
+    )
+    self.u_hist = np.zeros((2, self.N, self.N, step_num))
+    self.ke = np.zeros(step_num)
+    self.err_hist = np.zeros(step_num)
+    # self.kappa = 4
     for i in range(step_num):
-      self.xhat_hist[:, :, i] = w.clone()
-      self.x_hist[:, :, i] = jnp.fft.irfft2(w)
+      self.xhat_hist[:, :, i] = w.copy()
+      self.x_hist[:, :, i] = np.fft.irfft2(w)
       psi = -w / self.laplacian_
-      self.u_hist[1, :, :, i] = -jnp.fft.irfft2(1j * psi * self.kx)
-      self.u_hist[0, :, :, i] = jnp.fft.irfft2(1j * psi * self.ky)
-      self.ke[i] = torch.sum(self.u_hist[:, :, :, i]**2)
+      self.u_hist[1, :, :, i] = -np.fft.irfft2(1j * psi * self.kx)
+      self.u_hist[0, :, :, i] = np.fft.irfft2(1j * psi * self.ky)
+      self.ke[i] = np.sum(self.u_hist[:, :, :, i]**2)
       w = iter(w)
-      #self.err_hist[i] = torch.sum((irfft2(w) -
-      #       2*self.kappa * torch.cos(self.kappa*self.X)
-      #       * torch.cos(self.kappa*self.Y)
-      #       * torch.exp(
-      #           torch.Tensor([-2*self.kappa**2*(i+1)*self.dt*self.nu])))**2
+      #self.err_hist[i] = np.sum((irfft2(w) -
+      #       2*self.kappa * np.cos(self.kappa*self.X)
+      #       * np.cos(self.kappa*self.Y)
+      #       * np.exp(
+      #           np.Tensor([-2*self.kappa**2*(i+1)*self.dt*self.nu])))**2
       #         )
 
 
-class NS_channel(dynamics):
+class ns_channel(dynamics):
   r"""
   
   $$
@@ -1094,7 +1088,7 @@ class NS_channel(dynamics):
     tv_scale=1e-8,
     plot=False
   ):
-    super(NS_channel,
+    super(ns_channel,
           self).__init__(model_type, N, T, dt, tol, init_scale, tv_scale, plot)
 
     self.Lx = Lx
@@ -1143,15 +1137,11 @@ class NS_channel(dynamics):
     u: jnp.ndarray,
     v: jnp.ndarray,
     p: jnp.ndarray,
-    dx=1 / 32,
-    dy=1 / 32,
-    nx=128,
-    ny=32,
+    t: float = 0,
     y0=0.325,
     eps=1e-7,
     dt=.01,
-    Re=100,
-    BC: str = "Dirichlet",
+    correction: bool = False,
   ):
     """projection method to solve the incompressible NS equation
       The convection discretization is given by central difference
@@ -1163,7 +1153,6 @@ class NS_channel(dynamics):
     v[:, -1] = 0 for the no-slip boundary condition
 
     """
-
     def _u_padx(u: jnp.ndarray):
       return jnp.vstack([u_inlet, u, u[-1]])
     
@@ -1196,9 +1185,9 @@ class NS_channel(dynamics):
       dpdy: (nx, ny - 1)
       dpdx[-1] = dpdy[:, -1] = 0 since p satisfies the Neuman BC 
       """
-      if BC == "Dirichlet":
+      if self.BC == "Dirichlet":
         p_padx = jnp.vstack([p, -p[-1:]])
-      elif BC == "Neumann":
+      elif self.BC == "Neumann":
         p_padx = jnp.vstack([p, p[-1:] + dpdn * dx])
       dpdx = (p_padx[1:] - p_padx[:-1]) / dx
       dpdy = (p[:, 1:] - p[:, :-1]) / dy
@@ -1237,9 +1226,19 @@ class NS_channel(dynamics):
       vv_y = (v_pady[:, 2:] - v_pady[:, :-2]) / dy / 2 * v
 
       return uu_x + vu_y, uv_x + vv_y
+      
+    def inlet(y: jnp.ndarray):
+      """set the inlet velocity"""
+      return y * (1 - y) * jnp.exp(-10*(y - y0)**2)
 
-    u_inlet = np.exp(-(np.linspace(dy / 2, 1 - dy / 2, ny) - y0)**2)
-    v_inlet = jnp.zeros(ny)
+    nx = self.nx
+    ny = self.ny
+    dx = self.dx
+    dy = self.dy
+    dt = self.dt
+    Re = self.Re
+    u_inlet = inlet(np.linspace(dy / 2, 1 - dy / 2, ny))
+    v_inlet = inlet(np.linspace(dy, 1, ny)) * jnp.cos(t)
 
     dpdx, dpdy = grad_p(p)
     lapl_u, lapl_v = laplace_uv(u, v)
@@ -1250,25 +1249,27 @@ class NS_channel(dynamics):
     v += dt * (lapl_v / Re - dv)
     v = v.at[:, -1].set(0)
 
-    # pressure correction
-    res = div_uv(u, v) / dt
-    if BC == "Dirichlet":
-      p_res = jnp.linalg.solve(self.L, res.reshape(-1)).reshape([nx, ny])
-      dpdn = 0
-    elif BC == "Neumann":
-      dpdn = -res.sum() / ny * dx
-      res = res.at[-1].add(dpdn / dx)
-      p_res = jnp.linalg.solve(
-        self.L, jnp.hstack([res.reshape(-1), jnp.zeros(1)])
-      )[:-1].reshape([nx, ny])
+    if not correction:
+      # pressure correction
+      res = div_uv(u, v) / dt
+      if self.BC == "Dirichlet":
+        p_res = jnp.linalg.solve(self.L, res.reshape(-1)).reshape([nx, ny])
+        dpdn = 0
+      elif self.BC == "Neumann":
+        dpdn = -res.sum() / ny * dx
+        res = res.at[-1].add(dpdn / dx)
+        p_res = jnp.linalg.solve(
+          self.L, jnp.hstack([res.reshape(-1), jnp.zeros(1)])
+        )[:-1].reshape([nx, ny])
 
-    dpdx, dpdy = grad_p(p_res, -dpdn)
-    u += -dpdx * dt
-    v = v.at[:, :-1].add(-dpdy * dt)
+      dpdx, dpdy = grad_p(p_res, -dpdn)
+      u += -dpdx * dt
+      v = v.at[:, :-1].add(-dpdy * dt)
+      p += p_res
 
-    res_ = div_uv(u, v)
-    if jnp.linalg.norm(res_) > eps:
-      print(jnp.linalg.norm(res_))
-      print("Velocity field is not divergence free!!!")
+    # res_ = div_uv(u, v)
+    # if jnp.linalg.norm(res_) > eps:
+    #   print(jnp.linalg.norm(res_))
+    #   print("Velocity field is not divergence free!!!")
 
-    return u, v, p + p_res
+    return u, v, p

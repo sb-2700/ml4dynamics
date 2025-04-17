@@ -51,8 +51,8 @@ n_plot = 3
 fig, axs = plt.subplots(n_plot, n_plot)
 axs = axs.flatten()
 for i in range(n_plot**2):
-  axs[i].imshow(rd_fine.x_hist[i * 500, :nx**2].reshape(nx, nx), cmap=cm.jet)
+  axs[i].imshow(rd_fine.x_hist[i * 500, :nx**2].reshape(nx, nx), cmap=cm.twilight)
   axs[i].axis("off")
-plt.savefig("test.pdf")
+plt.savefig("rd.png")
 
 breakpoint()
