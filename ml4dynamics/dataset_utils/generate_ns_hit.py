@@ -3,7 +3,6 @@ from datetime import datetime
 import h5py
 import jax
 import jax.numpy as jnp
-import numpy as np
 import yaml
 from box import Box
 from jax import random
@@ -24,7 +23,7 @@ def main():
   L = config.sim.L
   model = dynamics.ns_hit(L=L * jnp.pi, N=n, nu=1/Re, T=T, dt=dt)
   case_num = config.sim.case_num
-  patience = 50  # we admit 50 times blow up generations
+  patience = 50
   writeInterval = 1
   print('Generating NS HIT data with n = {}, Re = {} ...'.format(n, Re))
 
@@ -38,6 +37,19 @@ def main():
       random.normal(random.PRNGKey(0), (8, 8)) * model.init_scale
     )
     model.set_x_hist(model.w_hat, model.CN)
+
+    psi_hat = -model.xhat_hist / model.laplacian_[..., None]
+    dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[..., None], axes=(0, 1))
+    dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[..., None], axes=(0, 1))
+    dwdx = jnp.fft.irfft2(
+      1j * model.xhat_hist * model.kx[..., None], axes=(0, 1)
+    )
+    dwdy = jnp.fft.irfft2(
+      1j * model.xhat_hist * model.ky[..., None], axes=(0, 1)
+    )
+    J = dpsidy * dwdx - dpsidx * dwdy
+    breakpoint()
+
 
     if not jnp.isnan(model.x_hist).any():
       # successful generating traj
