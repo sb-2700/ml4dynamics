@@ -95,14 +95,10 @@ def main():
         "creation_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       },
       "data": {
-        "input_fine":
+        "inputs":
         U.reshape(-1, nx, ny, 2),  # shape [case_num * step_num // writeInterval, nx+2, ny+2, 2]
-        "output_fine":
+        "outputs":
         p_hist_.reshape(-1, nx, ny, 1),  # shape [case_num * step_num // writeInterval, nx, ny, 1]
-        # "input_coarse":
-        # u_coarse,  # shape [case_num * step_num // writeInterval, 2, nx//2, ny//2]
-        # "output_coarse":
-        # label_coarse,  # shape [case_num, step_num // writeInterval, 2, nx//2, ny//2]
       },
       "config":
       config_dict,
@@ -120,8 +116,8 @@ def main():
         metadata_group.create_dataset(key, data=value)
 
       data_group = f.create_group("data")
-      data_group.create_dataset("inputs", data=data["data"]["input_fine"])
-      data_group.create_dataset("outputs", data=data["data"]["output_fine"])
+      data_group.create_dataset("inputs", data=data["data"]["inputs"])
+      data_group.create_dataset("outputs", data=data["data"]["outputs"])
 
       config_group = f.create_group("config")
       config_yaml = yaml.dump(data["config"])

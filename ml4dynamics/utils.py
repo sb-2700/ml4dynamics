@@ -44,11 +44,15 @@ def load_data(
     dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}_{}".format(
       alpha, beta, gamma, case_num, sgs
     )
-  elif pde_type == "ns":
+  elif pde_type == "ns_channel":
     Re = config.sim.Re
     nx = config.sim.nx
     BC = config.sim.BC
-    dataset = f"channel{BC}_Re{Re}_nx{nx}_n{case_num}"
+    dataset = f"{BC}_Re{Re}_nx{nx}_n{case_num}"
+  elif pde_type == "ns_hit":
+    Re = config.sim.Re
+    n = config.sim.n
+    dataset = f"Re{Re}_nx{n}_n{case_num}"
   h5_filename = f"data/{pde_type}/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
@@ -160,7 +164,7 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
   return model_fine, model_coarse
 
 
-def create_ns_simulator(config_dict: ml_collections.ConfigDict):
+def create_ns_channel_simulator(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
   # model parameters
@@ -175,22 +179,49 @@ def create_ns_simulator(config_dict: ml_collections.ConfigDict):
   return ns_model
 
 
+def create_ns_hit_simulator(config_dict: ml_collections.ConfigDict):
+
+  config = Box(config_dict)
+  # model parameters
+  ns_model = dynamics.ns_channel(
+    Lx=config.sim.L * np.pi,
+    N=config.sim.n,
+    T=config.sim.T,
+    dt=config.sim.dt,
+    nu=1/config.sim.Re,
+  )
+  return ns_model
+
+
 def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
   rng = random.PRNGKey(config.sim.seed)
   if config.case == "react_diff":
-    unet = UNet(input_features=2, output_features=2)
+    input_features = 2
+    output_features = 2
     nx = ny = config.sim.nx
     n_sample = 4000
-  elif config.case == "ns":
-    unet = UNet(input_features=2, output_features=1)
+  elif config.case == "ns_channel":
+    input_features = 2
+    output_features = 1
     n_sample = 800
     nx = config.sim.nx
     ny = config.sim.ny
+  elif config.case == "ns_hit":
+    input_features = 1
+    output_features = 1
+    n_sample = 800
+    nx = ny = config.sim.n
+  elif config.case == "ks":
+    input_features = 1
+    output_features = 1
+    n_sample = 800
+    nx = config.sim.nx
+  unet = UNet(input_features=input_features, output_features=output_features)
   rng1, rng2 = random.split(rng)
   init_rngs = {'params': rng1, 'dropout': rng2}
-  unet_variables = unet.init(init_rngs, jnp.ones([1, nx, ny, 2]))
+  unet_variables = unet.init(init_rngs, jnp.ones([1, nx, ny, input_features]))
   step_per_epoch = n_sample * config.sim.case_num // config.train.batch_size_unet
   # TODO: need to specify the scheduler here for different training
   schedule = optax.piecewise_constant_schedule(
@@ -457,8 +488,14 @@ def eval_a_posteriori(
       run_simulation = partial(
         train_utils.run_simulation_sgs, train_state, model, outputs, beta
       )   
-  elif config.case == "ns":
-    model = create_ns_simulator(config)
+  elif config.case == "ns_channel":
+    model = create_ns_channel_simulator(config)
+    run_simulation = partial(
+      train_utils.run_ns_simulation_pressue_correction, train_state, model,
+      outputs, beta
+    )
+  elif config.case == "ns_hit":
+    model = create_ns_hit_simulator(config)
     run_simulation = partial(
       train_utils.run_ns_simulation_pressue_correction, train_state, model,
       outputs, beta

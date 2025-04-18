@@ -1,4 +1,5 @@
 from datetime import datetime
+from functools import partial
 
 import h5py
 import jax
@@ -6,6 +7,7 @@ import jax.numpy as jnp
 import yaml
 from box import Box
 from jax import random
+from jax.lax import conv_general_dilated
 
 from ml4dynamics import dynamics
 
@@ -48,8 +50,29 @@ def main():
       1j * model.xhat_hist * model.ky[..., None], axes=(0, 1)
     )
     J = dpsidy * dwdx - dpsidx * dwdy
-    breakpoint()
 
+    kernel_x = 3
+    kernel_y = 3
+    kernel = jnp.ones((1, kernel_x, kernel_y, 1)) / kernel_x / kernel_y
+    conv = partial(
+      conv_general_dilated,
+      rhs=kernel,
+      window_strides=(2, 2),
+      padding='VALID',
+      dimension_numbers=('NXYC', 'OXYI', 'NXYC'),
+    )
+    padded_J = jnp.pad(
+      J.transpose(2, 0, 1)[..., None],
+      pad_width=((0, 0), (1, 1), (1, 1), (0, 0)),
+      mode='wrap'
+    )
+    padded_w = jnp.pad(
+      model.x_hist.transpose(2, 0, 1)[..., None],
+      pad_width=((0, 0), (1, 1), (1, 1), (0, 0)),
+      mode='wrap'
+    )
+    J_coarse = conv(padded_J)
+    w_coarse = conv(padded_w)
 
     if not jnp.isnan(model.x_hist).any():
       # successful generating traj
@@ -70,9 +93,10 @@ def main():
         "creation_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       },
       "data": {
-        "input_fine":
-        model.x_hist.transpose(2, 0, 1)[..., None],  
-        # shape [case_num * step_num // writeInterval, nx+2, ny+2, 2]
+        "inputs":
+        w_coarse,  # shape [case_num * step_num // writeInterval, nx, ny, 1]
+        "outputs":
+        J_coarse,  # shape [case_num * step_num // writeInterval, nx, ny, 1]
       },
       "config":
       config_dict,
@@ -83,15 +107,15 @@ def main():
     }
 
     with h5py.File(
-      f"data/ns/Re{Re}_n{case_num}.h5", "w"
+      f"data/ns_hit/Re{Re}_nx{n}_n{case_num}.h5", "w"
     ) as f:
       metadata_group = f.create_group("metadata")
       for key, value in data["metadata"].items():
         metadata_group.create_dataset(key, data=value)
 
       data_group = f.create_group("data")
-      data_group.create_dataset("inputs", data=data["data"]["input_fine"])
-      data_group.create_dataset("outputs", data=data["data"]["output_fine"])
+      data_group.create_dataset("inputs", data=data["data"]["inputs"])
+      data_group.create_dataset("outputs", data=data["data"]["outputs"])
       # data_group.create_dataset(
       #   "input_coarse", data=data["data"]["input_coarse"]
       # )
