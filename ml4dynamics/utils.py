@@ -2,7 +2,6 @@ import gc
 from functools import partial
 
 import h5py
-import haiku as hk
 import jax
 import jax.numpy as jnp
 import jax.scipy.sparse.linalg as jsla
@@ -485,6 +484,7 @@ def eval_a_posteriori(
       )
     )
   )
+  breakpoint()
 
   # visualization
   n_plot = 6
@@ -954,7 +954,7 @@ def a_posteriori_analysis(
   ks_fine,
   ks_coarse,
   correction_nn: callable,
-  params: hk.Params,
+  params,
 ):
 
   c = config.sim.c
@@ -1151,31 +1151,28 @@ def plot_with_horizontal_colorbar(
   im_array, fig_size=(10, 4), title_array=None, file_path=None, dpi=100
 ):
 
+  if not isinstance(im_array, np.ndarray):
+    im_array = np.array(im_array)
   fig, axs = plt.subplots(
     im_array.shape[0], im_array.shape[1], figsize=fig_size
   )
   axs = axs.flatten()
-  im = []
   fraction = 0.05
   pad = 0.001
-  cbar = []
   for i in range(im_array.shape[0]):
     for j in range(im_array.shape[1]):
-      im.append(
-        axs[i * im_array.shape[1] + j].imshow(im_array[i, j], cmap=cm.twilight)
-      )
-      if title_array is not None:
+      im = axs[i * im_array.shape[1] + j].imshow(im_array[i, j], cmap=cm.twilight)
+      if title_array is not None and\
+        title_array[i * im_array.shape[1] +j] is not None:
         axs[i * im_array.shape[1] +
             j].set_title(title_array[i * im_array.shape[1] + j])
       axs[i * im_array.shape[1] + j].axis("off")
-      cbar.append(
-        fig.colorbar(
-          im[-1],
-          ax=axs[i * im_array.shape[1] + j],
-          fraction=fraction,
-          pad=pad,
-          orientation="horizontal"
-        )
+      fig.colorbar(
+        im,
+        ax=axs[i * im_array.shape[1] + j],
+        fraction=fraction,
+        pad=pad,
+        orientation="horizontal"
       )
   fig.tight_layout(pad=0.0)
 
