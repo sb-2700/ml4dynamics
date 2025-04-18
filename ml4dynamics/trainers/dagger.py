@@ -168,19 +168,19 @@ def main(config_dict: ml_collections.ConfigDict):
     n_plot = 6
     fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
     for j in range(n_plot):
-      im = axs[
-        0,
-        j].imshow(rd_fine.x_hist[j * 500, :nx**2].reshape(nx, nx), cmap=cm.jet)
-      cbar = fig.colorbar(im, ax=axs[0, j], orientation='horizontal')
+      im = axs[0, j].imshow(
+        rd_fine.x_hist[j * 500, :nx**2].reshape(nx, nx), cmap=cm.twilight
+      )
+      _ = fig.colorbar(im, ax=axs[0, j], orientation='horizontal')
       axs[0, j].axis("off")
-      im = axs[1, j].imshow(x_hist[j * 500, 0], cmap=cm.jet)
-      cbar = fig.colorbar(im, ax=axs[1, j], orientation='horizontal')
+      im = axs[1, j].imshow(x_hist[j * 500, 0], cmap=cm.twilight)
+      _ = fig.colorbar(im, ax=axs[1, j], orientation='horizontal')
       axs[1, j].axis("off")
       im = axs[2, j].imshow(
         rd_fine.x_hist[j * 500, :nx**2].reshape(nx, nx) - x_hist[j * 500, 0],
-        cmap=cm.jet
+        cmap=cm.twilight
       )
-      cbar = fig.colorbar(im, ax=axs[2, j], orientation='horizontal')
+      _ = fig.colorbar(im, ax=axs[2, j], orientation='horizontal')
       axs[2, j].axis("off")
 
     plt.savefig(f"results/fig/dagger_cloudmap_{i}.pdf")

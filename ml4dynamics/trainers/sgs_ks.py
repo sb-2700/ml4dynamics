@@ -1,10 +1,10 @@
+import argparse
 from functools import partial
 from typing import Tuple
 
 import haiku as hk
 import jax
 import jax.numpy as jnp
-import ml_collections
 import numpy as np
 import optax
 import yaml
@@ -20,24 +20,35 @@ from ml4dynamics.models.models_jax import model
 from ml4dynamics.types import OptState, PRNGKey
 
 
-def main(config_dict: ml_collections.ConfigDict):
+def main():
 
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+    "-c",
+    "--config",
+    default=None,
+    help="Set the configuration file path."
+  )
+  args = parser.parse_args()
+  with open(f"config/{args.config}.yaml", "r") as file:
+    config_dict = yaml.safe_load(file)
   config = Box(config_dict)
   # model parameters
-  c = config.ks.c
-  T = config.ks.T
-  BC = config.ks.BC
+  c = config.sim.c
+  T = config.sim.T
+  BC = config.sim.BC
   # solver parameters
   if BC == "periodic":
-    N1 = config.ks.nx
+    N1 = config.sim.nx
   elif BC == "Dirichlet-Neumann":
-    N1 = config.ks.nx - 1
-  r = config.ks.r
+    N1 = config.sim.nx - 1
+  r = config.sim.r
   N2 = N1 // r
   rng = random.PRNGKey(config.sim.seed)
   case_num = config.sim.case_num
   ks_fine, ks_coarse = utils.create_fine_coarse_simulator(config)
   inputs, outputs, input_dim, output_dim = utils.data_process(config_dict)
+  breakpoint()
 
   # NOTE: visualize and compare the full and stratified dataset
   # bins = config.train.bins
@@ -276,7 +287,7 @@ def main(config_dict: ml_collections.ConfigDict):
   plt.plot(jnp.array(loss_hist) - min(loss_hist) + 0.01, label="Loss")
   plt.xlabel("iter")
   plt.yscale("log")
-  plt.savefig(f"results/fig/ks_c{c}T{T}n{case_num}_{train_mode}_loss.pdf")
+  plt.savefig(f"results/fig/ks_c{c}T{T}n{case_num}_{train_mode}_loss.png")
   plt.clf()
 
   valid_loss = 0
@@ -297,14 +308,14 @@ def main(config_dict: ml_collections.ConfigDict):
     plt.xlabel(r"$T$")
     plt.ylabel("error")
   elif train_mode == "regression" or train_mode == "gaussian":
-    if case_num == 1:
-      from ml4dynamics.visualize import plot_error_cloudmap
-      err = correction_nn.apply(params, inputs) - outputs
-      err = err[:, 0]
-      plot_error_cloudmap(
-        err.reshape(ks_fine.step_num, N2).T,
-        u.reshape(ks_fine.step_num, N2).T, u_x.T, u_xx.T, u_xxxx.T, train_mode
-      )
+    # if case_num == 1:
+    #   from ml4dynamics.visualize import plot_error_cloudmap
+    #   err = correction_nn.apply(params, inputs) - outputs
+    #   err = err[:, 0]
+    #   plot_error_cloudmap(
+    #     err.reshape(ks_fine.step_num, N2).T,
+    #     u.reshape(ks_fine.step_num, N2).T, u_x.T, u_xx.T, u_xxxx.T, train_mode
+    #   )
 
     # TODO: the treatment here is temporary
     step = jnp.prod(jnp.array(inputs.shape)) // N2 // case_num
@@ -383,7 +394,4 @@ def main(config_dict: ml_collections.ConfigDict):
 
 
 if __name__ == "__main__":
-
-  with open("config/simulation.yaml", "r") as file:
-    config_dict = yaml.safe_load(file)
-  main(config_dict)
+  main()

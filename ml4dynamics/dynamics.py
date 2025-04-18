@@ -1065,7 +1065,12 @@ class ns_channel(dynamics):
   r"""
   
   $$
-
+    \partial_t \bm{u} + (\bm{u} \cdot \nabla) \bm{u} = 
+    -\nabla p + 1/\text{Re} \Delta \bm{u},    \\
+    \nabla \cdot \bm{u} = 0, 	\\
+    \bm{u} = \bm{0}, \quad y = 0, 1, \\
+    \bm{u} = \bm{u_0}, \quad x = 0, \\
+    \frac{\partial \bm{u}}{\partial n} = \bm{0}, \quad x = L_x, \\
   $$
 
   The dimension of the state variable is given by $N = 2 * n * (n/4)$ where

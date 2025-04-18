@@ -469,6 +469,12 @@ def eval_a_posteriori(
   inputs = inputs[:step_num]
   outputs = outputs[:step_num]
   x_hist = run_simulation(inputs[0])
+  # NOTE: for general a-posteriori test
+  # u_fft = jnp.zeros((2, nx, nx))
+  # u_fft = u_fft.at[:, :10, :10].set(
+  #   random.normal(key=random.PRNGKey(0), shape=(2, 10, 10))
+  # )
+  # uv0 = jnp.real(jnp.fft.fftn(u_fft, axes=(1, 2))) / nx
   print(f"simulation takes {time() - start:.2f}s...")
   if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
     print("similation contains NaN!")
