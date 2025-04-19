@@ -24,10 +24,7 @@ def main():
 
   parser = argparse.ArgumentParser()
   parser.add_argument(
-    "-c",
-    "--config",
-    default=None,
-    help="Set the configuration file path."
+    "-c", "--config", default=None, help="Set the configuration file path."
   )
   args = parser.parse_args()
   with open(f"config/{args.config}.yaml", "r") as file:

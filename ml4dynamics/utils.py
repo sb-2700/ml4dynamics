@@ -1,5 +1,6 @@
 import gc
 from functools import partial
+from time import time
 
 import h5py
 import jax
@@ -9,7 +10,6 @@ import ml_collections
 import numpy as np
 import optax
 import torch
-from time import time
 from box import Box
 from jax import random as random
 from matplotlib import cm
@@ -163,7 +163,7 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
       N=n,
       T=T,
       dt=dt,
-      nu=1/config.sim.Re,
+      nu=1 / config.sim.Re,
       init_scale=n**(1.5),
     )
     model_coarse = dynamics.ns_hit(
@@ -171,7 +171,7 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
       N=n // r,
       T=T,
       dt=dt,
-      nu=1/config.sim.Re,
+      nu=1 / config.sim.Re,
       init_scale=(n // r)**(1.5),
     )
   return model_fine, model_coarse
@@ -201,7 +201,7 @@ def create_ns_hit_simulator(config_dict: ml_collections.ConfigDict):
     N=config.sim.n,
     T=config.sim.T,
     dt=config.sim.dt,
-    nu=1/config.sim.Re,
+    nu=1 / config.sim.Re,
     init_scale=config.sim.n**(1.5)
   )
   return model
@@ -243,9 +243,9 @@ def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
     boundaries_and_scales={
       int(b): 0.1
       for b in jnp.arange(
-        config.train.decay * step_per_epoch,
-        config.train.epochs * step_per_epoch,
-        config.train.decay * step_per_epoch)
+        config.train.decay * step_per_epoch, config.train.epochs *
+        step_per_epoch, config.train.decay * step_per_epoch
+      )
     }
   )
   optimizer = optax.adam(schedule)
@@ -386,7 +386,7 @@ def eval_a_priori(
   inputs: jnp.ndarray,
   outputs: jnp.ndarray,
 ):
-  
+
   total_loss = 0
   count = 0
   for batch_inputs, batch_outputs in train_dataloader:
@@ -432,7 +432,7 @@ def eval_a_priori(
         "params": train_state.params,
         "batch_stats": train_state.batch_stats
       },
-      jnp.array(inputs[index_array[j]:index_array[j]+1]),
+      jnp.array(inputs[index_array[j]:index_array[j] + 1]),
       is_training=False
     )
     # use cm.twilight to emphasize the middle range
@@ -487,7 +487,7 @@ def eval_a_posteriori(
   outputs: jnp.ndarray,
   fig_name: str = "cloudmap",
 ):
-  
+
   config = Box(config_dict)
   beta = 0.0
   if config.case == "react_diff":
@@ -495,14 +495,14 @@ def eval_a_posteriori(
     _, model = create_fine_coarse_simulator(config)
     if config.sim.sgs == "correction":
       run_simulation = partial(
-      train_utils.run_simulation_coarse_grid_correction, train_state, model,
-      outputs, r, beta
+        train_utils.run_simulation_coarse_grid_correction, train_state, model,
+        outputs, r, beta
       )
     elif config.sim.sgs == "filter":
       run_simulation = partial(
-        train_utils.run_simulation_sgs, train_state, model, model.adi,
-        outputs, 2, beta
-      ) 
+        train_utils.run_simulation_sgs, train_state, model, model.adi, outputs,
+        2, beta
+      )
   elif config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
     run_simulation = partial(
@@ -564,8 +564,7 @@ def eval_a_posteriori(
     )
     axs[1, j].axis("off")
     im = axs[2, j].imshow(
-      (inputs - x_hist)[index_array[j], ..., 0],
-      cmap=cm.twilight
+      (inputs - x_hist)[index_array[j], ..., 0], cmap=cm.twilight
     )
     _ = fig.colorbar(
       im, ax=axs[2, j], orientation='horizontal', fraction=fraction, pad=pad
@@ -844,6 +843,7 @@ def assembly_NSmatrix(nx, ny, dx, dy, BC: str = "Dirichlet"):
     """
 
   global L
+
   def Laplacian_Neumann(n):
     LN = jnp.roll(jnp.eye(n), 1, axis=1) + jnp.roll(jnp.eye(n), -1, axis=1) -\
       jnp.eye(n) * 2
@@ -855,10 +855,11 @@ def assembly_NSmatrix(nx, ny, dx, dy, BC: str = "Dirichlet"):
 
   LNx = Laplacian_Neumann(nx)
   LNy = Laplacian_Neumann(ny)
-  L = jnp.kron(LNx / (dx**2), jnp.eye(ny)) + jnp.kron(jnp.eye(nx), LNy / (dy**2))
+  L = jnp.kron(LNx /
+               (dx**2), jnp.eye(ny)) + jnp.kron(jnp.eye(nx), LNy / (dy**2))
   if BC == "Dirichlet":
     for i in range(ny):
-      L = L.at[-1 - i, -1 - i].add(- 2 / (dx**2))
+      L = L.at[-1 - i, -1 - i].add(-2 / (dx**2))
   elif BC == "Neumann":
     L = jnp.vstack([L, jnp.ones_like(L[0:1])])
     L = jnp.hstack([L, jnp.ones_like(L[:, 0:1])])
@@ -893,13 +894,13 @@ def projection_correction(
 
   def _u_padx(u: jnp.ndarray):
     return jnp.vstack([u_inlet, u, u[-1]])
-  
+
   def _v_padx(v: jnp.ndarray):
     return jnp.vstack([2 * v_inlet - v[0], v, v[-1]])
-  
+
   def _u_pady(u: jnp.ndarray):
     return jnp.hstack([-u[:, 0:1], u, -u[:, -1:]])
-  
+
   def _v_pady(v: jnp.ndarray):
     return jnp.hstack([jnp.zeros_like(v[:, 0:1]), v, -v[:, -2:-1]])
 
@@ -908,7 +909,7 @@ def projection_correction(
     v_pady = jnp.hstack([jnp.zeros_like(v[:, 0:1]), v])
     v = jnp.vstack([v_pady, v_pady[-1]])
     return (v[1:, 1:] + v[:-1, 1:] + v[1:, :-1] + v[:-1, :-1]) / 4
-  
+
   def _u2v(u: jnp.ndarray):
     """interpolate u to v"""
     u_padx = jnp.vstack([u_inlet, u])
@@ -930,7 +931,7 @@ def projection_correction(
     dpdx = (p_padx[1:] - p_padx[:-1]) / dx
     dpdy = (p[:, 1:] - p[:, :-1]) / dy
     return dpdx, dpdy
-  
+
   def div_uv(u: jnp.ndarray, v: jnp.ndarray):
     """calculate the divergence of the velocity field"""
     u_padx = jnp.vstack([u_inlet, u])
@@ -938,7 +939,7 @@ def projection_correction(
     v_pady = jnp.hstack([jnp.zeros_like(v[:, 0:1]), v])
     dvdy = (v_pady[:, 1:] - v_pady[:, :-1]) / dy
     return dudx + dvdy
-  
+
   def laplace_uv(u: jnp.ndarray, v: jnp.ndarray):
     """calculate the Laplacian of the velocity field"""
 
@@ -951,7 +952,7 @@ def projection_correction(
     lapl_v = (v_pad[1:-1, 2:] - 2 * v_pad[1:-1, 1:-1] + v_pad[1:-1, :-2]) / dy**2 +\
       (v_pad[2:, 1:-1] - 2 * v_pad[1:-1, 1:-1] + v_pad[:-2, 1:-1]) / dx**2
     return lapl_u, lapl_v
-  
+
   def transport(u: jnp.ndarray, v: jnp.ndarray):
     """calculate the transport term of the velocity field"""
     u_padx = _u_padx(u)
@@ -964,10 +965,10 @@ def projection_correction(
     vv_y = (v_pady[:, 2:] - v_pady[:, :-2]) / dy / 2 * v
 
     return uu_x + vu_y, uv_x + vv_y
-  
+
   def inlet(y: jnp.ndarray):
     """set the inlet velocity"""
-    return y * (1 - y) * jnp.exp(-10*(y - y0)**2)
+    return y * (1 - y) * jnp.exp(-10 * (y - y0)**2)
 
   u_inlet = inlet(np.linspace(dy / 2, 1 - dy / 2, ny))
   v_inlet = inlet(np.linspace(dy, 1, ny)) * jnp.cos(t)
@@ -990,9 +991,9 @@ def projection_correction(
     elif BC == "Neumann":
       dpdn = -res.sum() / ny * dx
       res = res.at[-1].add(dpdn / dx)
-      p_res = jnp.linalg.solve(
-        L, jnp.hstack([res.reshape(-1), jnp.zeros(1)])
-      )[:-1].reshape([nx, ny])
+      p_res = jnp.linalg.solve(L, jnp.hstack([res.reshape(-1),
+                                              jnp.zeros(1)]
+                                             ))[:-1].reshape([nx, ny])
 
     dpdx, dpdy = grad_p(p_res, -dpdn)
     u += -dpdx * dt
@@ -1219,7 +1220,8 @@ def plot_with_horizontal_colorbar(
   pad = 0.001
   for i in range(im_array.shape[0]):
     for j in range(im_array.shape[1]):
-      im = axs[i * im_array.shape[1] + j].imshow(im_array[i, j], cmap=cm.twilight)
+      im = axs[i * im_array.shape[1] +
+               j].imshow(im_array[i, j], cmap=cm.twilight)
       if title_array is not None and\
         title_array[i * im_array.shape[1] +j] is not None:
         axs[i * im_array.shape[1] +

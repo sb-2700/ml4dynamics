@@ -1,12 +1,11 @@
 import jax.numpy as jnp
-import torch
 import yaml
 from box import Box
 from jax import random as random
 from matplotlib import cm
 from matplotlib import pyplot as plt
 
-from ml4dynamics.dynamics import RD
+from ml4dynamics.dynamics import react_diff
 
 with open("config/simulation.yaml", "r") as file:
   config_dict = yaml.safe_load(file)
@@ -26,7 +25,7 @@ gamma = config.react_diff.gamma
 d = config.react_diff.d
 
 # RD simulator with periodic BC
-rd_fine = RD(
+rd_fine = react_diff(
   L=Lx,
   N=nx**2 * 2,
   T=T,
@@ -51,7 +50,9 @@ n_plot = 3
 fig, axs = plt.subplots(n_plot, n_plot)
 axs = axs.flatten()
 for i in range(n_plot**2):
-  axs[i].imshow(rd_fine.x_hist[i * 500, :nx**2].reshape(nx, nx), cmap=cm.twilight)
+  axs[i].imshow(
+    rd_fine.x_hist[i * 500, :nx**2].reshape(nx, nx), cmap=cm.twilight
+  )
   axs[i].axis("off")
 plt.savefig("rd.png")
 

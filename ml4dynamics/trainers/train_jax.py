@@ -17,6 +17,7 @@ jax.config.update("jax_enable_x64", True)
 
 
 def main():
+
   def train(
     model_type: str,
     epochs: int,
@@ -66,7 +67,9 @@ def main():
 
     train_state, schedule = utils.prepare_unet_train_state(config_dict)
     flat_params = traverse_util.flatten_dict(train_state.params)
-    total_params = sum(jax.tree_util.tree_map(lambda x: x.size, flat_params).values())
+    total_params = sum(
+      jax.tree_util.tree_map(lambda x: x.size, flat_params).values()
+    )
     print(f"total parameters for {model_type}:", total_params)
     iters = tqdm(range(epochs))
     loss_hist = []
@@ -85,7 +88,8 @@ def main():
       if (epoch + 1) % config.train.save == 0:
         with open(f"ckpts/{pde_type}/{model_type}.pkl", "wb") as f:
           dict = {
-            "params": train_state.params, "batch_stats": train_state.batch_stats
+            "params": train_state.params,
+            "batch_stats": train_state.batch_stats
           }
           pickle.dump(dict, f)
 
@@ -110,10 +114,7 @@ def main():
 
   parser = argparse.ArgumentParser()
   parser.add_argument(
-    "-c",
-    "--config",
-    default=None,
-    help="Set the configuration file path."
+    "-c", "--config", default=None, help="Set the configuration file path."
   )
   args = parser.parse_args()
   with open(f"config/{args.config}.yaml", "r") as file:

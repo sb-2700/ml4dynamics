@@ -6,8 +6,8 @@ from dlpack import asdlpack
 
 
 def run_simulation_coarse_grid_correction(
-  train_state, coarse_model, label: jnp.ndarray, r: int,
-  beta: float, uv: jnp.ndarray
+  train_state, coarse_model, label: jnp.ndarray, r: int, beta: float,
+  uv: jnp.ndarray
 ):
   r"""
   TODO: Come up with a better name, this is more or less a synthetic
@@ -45,9 +45,8 @@ def run_simulation_coarse_grid_correction(
       for j in range(r):
         tmp += uv[k::r, j::r]
     tmp = tmp / (r**2)
-    uv = coarse_model.adi(
-      tmp.transpose(2, 0, 1).reshape(-1)
-    ).reshape(2, nx // r, nx // r)
+    uv = coarse_model.adi(tmp.transpose(2, 0, 1).reshape(-1)
+                          ).reshape(2, nx // r, nx // r)
     uv = jnp.vstack(
       [
         jnp.kron(uv[0], jnp.ones((r, r))).reshape(1, nx, nx),
@@ -106,8 +105,8 @@ def run_simulation_coarse_grid_correction_torch(
 
 
 def run_simulation_sgs(
-  train_state, model, _iter:callable, label: jnp.ndarray,
-  dim: int, beta: float, uv: jnp.ndarray
+  train_state, model, _iter: callable, label: jnp.ndarray, dim: int,
+  beta: float, uv: jnp.ndarray
 ):
 
   # @jax.jit
@@ -138,7 +137,7 @@ def run_simulation_sgs(
 def run_ns_simulation_pressue_correction(
   train_state, ns_model, label: jnp.ndarray, beta: float, uv: jnp.ndarray
 ):
-  
+
   uv = jnp.array(uv)
   nx, ny = uv.shape[:-1]
   step_num = ns_model.step_num

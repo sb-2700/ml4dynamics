@@ -349,22 +349,19 @@ class dynamics(object):
         # forward Euler discretization
         R[i * N:(i + 1) * N, (i + 1) * N:(i + 2) *
           N] = -jnp.eye(N).to(self.device
-                                ) - dt * J(self.x_hist[..., (n - 2 - i) * r])
+                              ) - dt * J(self.x_hist[..., (n - 2 - i) * r])
         b[i * N:(i + 1) * N] = dfds(self.x_hist[..., (n - 2 - i) * r]) * dt
       elif discretization == 'BE':
         # backward Euler discretization
-        R[i * N:(i + 1) * N,
-          (i + 1) * N:(i + 2) * N] = -jnp.eye(N)
+        R[i * N:(i + 1) * N, (i + 1) * N:(i + 2) * N] = -jnp.eye(N)
         R[i * N:(i + 1) * N,
           i * N:(i + 1) * N] = R[i * N:(i + 1) * N, i * N:(i + 1) *
                                  N] - dt * J(self.x_hist[..., (n - 1 - i) * r])
         b[i * N:(i + 1) * N] = dfds(self.x_hist[..., (n - 1 - i) * r]) * dt
       elif discretization == 'CN':
         # CN discretization
-        R[i * N:(i + 1) * N,
-          (i + 1) * N:(i + 2) * N] = -jnp.eye(N) - dt * J(
-            self.x_hist[..., (n - 2 - i) * r]
-          ) / 2
+        R[i * N:(i + 1) * N, (i + 1) * N:(i + 2) *
+          N] = -jnp.eye(N) - dt * J(self.x_hist[..., (n - 2 - i) * r]) / 2
         R[i * N:(i + 1) * N, i * N:(i + 1) *
           N] = R[i * N:(i + 1) * N, i * N:(i + 1) *
                  N] - dt * J(self.x_hist[..., (n - 1 - i) * r]) / 2
@@ -644,8 +641,9 @@ class KS(dynamics):
     c = self.c
     k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
     x_hat = jnp.fft.rfft(x)
-    x_hat = ((1 - c*1j*k/2 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))*x_hat - dt/2 * 1j * k * jnp.fft.rfft(x*x))\
-        /(1 + c*1j*k/2 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))
+    x_hat = ((1 - c*1j*k/2 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))*x_hat -\
+      dt/2 * 1j * k * jnp.fft.rfft(x*x))\
+      /(1 + c*1j*k/2 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))
     x = jnp.fft.irfft(x_hat)
     return x
 
@@ -656,8 +654,9 @@ class KS(dynamics):
     k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
     lambda_hat = jnp.fft.rfft(lambda_)
     delta_x = jnp.fft.rfft(self.x_hist[:, i] - self.x_targethist[:, i])
-    lambda_hat = ((1 - c*1j*k/2 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))*lambda_hat - dt * 1j * k * jnp.fft.rfft(lambda_*self.x_hist[:, i]) - dt * delta_x)\
-            /(1 + c*1j*k/2 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))
+    lambda_hat = ((1 - c*1j*k/2 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))*\
+      lambda_hat - dt * 1j * k * jnp.fft.rfft(lambda_*self.x_hist[:, i]) -\
+      dt * delta_x)/(1 + c*1j*k/2 - dt/2 * (k**2) + self.nu*dt/2 * (k**4))
     lambda_ = jnp.fft.irfft(lambda_hat)
     return lambda_
 
@@ -1027,7 +1026,7 @@ class ns_hit(dynamics):
       jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)[:w_hat.shape[0], :w_hat.shape[1]]
     ) / (1 - dt / 2 * nu * self.laplacian)
     return w_hat
-  
+
   def CN_real(self, w):
     return np.fft.irfft2(self.CN(np.fft.rfft2(w[..., 0])))[..., None]
 
@@ -1127,10 +1126,11 @@ class ns_channel(dynamics):
 
     LNx = Laplacian_Neumann(nx)
     LNy = Laplacian_Neumann(ny)
-    L = jnp.kron(LNx / (dx**2), jnp.eye(ny)) + jnp.kron(jnp.eye(nx), LNy / (dy**2))
+    L = jnp.kron(LNx /
+                 (dx**2), jnp.eye(ny)) + jnp.kron(jnp.eye(nx), LNy / (dy**2))
     if BC == "Dirichlet":
       for i in range(ny):
-        L = L.at[-1 - i, -1 - i].add(- 2 / (dx**2))
+        L = L.at[-1 - i, -1 - i].add(-2 / (dx**2))
     elif BC == "Neumann":
       L = jnp.vstack([L, jnp.ones_like(L[0:1])])
       L = jnp.hstack([L, jnp.ones_like(L[:, 0:1])])
@@ -1158,15 +1158,16 @@ class ns_channel(dynamics):
     v[:, -1] = 0 for the no-slip boundary condition
 
     """
+
     def _u_padx(u: jnp.ndarray):
       return jnp.vstack([u_inlet, u, u[-1]])
-    
+
     def _v_padx(v: jnp.ndarray):
       return jnp.vstack([2 * v_inlet - v[0], v, v[-1]])
-    
+
     def _u_pady(u: jnp.ndarray):
       return jnp.hstack([-u[:, 0:1], u, -u[:, -1:]])
-    
+
     def _v_pady(v: jnp.ndarray):
       return jnp.hstack([jnp.zeros_like(v[:, 0:1]), v, -v[:, -2:-1]])
 
@@ -1175,7 +1176,7 @@ class ns_channel(dynamics):
       v_pady = jnp.hstack([jnp.zeros_like(v[:, 0:1]), v])
       v = jnp.vstack([v_pady, v_pady[-1]])
       return (v[1:, 1:] + v[:-1, 1:] + v[1:, :-1] + v[:-1, :-1]) / 4
-    
+
     def _u2v(u: jnp.ndarray):
       """interpolate u to v"""
       u_padx = jnp.vstack([u_inlet, u])
@@ -1197,7 +1198,7 @@ class ns_channel(dynamics):
       dpdx = (p_padx[1:] - p_padx[:-1]) / dx
       dpdy = (p[:, 1:] - p[:, :-1]) / dy
       return dpdx, dpdy
-    
+
     def div_uv(u: jnp.ndarray, v: jnp.ndarray):
       """calculate the divergence of the velocity field"""
       u_padx = jnp.vstack([u_inlet, u])
@@ -1205,7 +1206,7 @@ class ns_channel(dynamics):
       v_pady = jnp.hstack([jnp.zeros_like(v[:, 0:1]), v])
       dvdy = (v_pady[:, 1:] - v_pady[:, :-1]) / dy
       return dudx + dvdy
-    
+
     def laplace_uv(u: jnp.ndarray, v: jnp.ndarray):
       """calculate the Laplacian of the velocity field"""
 
@@ -1218,7 +1219,7 @@ class ns_channel(dynamics):
       lapl_v = (v_pad[1:-1, 2:] - 2 * v_pad[1:-1, 1:-1] + v_pad[1:-1, :-2]) / dy**2 +\
         (v_pad[2:, 1:-1] - 2 * v_pad[1:-1, 1:-1] + v_pad[:-2, 1:-1]) / dx**2
       return lapl_u, lapl_v
-    
+
     def transport(u: jnp.ndarray, v: jnp.ndarray):
       """calculate the transport term of the velocity field"""
       u_padx = _u_padx(u)
@@ -1231,10 +1232,10 @@ class ns_channel(dynamics):
       vv_y = (v_pady[:, 2:] - v_pady[:, :-2]) / dy / 2 * v
 
       return uu_x + vu_y, uv_x + vv_y
-      
+
     def inlet(y: jnp.ndarray):
       """set the inlet velocity"""
-      return y * (1 - y) * jnp.exp(-10*(y - y0)**2)
+      return y * (1 - y) * jnp.exp(-10 * (y - y0)**2)
 
     nx = self.nx
     ny = self.ny

@@ -12,6 +12,7 @@ from ml4dynamics.types import PRNGKey
 
 jax.config.update("jax_enable_x64", True)
 
+
 def main(config_dict: ml_collections.ConfigDict):
   config = Box(config_dict)
 
@@ -35,6 +36,7 @@ def main(config_dict: ml_collections.ConfigDict):
   utils.eval_a_posteriori(
     config_dict, train_state, inputs, outputs, "aposteriori"
   )
+
 
 if __name__ == "__main__":
   with open("config/simulation.yaml", "r") as file:

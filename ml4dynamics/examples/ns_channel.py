@@ -42,8 +42,7 @@ fig, axs = plt.subplots(n_plot, n_plot)
 axs = axs.flatten()
 for i in range(n_plot**2):
   axs[i].imshow(
-    ns_fine.x_hist[i * 100, :nx * ny].reshape(nx, ny),
-    cmap=cm.twilight
+    ns_fine.x_hist[i * 100, :nx * ny].reshape(nx, ny), cmap=cm.twilight
   )
   axs[i].axis("off")
 plt.savefig("ns_channel.png")
