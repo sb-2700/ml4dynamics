@@ -26,7 +26,7 @@ def main():
   T = config.sim.T
   dt = config.sim.dt
   step_num = int(T / dt)
-  nx = config.sim.nx
+  n = config.sim.n
   r = config.sim.r
   sgs_model = config.sim.sgs
   # solver parameters
@@ -36,35 +36,35 @@ def main():
   rd_fine, rd_coarse = utils.create_fine_coarse_simulator(config)
 
   if sgs_model == "correction":
-    inputs = np.zeros((case_num, step_num, nx, nx, 2))
-    outputs = np.zeros((case_num, step_num, nx, nx, 2))
+    inputs = np.zeros((case_num, step_num, n, n, 2))
+    outputs = np.zeros((case_num, step_num, n, n, 2))
   elif sgs_model == "filter":
-    inputs = np.zeros((case_num, step_num, nx//r, nx//r, 2))
-    outputs = np.zeros((case_num, step_num, nx // r, nx // r, 2))
+    inputs = np.zeros((case_num, step_num, n//r, n//r, 2))
+    outputs = np.zeros((case_num, step_num, n // r, n // r, 2))
   for i in range(case_num):
     print(i)
     rng, key = random.split(rng)
     max_freq = 10
-    u_fft = jnp.zeros((nx, nx, 2))
+    u_fft = jnp.zeros((n, n, 2))
     u_fft = u_fft.at[:max_freq, :max_freq].set(
       random.normal(key, shape=(max_freq, max_freq, 2))
     )
-    u0 = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1)).reshape(-1)) / nx
+    u0 = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1)).reshape(-1)) / n
     rd_fine.run_simulation(u0, rd_fine.adi)
 
     if sgs_model == "correction":
-      input = rd_fine.x_hist.reshape((step_num, 2, nx, nx))
+      input = rd_fine.x_hist.reshape((step_num, 2, n, n))
       output = np.zeros_like(input)
       calc_correction = jax.jit(partial(
-        dataset_utils.calc_correction, rd_fine, rd_coarse, nx, r
+        dataset_utils.calc_correction, rd_fine, rd_coarse, n, r
       ))
       for j in range(rd_fine.step_num):
         output[j] = calc_correction(input[j]) / dt
       input = input.transpose(0, 2, 3, 1)
       output = output.transpose(0, 2, 3, 1)
     elif sgs_model == "filter":
-      input = rd_fine.x_hist.reshape((step_num, 2, nx, nx)).transpose(0, 2, 3, 1)
-      input_ = np.zeros((step_num, nx // r, nx // r, 2))
+      input = rd_fine.x_hist.reshape((step_num, 2, n, n)).transpose(0, 2, 3, 1)
+      input_ = np.zeros((step_num, n // r, n // r, 2))
       output = np.zeros_like(input_)
       for k in range(r):
         for j in range(r):
@@ -78,12 +78,12 @@ def main():
     outputs[i] = output
 
   if sgs_model == "correction":
-    inputs = inputs.reshape(-1, nx, nx, 2)
-    outputs = outputs.reshape(-1, nx, nx, 2)
+    inputs = inputs.reshape(-1, n, n, 2)
+    outputs = outputs.reshape(-1, n, n, 2)
   elif sgs_model == "filter":
-    inputs = inputs.reshape(-1, nx // r, nx // r, 2)
-    outputs = outputs.reshape(-1, nx // r, nx // r, 2) /\
-      (config.sim.Lx / nx * r)**2
+    inputs = inputs.reshape(-1, n // r, n // r, 2)
+    outputs = outputs.reshape(-1, n // r, n // r, 2) /\
+      (config.sim.L / n * r)**2
   if np.any(np.isnan(inputs)) or np.any(np.isnan(outputs)) or\
     np.any(np.isinf(inputs)) or np.any(np.isinf(outputs)):
     raise Exception("The data contains Inf or NaN")
@@ -95,16 +95,16 @@ def main():
       "t0": 0.0,
       "t1": T,
       "dt": dt,
-      "nx": nx,
+      "n": n,
       "description": "Reaction-Diffusion PDE dataset",
       "author": "Jiaxi Zhao",
       "creation_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     },
     "data": {
       "inputs":
-      inputs,  # shape [case_num, step_num // writeInterval, nx, ny, 2]
+      inputs,  # shape [case_num, step_num // writeInterval, n, ny, 2]
       "outputs":
-      outputs,  # shape [case_num, step_num // writeInterval, nx, ny, 2]
+      outputs,  # shape [case_num, step_num // writeInterval, n, ny, 2]
     },
     "config":
     config_dict,

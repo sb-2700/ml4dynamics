@@ -1008,25 +1008,30 @@ class ns_hit(dynamics):
     # Crank-Nicolson scheme for spectral method with periodic boundary condition
     dt = self.dt
     nu = self.nu
-    w_hat2 = np.zeros(
-      (w_hat.shape[0] * 2, w_hat.shape[1] * 2 - 1), dtype=np.complex128
+    w_hat2 = jnp.zeros(
+      (w_hat.shape[0] * 2, w_hat.shape[1] * 2 - 1), dtype=jnp.complex128
     )
-    psi_hat2 = np.zeros(
-      (w_hat.shape[0] * 2, w_hat.shape[1] * 2 - 1), dtype=np.complex128
+    psi_hat2 = jnp.zeros(
+      (w_hat.shape[0] * 2, w_hat.shape[1] * 2 - 1), dtype=jnp.complex128
     )
-    w_hat2[:w_hat.shape[0], :w_hat.shape[1]] = w_hat.copy()
-    psi_hat2[:w_hat.shape[0], :w_hat.shape[1]] = -w_hat / self.laplacian_
-    wx2 = np.fft.irfft2(1j * w_hat2 * self.k2x)
-    wy2 = np.fft.irfft2(1j * w_hat2 * self.k2y)
-    psix2 = np.fft.irfft2(1j * psi_hat2 * self.k2x)
-    psiy2 = np.fft.irfft2(1j * psi_hat2 * self.k2y)
+    w_hat2 = w_hat2.at[:w_hat.shape[0], :w_hat.shape[1]].set(w_hat)
+    psi_hat2 = psi_hat2.at[:w_hat.shape[0], :w_hat.shape[1]].set(
+      -w_hat / self.laplacian_
+    )
+    wx2 = jnp.fft.irfft2(1j * w_hat2 * self.k2x)
+    wy2 = jnp.fft.irfft2(1j * w_hat2 * self.k2y)
+    psix2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2x)
+    psiy2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2y)
     #force = np.cos(2*Y) * 0.0
     #print(np.linalg.norm(wx2*psiy2-wy2*psix2))
     w_hat = (
       (1 + dt / 2 * nu * self.laplacian) * w_hat - dt *
-      np.fft.rfft2(wx2 * psiy2 - wy2 * psix2)[:w_hat.shape[0], :w_hat.shape[1]]
+      jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)[:w_hat.shape[0], :w_hat.shape[1]]
     ) / (1 - dt / 2 * nu * self.laplacian)
     return w_hat
+  
+  def CN_real(self, w):
+    return np.fft.irfft2(self.CN(np.fft.rfft2(w[..., 0])))[..., None]
 
   def CN_adj(self, lambda_, i):
     # CN scheme for the dual variable \lambda
@@ -1036,22 +1041,22 @@ class ns_hit(dynamics):
   def set_x_hist(self, w, iter):
     step_num = self.step_num
     self.xhat_hist = np.zeros(
-      (w.shape[0], w.shape[1], step_num), dtype=np.complex128
+      (step_num, w.shape[0], w.shape[1]), dtype=np.complex128
     )
     self.x_hist = np.zeros(
-      (np.fft.irfft2(w).shape[0], np.fft.irfft2(w).shape[1], step_num)
+      (step_num, np.fft.irfft2(w).shape[0], np.fft.irfft2(w).shape[1])
     )
-    self.u_hist = np.zeros((2, self.N, self.N, step_num))
+    self.u_hist = np.zeros((step_num, self.N, self.N, 2))
     self.ke = np.zeros(step_num)
     self.err_hist = np.zeros(step_num)
     # self.kappa = 4
     for i in range(step_num):
-      self.xhat_hist[:, :, i] = w.copy()
-      self.x_hist[:, :, i] = np.fft.irfft2(w)
+      self.xhat_hist[i] = w.copy()
+      self.x_hist[i] = np.fft.irfft2(w)
       psi = -w / self.laplacian_
-      self.u_hist[1, :, :, i] = -np.fft.irfft2(1j * psi * self.kx)
-      self.u_hist[0, :, :, i] = np.fft.irfft2(1j * psi * self.ky)
-      self.ke[i] = np.sum(self.u_hist[:, :, :, i]**2)
+      self.u_hist[i, ..., 1] = -np.fft.irfft2(1j * psi * self.kx)
+      self.u_hist[i, ..., 0] = np.fft.irfft2(1j * psi * self.ky)
+      self.ke[i] = np.sum(self.u_hist[i]**2)
       w = iter(w)
       #self.err_hist[i] = np.sum((irfft2(w) -
       #       2*self.kappa * np.cos(self.kappa*self.X)

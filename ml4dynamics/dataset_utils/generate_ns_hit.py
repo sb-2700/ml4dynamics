@@ -9,12 +9,24 @@ from box import Box
 from jax import random
 from jax.lax import conv_general_dilated
 
-from ml4dynamics import dynamics
+from ml4dynamics.utils import create_fine_coarse_simulator
 
 jax.config.update("jax_enable_x64", True)
 
-
 def main():
+
+  def calc_J(what_hist, model):
+    psi_hat = -what_hist / model.laplacian_[None]
+    dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
+    dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
+    dwdx = jnp.fft.irfft2(
+      1j * what_hist * model.kx[None], axes=(1, 2)
+    )
+    dwdy = jnp.fft.irfft2(
+      1j * what_hist * model.ky[None], axes=(1, 2)
+    )
+    return dpsidy * dwdx - dpsidx * dwdy
+
   with open(f"config/ns_hit.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
   config = Box(config_dict)
@@ -23,7 +35,7 @@ def main():
   T = config.sim.T
   dt = config.sim.dt
   L = config.sim.L
-  model = dynamics.ns_hit(L=L * jnp.pi, N=n, nu=1/Re, T=T, dt=dt)
+  model_fine, model_coarse = create_fine_coarse_simulator(config)
   case_num = config.sim.case_num
   patience = 50
   writeInterval = 1
@@ -34,25 +46,16 @@ def main():
   while j < case_num and i < patience:
     i = i + 1
     print('generating the {}-th trajectory...'.format(j))
-    model.w_hat = jnp.zeros((model.N, model.N//2+1))
-    model.w_hat = model.w_hat.at[:8, :8].set(
-      random.normal(random.PRNGKey(0), (8, 8)) * model.init_scale
+    model_fine.w_hat = jnp.zeros((model_fine.N, model_fine.N//2+1))
+    f0 = int(jnp.sqrt(n/2)) # init frequency
+    model_fine.w_hat = model_fine.w_hat.at[:f0, :f0].set(
+      random.normal(random.PRNGKey(0), (f0, f0)) * model_fine.init_scale
     )
-    model.set_x_hist(model.w_hat, model.CN)
+    model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
 
-    psi_hat = -model.xhat_hist / model.laplacian_[..., None]
-    dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[..., None], axes=(0, 1))
-    dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[..., None], axes=(0, 1))
-    dwdx = jnp.fft.irfft2(
-      1j * model.xhat_hist * model.kx[..., None], axes=(0, 1)
-    )
-    dwdy = jnp.fft.irfft2(
-      1j * model.xhat_hist * model.ky[..., None], axes=(0, 1)
-    )
-    J = dpsidy * dwdx - dpsidx * dwdy
-
-    kernel_x = 3
-    kernel_y = 3
+    kernel_x = 2
+    kernel_y = 2
+    assert kernel_x == config.sim.r and kernel_y == config.sim.r
     kernel = jnp.ones((1, kernel_x, kernel_y, 1)) / kernel_x / kernel_y
     conv = partial(
       conv_general_dilated,
@@ -61,20 +64,30 @@ def main():
       padding='VALID',
       dimension_numbers=('NXYC', 'OXYI', 'NXYC'),
     )
-    padded_J = jnp.pad(
-      J.transpose(2, 0, 1)[..., None],
-      pad_width=((0, 0), (1, 1), (1, 1), (0, 0)),
+    periodic_pad = partial(
+      jnp.pad, pad_width=(
+        (0, 0), (kernel_x//2, kernel_x//2 - 1), 
+        (kernel_y//2, kernel_y//2 - 1), (0, 0)
+      ),
       mode='wrap'
     )
-    padded_w = jnp.pad(
-      model.x_hist.transpose(2, 0, 1)[..., None],
-      pad_width=((0, 0), (1, 1), (1, 1), (0, 0)),
-      mode='wrap'
-    )
-    J_coarse = conv(padded_J)
-    w_coarse = conv(padded_w)
 
-    if not jnp.isnan(model.x_hist).any():
+    padded_w = periodic_pad(model_fine.x_hist[..., None])
+    w_coarse = conv(padded_w)
+    J = calc_J(model_fine.xhat_hist, model_fine)
+    J_coarse = calc_J(
+      jnp.fft.rfft2(w_coarse[..., 0], axes=(1, 2)), model_coarse
+    )[..., None]
+    padded_J = periodic_pad(J[..., None])
+    J_filter = conv(padded_J)
+    tau = (J_filter - J_coarse) / model_coarse.dx**2
+    breakpoint()
+
+    if not tau.shape[1] == tau.shape[2] == model_coarse.N:
+      breakpoint()
+      raise Exception("The shape of tau is wrong.")
+
+    if not jnp.isnan(tau).any() and not jnp.isinf(w_coarse).any():
       # successful generating traj
       j = j + 1
 
@@ -96,7 +109,7 @@ def main():
         "inputs":
         w_coarse,  # shape [case_num * step_num // writeInterval, nx, ny, 1]
         "outputs":
-        J_coarse,  # shape [case_num * step_num // writeInterval, nx, ny, 1]
+        tau,  # shape [case_num * step_num // writeInterval, nx, ny, 1]
       },
       "config":
       config_dict,

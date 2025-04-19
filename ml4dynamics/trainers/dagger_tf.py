@@ -43,8 +43,8 @@ def main(config_dict: ml_collections.ConfigDict):
   T = config.react_diff.T
   dt = config.react_diff.dt
   step_num = int(T / dt)
-  Lx = config.react_diff.Lx
-  nx = config.react_diff.nx
+  L = config.react_diff.L
+  n = config.react_diff.n
   r = config.react_diff.r
   # solver parameters
   dagger_epochs = config.train.dagger_epochs
@@ -77,7 +77,7 @@ def main(config_dict: ml_collections.ConfigDict):
     'params': jax.random.PRNGKey(0),
     'dropout': jax.random.PRNGKey(1)
   }
-  unet_variables = unet.init(init_rngs, jnp.ones([1, nx, nx, 2]))
+  unet_variables = unet.init(init_rngs, jnp.ones([1, n, n, 2]))
   optimizer = optax.adam(learning_rate=0.01)
   train_state = CustomTrainState.create(
     apply_fn=unet.apply,
@@ -117,8 +117,8 @@ def main(config_dict: ml_collections.ConfigDict):
     return loss, train_state
 
   rd_fine = RD(
-    L=Lx,
-    N=nx**2 * 2,
+    L=L,
+    N=n**2 * 2,
     T=T,
     dt=dt,
     alpha=alpha,
@@ -127,8 +127,8 @@ def main(config_dict: ml_collections.ConfigDict):
     d=d,
   )
   rd_coarse = RD(
-    L=Lx,
-    N=(nx // r)**2 * 2,
+    L=L,
+    N=(n // r)**2 * 2,
     T=T,
     dt=dt,
     alpha=alpha,
@@ -150,23 +150,23 @@ def main(config_dict: ml_collections.ConfigDict):
         uv.reshape(1, *uv.shape),
         is_training=False
       )
-      correction = correction.reshape(nx, nx, -1).transpose(2, 0, 1)
+      correction = correction.reshape(n, n, -1).transpose(2, 0, 1)
       uv = uv.transpose(2, 0, 1)
       tmp = (
         uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] + uv[:, 0::2, 1::2] +
         uv[:, 1::2, 1::2]
       ) / 4
-      uv = rd_coarse.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
+      uv = rd_coarse.adi(tmp.reshape(-1)).reshape(2, n // r, n // r)
       uv = jnp.vstack(
         [
-          jnp.kron(uv[0], jnp.ones((r, r))).reshape(1, nx, nx),
-          jnp.kron(uv[1], jnp.ones((r, r))).reshape(1, nx, nx),
+          jnp.kron(uv[0], jnp.ones((r, r))).reshape(1, n, n),
+          jnp.kron(uv[1], jnp.ones((r, r))).reshape(1, n, n),
         ]
       )
       return uv + correction * dt
 
     step_num = rd_fine.step_num
-    x_hist = jnp.zeros([step_num, 2, nx, nx])
+    x_hist = jnp.zeros([step_num, 2, n, n])
     for i in range(step_num):
       x_hist = x_hist.at[i].set(uv)
       uv = iter(uv)
@@ -175,17 +175,17 @@ def main(config_dict: ml_collections.ConfigDict):
 
   @jax.jit
   def calc_correction(uv: jnp.ndarray):
-    next_step_fine = rd_fine.adi(uv.reshape(-1)).reshape(2, nx, nx)
+    next_step_fine = rd_fine.adi(uv.reshape(-1)).reshape(2, n, n)
     tmp = (
       uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] + uv[:, 0::2, 1::2] +
       uv[:, 1::2, 1::2]
     ) / 4
     uv_ = tmp.reshape(-1)
-    next_step_coarse = rd_coarse.adi(uv_).reshape(2, nx // r, nx // r)
+    next_step_coarse = rd_coarse.adi(uv_).reshape(2, n // r, n // r)
     next_steo_coarse_interp = jnp.vstack(
       [
-        jnp.kron(next_step_coarse[0], jnp.ones((r, r))).reshape(1, nx, nx),
-        jnp.kron(next_step_coarse[1], jnp.ones((r, r))).reshape(1, nx, nx),
+        jnp.kron(next_step_coarse[0], jnp.ones((r, r))).reshape(1, n, n),
+        jnp.kron(next_step_coarse[1], jnp.ones((r, r))).reshape(1, n, n),
       ]
     )
     return next_step_fine - next_steo_coarse_interp
@@ -223,11 +223,11 @@ def main(config_dict: ml_collections.ConfigDict):
     # DAgger step
     key, rng = random.split(rng)
     max_freq = 10
-    u_fft = jnp.zeros((nx, nx, 2))
+    u_fft = jnp.zeros((n, n, 2))
     u_fft = u_fft.at[:max_freq, :max_freq].set(
       random.normal(key, shape=(max_freq, max_freq, 2))
     )
-    uv = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1))) / nx
+    uv = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1))) / n
     uv = uv.transpose(2, 0, 1)
     start = time()
     x_hist = run_simulation(uv)
@@ -235,7 +235,7 @@ def main(config_dict: ml_collections.ConfigDict):
     if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
       print("similation contains NaN!")
       breakpoint()
-    input = x_hist.reshape((step_num, 2, nx, nx))
+    input = x_hist.reshape((step_num, 2, n, n))
     output = jnp.zeros_like(input)
     for j in range(x_hist.shape[0]):
       output = output.at[j].set(calc_correction(input[j]) / dt)

@@ -106,10 +106,11 @@ def run_simulation_coarse_grid_correction_torch(
 
 
 def run_simulation_sgs(
-  train_state, coarse_model, label: jnp.ndarray, beta: float, uv: jnp.ndarray
+  train_state, model, _iter:callable, label: jnp.ndarray,
+  dim: int, beta: float, uv: jnp.ndarray
 ):
 
-  @jax.jit
+  # @jax.jit
   def iter(uv: jnp.array, expert: jnp.array = 0):
     correction, _ = train_state.apply_fn_with_bn(
       {
@@ -119,16 +120,14 @@ def run_simulation_sgs(
       uv[None],
       is_training=False
     )
-    uv = coarse_model.adi(
-      uv.transpose(2, 0, 1).reshape(-1)
-    ).reshape(2, nx, nx).transpose(1, 2, 0)
+    uv = _iter(uv)
     return uv + (correction[0] * (1 - beta) + beta * expert) * dt * dx**2
 
-  nx = uv.shape[1]
-  dt = coarse_model.dt
-  dx = coarse_model.dx
-  step_num = coarse_model.step_num
-  x_hist = np.zeros([step_num, nx, nx, 2])
+  nx = uv.shape[0]
+  dt = model.dt
+  dx = model.dx
+  step_num = model.step_num
+  x_hist = np.zeros([step_num, nx, nx, dim])
   for i in range(step_num):
     x_hist[i] = uv
     uv = iter(uv, label[i])

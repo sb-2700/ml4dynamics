@@ -95,17 +95,17 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
   rng = random.PRNGKey(config.sim.seed)
+  T = config.sim.T
+  dt = config.sim.dt
+  r = config.sim.r
+  L = config.sim.L
+  n = config.sim.n
   # model parameters
   if config.case == "react_diff":
     d = config.sim.d
-    T = config.sim.T
-    dt = config.sim.dt
-    Lx = config.sim.Lx
-    nx = config.sim.nx
-    r = config.sim.r
     model_fine = dynamics.react_diff(
-      L=Lx,
-      N=nx**2 * 2,
+      L=L,
+      N=n**2 * 2,
       T=T,
       dt=dt,
       alpha=config.sim.alpha,
@@ -114,8 +114,8 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
       d=d,
     )
     model_coarse = dynamics.react_diff(
-      L=Lx,
-      N=(nx // r)**2 * 2,
+      L=L,
+      N=(n // r)**2 * 2,
       T=T,
       dt=dt,
       alpha=config.sim.alpha,
@@ -125,8 +125,6 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
     )
   elif config.case == "ks":
     c = config.sim.c
-    L = config.sim.L
-    T = config.sim.T
     init_scale = config.sim.init_scale
     BC = config.sim.BC
     # solver parameters
@@ -134,9 +132,7 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
       N1 = config.sim.nx
     elif BC == "Dirichlet-Neumann":
       N1 = config.sim.nx - 1
-    r = config.sim.r
     N2 = N1 // r
-    dt = config.sim.dt
     # fine simulation
     model_fine = dynamics.KS(
       L=L,
@@ -161,6 +157,23 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
       init_scale=init_scale,
       rng=rng,
     )
+  elif config.case == "ns_hit":
+    model_fine = dynamics.ns_hit(
+      L=L * np.pi,
+      N=n,
+      T=T,
+      dt=dt,
+      nu=1/config.sim.Re,
+      init_scale=n**(1.5),
+    )
+    model_coarse = dynamics.ns_hit(
+      L=L * np.pi,
+      N=n // r,
+      T=T,
+      dt=dt,
+      nu=1/config.sim.Re,
+      init_scale=(n // r)**(1.5),
+    )
   return model_fine, model_coarse
 
 
@@ -168,7 +181,7 @@ def create_ns_channel_simulator(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
   # model parameters
-  ns_model = dynamics.ns_channel(
+  model = dynamics.ns_channel(
     Lx=config.sim.Lx,
     nx=config.sim.nx,
     ny=config.sim.ny,
@@ -176,21 +189,22 @@ def create_ns_channel_simulator(config_dict: ml_collections.ConfigDict):
     dt=config.sim.dt,
     Re=config.sim.Re,
   )
-  return ns_model
+  return model
 
 
 def create_ns_hit_simulator(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
   # model parameters
-  ns_model = dynamics.ns_channel(
-    Lx=config.sim.L * np.pi,
+  model = dynamics.ns_hit(
+    L=config.sim.L * np.pi,
     N=config.sim.n,
     T=config.sim.T,
     dt=config.sim.dt,
     nu=1/config.sim.Re,
+    init_scale=config.sim.n**(1.5)
   )
-  return ns_model
+  return model
 
 
 def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
@@ -486,8 +500,9 @@ def eval_a_posteriori(
       )
     elif config.sim.sgs == "filter":
       run_simulation = partial(
-        train_utils.run_simulation_sgs, train_state, model, outputs, beta
-      )   
+        train_utils.run_simulation_sgs, train_state, model, model.adi,
+        outputs, 2, beta
+      ) 
   elif config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
     run_simulation = partial(
@@ -495,10 +510,10 @@ def eval_a_posteriori(
       outputs, beta
     )
   elif config.case == "ns_hit":
-    model = create_ns_hit_simulator(config)
+    _, model = create_fine_coarse_simulator(config)
     run_simulation = partial(
-      train_utils.run_ns_simulation_pressue_correction, train_state, model,
-      outputs, beta
+      train_utils.run_simulation_sgs, train_state, model, model.CN_real,
+      outputs, 1, beta
     )
 
   start = time()
