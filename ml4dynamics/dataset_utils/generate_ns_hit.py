@@ -16,6 +16,7 @@ jax.config.update("jax_enable_x64", True)
 
 def main():
 
+  @jax.jit
   def calc_J(what_hist, model):
     psi_hat = -what_hist / model.laplacian_[None]
     dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))

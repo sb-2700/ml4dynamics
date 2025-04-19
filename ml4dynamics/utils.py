@@ -51,7 +51,7 @@ def load_data(
     dataset = f"{BC}_Re{Re}_nx{nx}_n{case_num}"
   elif pde_type == "ns_hit":
     Re = config.sim.Re
-    n = config.sim.n
+    n = config.sim.n // config.sim.r
     dataset = f"Re{Re}_nx{n}_n{case_num}"
   h5_filename = f"data/{pde_type}/{dataset}.h5"
 

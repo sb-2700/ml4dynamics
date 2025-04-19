@@ -1,10 +1,12 @@
 import jax.numpy as jnp
+import numpy as np
 import yaml
 from box import Box
 from jax import random
 
 from ml4dynamics.utils import plot_with_horizontal_colorbar
 from ml4dynamics.dynamics import ns_hit
+from pyfoam.utils import calc_utils
 
 with open(f"config/ns_hit.yaml", "r") as file:
   config_dict = yaml.safe_load(file)
@@ -27,12 +29,24 @@ model.set_x_hist(model.w_hat, model.CN)
 
 n_plot = 3
 plot_interval = model.step_num // n_plot**2
-im_array = jnp.zeros((n_plot, n_plot, n, n))
+im_array = np.zeros((n_plot, n_plot, n, n))
 title_array = []
 for i in range(n_plot**2):
-  im_array = im_array.at[i//3, i%3].set(model.x_hist[..., i * plot_interval])
+  im_array[i//3, i%3] = model.x_hist[i * plot_interval]
   title_array.append(f"t={i * plot_interval * dt:.2f}")
 
 plot_with_horizontal_colorbar(
   im_array, (12, 12), title_array, "ns_hit.png"
 )
+
+tau = calc_utils.calc_reynolds_stress(model.u_hist[..., None, :], 900)
+im_array = np.zeros((2, 2, n, n))
+title_array = [r"$\tau_{xx}$", r"$\tau_{xy}$", r"$\tau_{yx}$", r"$\tau_{yy}$"]
+for i in range(2):
+  for j in range(2):
+    im_array[i, j] = tau[:, :, 0, i, j]
+plot_with_horizontal_colorbar(
+  im_array, (12, 12), title_array, "ns_hit_reynolds.png"
+)
+
+breakpoint()

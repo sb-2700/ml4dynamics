@@ -1008,13 +1008,11 @@ class ns_hit(dynamics):
     # Crank-Nicolson scheme for spectral method with periodic boundary condition
     dt = self.dt
     nu = self.nu
-    w_hat2 = jnp.zeros(
-      (w_hat.shape[0] * 2, w_hat.shape[1] * 2 - 1), dtype=jnp.complex128
-    )
-    psi_hat2 = jnp.zeros(
-      (w_hat.shape[0] * 2, w_hat.shape[1] * 2 - 1), dtype=jnp.complex128
-    )
-    w_hat2 = w_hat2.at[:w_hat.shape[0], :w_hat.shape[1]].set(w_hat)
+    n = w_hat.shape[0]
+    w_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
+    psi_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
+    w_hat2 = w_hat2.at[:n // 2, :n // 2 + 1].set(w_hat[:n // 2] * 4)
+    w_hat2 = w_hat2.at[-n // 2:, :n // 2 + 1].set(w_hat[n // 2:] * 4)
     psi_hat2 = psi_hat2.at[:w_hat.shape[0], :w_hat.shape[1]].set(
       -w_hat / self.laplacian_
     )
@@ -1043,20 +1041,12 @@ class ns_hit(dynamics):
     self.xhat_hist = np.zeros(
       (step_num, w.shape[0], w.shape[1]), dtype=np.complex128
     )
-    self.x_hist = np.zeros(
-      (step_num, np.fft.irfft2(w).shape[0], np.fft.irfft2(w).shape[1])
-    )
     self.u_hist = np.zeros((step_num, self.N, self.N, 2))
     self.ke = np.zeros(step_num)
     self.err_hist = np.zeros(step_num)
     # self.kappa = 4
     for i in range(step_num):
       self.xhat_hist[i] = w.copy()
-      self.x_hist[i] = np.fft.irfft2(w)
-      psi = -w / self.laplacian_
-      self.u_hist[i, ..., 1] = -np.fft.irfft2(1j * psi * self.kx)
-      self.u_hist[i, ..., 0] = np.fft.irfft2(1j * psi * self.ky)
-      self.ke[i] = np.sum(self.u_hist[i]**2)
       w = iter(w)
       #self.err_hist[i] = np.sum((irfft2(w) -
       #       2*self.kappa * np.cos(self.kappa*self.X)
@@ -1064,6 +1054,11 @@ class ns_hit(dynamics):
       #       * np.exp(
       #           np.Tensor([-2*self.kappa**2*(i+1)*self.dt*self.nu])))**2
       #         )
+    self.x_hist = np.array(jnp.fft.irfft2(self.xhat_hist, axes=(1, 2)))
+    psi = self.xhat_hist / self.laplacian_[None]
+    self.u_hist[..., 1] = -jnp.fft.irfft2(1j * psi * self.kx[None], axes=(1, 2))
+    self.u_hist[..., 0] = jnp.fft.irfft2(1j * psi * self.ky[None], axes=(1, 2))
+    self.e_kin = np.sum(self.u_hist**2, axis=(-3, -2, -1)) / 2
 
 
 class ns_channel(dynamics):
