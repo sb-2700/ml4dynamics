@@ -4,6 +4,7 @@ from functools import partial
 import h5py
 import jax
 import jax.numpy as jnp
+import numpy as np
 import yaml
 from box import Box
 from jax import random
@@ -31,14 +32,16 @@ def main():
     config_dict = yaml.safe_load(file)
   config = Box(config_dict)
   Re = config.sim.Re
-  n = config.sim.n
   T = config.sim.T
   dt = config.sim.dt
   L = config.sim.L
-  model_fine, model_coarse = create_fine_coarse_simulator(config)
   case_num = config.sim.case_num
   patience = 50
   writeInterval = 1
+  model_fine, model_coarse = create_fine_coarse_simulator(config)
+  n = model_coarse.N
+  u_ = np.zeros((case_num, int(T/dt), n, n, 1))
+  tau_ = np.zeros((case_num, int(T/dt), n, n, 1))
   print('Generating NS HIT data with n = {}, Re = {} ...'.format(n, Re))
 
   j = 0
@@ -81,16 +84,18 @@ def main():
     padded_J = periodic_pad(J[..., None])
     J_filter = conv(padded_J)
     tau = (J_filter - J_coarse) / model_coarse.dx**2
-    breakpoint()
 
-    if not tau.shape[1] == tau.shape[2] == model_coarse.N:
+    if not tau.shape[1] == tau.shape[2] == n:
       breakpoint()
       raise Exception("The shape of tau is wrong.")
 
     if not jnp.isnan(tau).any() and not jnp.isinf(w_coarse).any():
       # successful generating traj
+      u_[j] = w_coarse
+      tau_[j] = tau
       j = j + 1
 
+  breakpoint()
   if j == case_num:
     data = {
       "metadata": {
@@ -107,9 +112,9 @@ def main():
       },
       "data": {
         "inputs":
-        w_coarse,  # shape [case_num * step_num // writeInterval, nx, ny, 1]
+        u_.reshape(-1, n, n, 1),  # shape [case_num * step_num // writeInterval, nx, ny, 1]
         "outputs":
-        tau,  # shape [case_num * step_num // writeInterval, nx, ny, 1]
+        tau_.reshape(-1, n, n, 1),  # shape [case_num * step_num // writeInterval, nx, ny, 1]
       },
       "config":
       config_dict,

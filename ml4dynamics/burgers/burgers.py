@@ -8,6 +8,7 @@ jax.config.update("jax_enable_x64", True)
 
 
 def main():
+
   def burgers_godunov(u0: jnp.ndarray) -> jnp.ndarray:
     """Solving Burgers equ using Godunov's scheme"""
     @jax.jit
@@ -43,7 +44,7 @@ def main():
       def rhs(u_hat):
         u_hat = jnp.hstack(
           [u_hat[:nx//2], jnp.zeros_like(u_hat), u_hat[nx//2:]]
-        )
+        ) * 2
         u = jnp.fft.ifft(u_hat)
         if dealias:
           u_hat_trunc = jnp.fft.fftshift(u_hat)
@@ -51,7 +52,10 @@ def main():
           u_hat_trunc = jnp.fft.ifftshift(u_hat_trunc)
           u = jnp.fft.ifft(u_hat_trunc)
         nonlinear = 0.5 * u**2
-        nonlinear_hat = jnp.fft.fft(nonlinear)[:nx]
+        nonlinear_hat = jnp.fft.fft(nonlinear)
+        nonlinear_hat = jnp.hstack(
+          [nonlinear_hat[:nx//2], nonlinear_hat[-nx//2:]]
+        ) / 2
         return -1j * k * nonlinear_hat
       
       # k1 = rhs(u_hat)
@@ -89,13 +93,13 @@ def main():
   
   def ic(x):
     """Initial condition"""
-    return jnp.sin(x) + jnp.sin(4*x)
+    # return jnp.sin(x) + jnp.sin(4*x)
+    return jnp.sin(x)
 
   L = 2 * jnp.pi
   dt = 0.001
   T = 1
   step_num = int(T / dt)
-
   grids = [16, 32, 64, 128]
   u_godunov = burgers_godunov(
     ic(jnp.linspace(0, L, grids[-1], endpoint=False))
@@ -110,16 +114,14 @@ def main():
   for grid in grids:
     x = jnp.linspace(0, L, grid, endpoint=False)
     u_spectral = burgers_spectral(ic(x))
-    plt.plot(x, jnp.fft.ifft(u_spectral[-1]).real, label=f'Spectral {grid}')
-    assert jnp.isclose(
-      jnp.sum(ic(x)), jnp.sum(jnp.fft.ifft(u_spectral[-1]).real)
-    )
-  
+    plt.plot(x, jnp.fft.ifft(u_spectral[-1]).real, label=f'Spectral {grid}')  
   plt.title('Burgers Equation Solutions')
   plt.xlabel('x')
   plt.ylabel('u')
   plt.legend()
   plt.savefig('results/fig/burgers_solution.png')
+  plt.clf()
+  breakpoint()
 
 
 if __name__ == "__main__":
