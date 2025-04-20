@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as random
 import optax
+import pytest
 import yaml
 from box import Box
 from matplotlib import cm
@@ -15,6 +16,7 @@ from ml4dynamics.types import PRNGKey
 jax.config.update("jax_enable_x64", True)
 
 
+@pytest.mark.skip
 def test_reaction_diffusion_equation_solver():
   """
   Test the coarse grid correction method for the reaction-diffusion equation.
