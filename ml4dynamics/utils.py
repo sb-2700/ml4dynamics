@@ -53,6 +53,11 @@ def load_data(
     Re = config.sim.Re
     n = config.sim.n // config.sim.r
     dataset = f"Re{Re}_nx{n}_n{case_num}"
+  elif pde_type == "ks":
+    c = config.sim.c
+    T = config.sim.T
+    sgs_model = config.train.sgs
+    dataset = f"c{c:.1f}_T{T}_n{case_num}_{sgs_model}"
   h5_filename = f"data/{pde_type}/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
@@ -67,6 +72,10 @@ def load_data(
       )
       inputs = torch.from_numpy(inputs).to(device)
       outputs = torch.from_numpy(outputs).to(device)
+  if pde_type == "ks" and config.sim.BC == "Dirichlet-Neumann":
+    padding = np.zeros((inputs.shape[0], 1, 1))
+    inputs = np.concatenate([inputs, padding], axis=1)
+    outputs = np.concatenate([outputs, padding], axis=1)
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=config.sim.seed
   )
@@ -129,9 +138,9 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
     BC = config.sim.BC
     # solver parameters
     if BC == "periodic":
-      N1 = config.sim.nx
+      N1 = n
     elif BC == "Dirichlet-Neumann":
-      N1 = config.sim.nx - 1
+      N1 = n - 1
     N2 = N1 // r
     # fine simulation
     model_fine = dynamics.KS(
@@ -214,28 +223,38 @@ def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
   if config.case == "react_diff":
     input_features = 2
     output_features = 2
-    nx = ny = config.sim.nx
+    nx = ny = config.sim.n
     n_sample = 4000
+    DIM = 2
   elif config.case == "ns_channel":
     input_features = 2
     output_features = 1
     n_sample = 800
     nx = config.sim.nx
     ny = config.sim.ny
+    DIM = 2
   elif config.case == "ns_hit":
     input_features = 1
     output_features = 1
     n_sample = 800
     nx = ny = config.sim.n
+    DIM = 2
   elif config.case == "ks":
     input_features = 1
     output_features = 1
-    n_sample = 800
-    nx = config.sim.nx
-  unet = UNet(input_features=input_features, output_features=output_features)
+    n_sample = 3200
+    nx = config.sim.n
+    DIM = 1
+  unet = UNet(
+    input_features=input_features, output_features=output_features, DIM=DIM
+  )
   rng1, rng2 = random.split(rng)
   init_rngs = {'params': rng1, 'dropout': rng2}
-  unet_variables = unet.init(init_rngs, jnp.ones([1, nx, ny, input_features]))
+  if config.case == "ks":
+    # init 1D UNet
+    unet_variables = unet.init(init_rngs, jnp.ones([1, nx, input_features]))
+  else:
+    unet_variables = unet.init(init_rngs, jnp.ones([1, nx, ny, input_features]))
   step_per_epoch = n_sample * config.sim.case_num // config.train.batch_size_unet
   # TODO: need to specify the scheduler here for different training
   schedule = optax.piecewise_constant_schedule(
@@ -385,6 +404,7 @@ def eval_a_priori(
   test_dataloader: DataLoader,
   inputs: jnp.ndarray,
   outputs: jnp.ndarray,
+  plot: bool = True,
 ):
 
   total_loss = 0
@@ -418,66 +438,67 @@ def eval_a_priori(
     count += 1
   print(f"test loss: {total_loss/count:.4e}")
 
-  # visualization
-  n_plot = 4
-  fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
-  fraction = 0.05
-  pad = 0.001
-  index_array = np.arange(
-    0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
-  )
-  for j in range(n_plot):
-    predict, _ = train_state.apply_fn_with_bn(
-      {
-        "params": train_state.params,
-        "batch_stats": train_state.batch_stats
-      },
-      jnp.array(inputs[index_array[j]:index_array[j] + 1]),
-      is_training=False
+  if plot:
+    # visualization
+    n_plot = 4
+    fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
+    fraction = 0.05
+    pad = 0.001
+    index_array = np.arange(
+      0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
     )
-    # use cm.twilight to emphasize the middle range
-    # use cm.coolwarm to emphasize the extreme range
-    im = axs[0, j].imshow(outputs[index_array[j], ..., 0].T, cmap=cm.twilight)
-    _ = fig.colorbar(
-      im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
-    )
-    axs[0, j].axis("off")
-    im = axs[1, j].imshow(predict[0, ..., 0].T, cmap=cm.twilight)
-    _ = fig.colorbar(
-      im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
-    )
-    axs[1, j].axis("off")
-    im = axs[2, j].imshow(
-      outputs[index_array[j], ..., 0].T - predict[0, ..., 0].T,
-      cmap=cm.twilight
-    )
-    _ = fig.colorbar(
-      im, ax=axs[2, j], orientation='horizontal', fraction=fraction, pad=pad
-    )
-    axs[2, j].axis("off")
+    for j in range(n_plot):
+      predict, _ = train_state.apply_fn_with_bn(
+        {
+          "params": train_state.params,
+          "batch_stats": train_state.batch_stats
+        },
+        jnp.array(inputs[index_array[j]:index_array[j] + 1]),
+        is_training=False
+      )
+      # use cm.twilight to emphasize the middle range
+      # use cm.coolwarm to emphasize the extreme range
+      im = axs[0, j].imshow(outputs[index_array[j], ..., 0].T, cmap=cm.twilight)
+      _ = fig.colorbar(
+        im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
+      )
+      axs[0, j].axis("off")
+      im = axs[1, j].imshow(predict[0, ..., 0].T, cmap=cm.twilight)
+      _ = fig.colorbar(
+        im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
+      )
+      axs[1, j].axis("off")
+      im = axs[2, j].imshow(
+        outputs[index_array[j], ..., 0].T - predict[0, ..., 0].T,
+        cmap=cm.twilight
+      )
+      _ = fig.colorbar(
+        im, ax=axs[2, j], orientation='horizontal', fraction=fraction, pad=pad
+      )
+      axs[2, j].axis("off")
 
-  fig.tight_layout(pad=0.0)
-  plt.savefig(f"results/fig/apriori.png")
-  plt.clf()
+    fig.tight_layout(pad=0.0)
+    plt.savefig(f"results/fig/apriori.png")
+    plt.clf()
 
-  # visualize the dataset
-  fig, axs = plt.subplots(2, n_plot, figsize=(12, 5))
-  index_array = np.arange(
-    0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
-  )
-  for j in range(n_plot):
-    im = axs[0, j].imshow(inputs[index_array[j], ..., 0].T)
-    _ = fig.colorbar(
-      im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
+    # visualize the dataset
+    fig, axs = plt.subplots(2, n_plot, figsize=(12, 5))
+    index_array = np.arange(
+      0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
     )
-    axs[0, j].axis("off")
-    im = axs[1, j].imshow(outputs[index_array[j], ..., 0].T)
-    _ = fig.colorbar(
-      im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
-    )
-    axs[1, j].axis("off")
-  fig.tight_layout(pad=0.0)
-  plt.savefig("results/fig/dataset.png")
+    for j in range(n_plot):
+      im = axs[0, j].imshow(inputs[index_array[j], ..., 0].T)
+      _ = fig.colorbar(
+        im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
+      )
+      axs[0, j].axis("off")
+      im = axs[1, j].imshow(outputs[index_array[j], ..., 0].T)
+      _ = fig.colorbar(
+        im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
+      )
+      axs[1, j].axis("off")
+    fig.tight_layout(pad=0.0)
+    plt.savefig("results/fig/dataset.png")
 
 
 def eval_a_posteriori(
@@ -515,6 +536,19 @@ def eval_a_posteriori(
       train_utils.run_simulation_sgs, train_state, model, model.CN_real,
       outputs, 1, beta
     )
+  elif config.case == "ks":
+    r = config.sim.r
+    _, model = create_fine_coarse_simulator(config)
+    if config.sim.sgs == "correction":
+      run_simulation = partial(
+        train_utils.run_simulation_coarse_grid_correction, train_state, model,
+        outputs, r, beta
+      )
+    elif config.sim.sgs == "filter":
+      run_simulation = partial(
+        train_utils.run_simulation_sgs, train_state, model, model.CN_FEM, outputs,
+        2, beta
+      )
 
   start = time()
   step_num = model.step_num

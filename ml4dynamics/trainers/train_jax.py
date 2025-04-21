@@ -105,8 +105,11 @@ def main():
     plt.savefig(f"results/fig/loss_hist_{model_type}.png")
     plt.clf()
 
+    _plot = True
+    if pde_type == "ks":
+      _plot = False
     utils.eval_a_priori(
-      train_state, train_dataloader, test_dataloader, inputs, outputs
+      train_state, train_dataloader, test_dataloader, inputs, outputs, _plot
     )
     utils.eval_a_posteriori(
       config_dict, train_state, inputs, outputs, f"tr_aposteriori_{model_type}"
@@ -130,7 +133,7 @@ def main():
   )
   print(f"finis loading data with {time() - start:.2f}s...")
   # models_array = ["ae", "ols", "mols", "aols", "tr"]
-  models_array = ["ols"]
+  models_array = ["ae"]
 
   for _ in models_array:
     print(f"Training {_}...")

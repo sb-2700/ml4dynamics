@@ -120,7 +120,9 @@ def main():
       "config":
       config_dict,
       "readme":
-      "This dataset contains the results of a Reaction-Diffusion PDE solver. "
+      "This dataset contains the results of solving an incompressible"
+      "Navier-Stokes equation using a pseudo-spectral method over a periodic"
+      "2D box domain. "
       "The 'input' field represents the velocity, and the 'output' "
       "field represents the nonlinear RHS."
     }
