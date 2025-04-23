@@ -81,6 +81,8 @@ def main():
     inputs = inputs.reshape(-1, n, n, 2)
     outputs = outputs.reshape(-1, n, n, 2)
   elif sgs_model == "filter":
+    # NOTE: the treatment of the stress is inconsistent with the
+    # KS equation, as the stress is not divided by dx**2
     inputs = inputs.reshape(-1, n // r, n // r, 2)
     outputs = outputs.reshape(-1, n // r, n // r, 2) /\
       (config.sim.L / n * r)**2

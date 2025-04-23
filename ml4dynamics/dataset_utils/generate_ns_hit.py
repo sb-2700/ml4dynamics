@@ -16,7 +16,7 @@ jax.config.update("jax_enable_x64", True)
 
 def main():
 
-  @jax.jit
+  # @jax.jit
   def calc_J(what_hist, model):
     psi_hat = -what_hist / model.laplacian_[None]
     dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
@@ -52,9 +52,12 @@ def main():
     print('generating the {}-th trajectory...'.format(j))
     model_fine.w_hat = jnp.zeros((model_fine.N, model_fine.N//2+1))
     f0 = int(jnp.sqrt(n/2)) # init frequency
-    model_fine.w_hat = model_fine.w_hat.at[:f0, :f0].set(
-      random.normal(random.PRNGKey(0), (f0, f0)) * model_fine.init_scale
-    )
+    # model_fine.w_hat = model_fine.w_hat.at[:f0, :f0].set(
+    #   random.normal(random.PRNGKey(0), (f0, f0)) * model_fine.init_scale
+    # )
+    # model_fine.w_hat = model_fine.w_hat.at[0, 0].set(0)
+    model_fine.w_hat = model_fine.w_hat.at[1, 1].set(n**2 / 2)
+    model_fine.w_hat = model_fine.w_hat.at[-1, 1].set(n**2 / 2)
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
 
     kernel_x = 2
@@ -95,6 +98,31 @@ def main():
       u_[j] = w_coarse
       tau_[j] = tau
       j = j + 1
+
+  inputs = model_fine.u_hist[..., 0]
+  outputs = model_fine.u_hist[..., 1]
+  n_plot = 4
+  from matplotlib import pyplot as plt
+  from matplotlib import cm
+  fraction = 0.05
+  pad = 0.001
+  fig, axs = plt.subplots(2, n_plot, figsize=(12, 5))
+  index_array = np.arange(
+    0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
+  )
+  for j in range(n_plot):
+    im = axs[0, j].imshow(inputs[index_array[j]], cmap=cm.twilight)
+    _ = fig.colorbar(
+      im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
+    )
+    axs[0, j].axis("off")
+    im = axs[1, j].imshow(outputs[index_array[j]], cmap=cm.twilight)
+    _ = fig.colorbar(
+      im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
+    )
+    axs[1, j].axis("off")
+  fig.tight_layout(pad=0.0)
+  plt.savefig("results/fig/dataset.png")
 
   breakpoint()
   if j == case_num:
