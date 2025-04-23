@@ -242,7 +242,7 @@ def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
   elif config.case == "ks":
     input_features = 1
     output_features = 1
-    n_sample = 3200
+    n_sample = int(config.sim.T * 8)
     nx = config.sim.n
     DIM = 1
   unet = UNet(
@@ -404,7 +404,8 @@ def eval_a_priori(
   test_dataloader: DataLoader,
   inputs: jnp.ndarray,
   outputs: jnp.ndarray,
-  plot: bool = True,
+  dim: int = 2,
+  fig_name: str = None,
 ):
 
   total_loss = 0
@@ -438,7 +439,36 @@ def eval_a_priori(
     count += 1
   print(f"test loss: {total_loss/count:.4e}")
 
-  if plot:
+  if dim == 1:
+    predicts, _ = train_state.apply_fn_with_bn(
+      {
+        "params": train_state.params,
+        "batch_stats": train_state.batch_stats
+      },
+      jnp.array(inputs),
+      is_training=False
+    )
+    fig, axs = plt.subplots(3, 1, figsize=(12, 6))
+    fraction = 0.05
+    pad = 0.001
+    im = axs[0].imshow(outputs[..., 0].T, cmap=cm.twilight)
+    axs[0].axis("off")
+    _ = fig.colorbar(
+      im, ax=axs[0], orientation='horizontal', fraction=fraction, pad=pad
+    )
+    im = axs[1].imshow(predicts[..., 0].T, cmap=cm.twilight)
+    axs[1].axis("off")
+    _ = fig.colorbar(
+      im, ax=axs[1], orientation='horizontal', fraction=fraction, pad=pad
+    )
+    im = axs[2].imshow((outputs - predicts)[..., 0].T, cmap=cm.twilight)
+    axs[2].axis("off")
+    _ = fig.colorbar(
+      im, ax=axs[2], orientation='horizontal', fraction=fraction, pad=pad
+    )
+    plt.savefig(f"results/fig/{fig_name}.png")
+    plt.clf()
+  elif dim == 2:
     # visualization
     n_plot = 4
     fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
@@ -478,7 +508,7 @@ def eval_a_priori(
       axs[2, j].axis("off")
 
     fig.tight_layout(pad=0.0)
-    plt.savefig(f"results/fig/apriori.png")
+    plt.savefig(f"results/fig/{fig_name}.png")
     plt.clf()
 
     # visualize the dataset
@@ -498,7 +528,7 @@ def eval_a_priori(
       )
       axs[1, j].axis("off")
     fig.tight_layout(pad=0.0)
-    plt.savefig("results/fig/dataset.png")
+    plt.savefig(f"results/fig/dataset.png")
 
 
 def eval_a_posteriori(
@@ -506,7 +536,8 @@ def eval_a_posteriori(
   train_state: CustomTrainState,
   inputs: jnp.ndarray,
   outputs: jnp.ndarray,
-  fig_name: str = "cloudmap",
+  dim: int = 2,
+  fig_name: str = None,
 ):
 
   config = Box(config_dict)
@@ -522,7 +553,7 @@ def eval_a_posteriori(
     elif config.sim.sgs == "filter":
       run_simulation = partial(
         train_utils.run_simulation_sgs, train_state, model, model.adi, outputs,
-        2, beta
+        2, beta, None
       )
   elif config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
@@ -534,20 +565,20 @@ def eval_a_posteriori(
     _, model = create_fine_coarse_simulator(config)
     run_simulation = partial(
       train_utils.run_simulation_sgs, train_state, model, model.CN_real,
-      outputs, 1, beta
+      outputs, 1, beta, None
     )
   elif config.case == "ks":
     r = config.sim.r
     _, model = create_fine_coarse_simulator(config)
-    if config.sim.sgs == "correction":
+    if config.train.sgs == "correction":
       run_simulation = partial(
         train_utils.run_simulation_coarse_grid_correction, train_state, model,
         outputs, r, beta
       )
-    elif config.sim.sgs == "filter":
+    elif config.train.sgs == "filter":
       run_simulation = partial(
         train_utils.run_simulation_sgs, train_state, model, model.CN_FEM, outputs,
-        2, beta
+        beta, "pad"
       )
 
   start = time()
@@ -566,7 +597,7 @@ def eval_a_posteriori(
     print("similation contains NaN!")
     breakpoint()
   print(
-    "L2 error: {:.4e}".format(
+    "L2 error: x{:.4e}".format(
       np.sum(
         np.linalg.norm(
           x_hist.reshape(step_num, -1) -
@@ -579,34 +610,56 @@ def eval_a_posteriori(
   breakpoint()
 
   # visualization
-  n_plot = 6
-  fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
-  fraction = 0.05
-  pad = 0.001
-  index_array = np.arange(
-    0, n_plot * step_num // n_plot - 1, step_num // n_plot
-  )
-  for j in range(n_plot):
-    im = axs[0, j].imshow(inputs[index_array[j], ..., 0], cmap=cm.twilight)
+  if dim == 1:
+    fig, axs = plt.subplots(3, 1, figsize=(12, 6))
+    fraction = 0.05
+    pad = 0.001
+    im = axs[0].imshow(inputs[..., 0].T, cmap=cm.twilight)
+    axs[0].axis("off")
     _ = fig.colorbar(
-      im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
+      im, ax=axs[0], orientation='horizontal', fraction=fraction, pad=pad
     )
-    axs[0, j].axis("off")
-    im = axs[1, j].imshow(x_hist[index_array[j], ..., 0], cmap=cm.twilight)
+    im = axs[1].imshow(x_hist[..., 0].T, cmap=cm.twilight)
+    axs[1].axis("off")
     _ = fig.colorbar(
-      im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
+      im, ax=axs[1], orientation='horizontal', fraction=fraction, pad=pad
     )
-    axs[1, j].axis("off")
-    im = axs[2, j].imshow(
-      (inputs - x_hist)[index_array[j], ..., 0], cmap=cm.twilight
-    )
+    im = axs[2].imshow((inputs - x_hist)[..., 0].T, cmap=cm.twilight)
+    axs[2].axis("off")
     _ = fig.colorbar(
-      im, ax=axs[2, j], orientation='horizontal', fraction=fraction, pad=pad
+      im, ax=axs[2], orientation='horizontal', fraction=fraction, pad=pad
     )
-    axs[2, j].axis("off")
-  fig.tight_layout(pad=0.0)
-  plt.savefig(f"results/fig/{fig_name}.png")
-  plt.clf()
+    plt.savefig(f"results/fig/{fig_name}.png")
+    plt.clf()
+  elif dim == 2:
+    n_plot = 6
+    fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
+    fraction = 0.05
+    pad = 0.001
+    index_array = np.arange(
+      0, n_plot * step_num // n_plot - 1, step_num // n_plot
+    )
+    for j in range(n_plot):
+      im = axs[0, j].imshow(inputs[index_array[j], ..., 0], cmap=cm.twilight)
+      _ = fig.colorbar(
+        im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
+      )
+      axs[0, j].axis("off")
+      im = axs[1, j].imshow(x_hist[index_array[j], ..., 0], cmap=cm.twilight)
+      _ = fig.colorbar(
+        im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
+      )
+      axs[1, j].axis("off")
+      im = axs[2, j].imshow(
+        (inputs - x_hist)[index_array[j], ..., 0], cmap=cm.twilight
+      )
+      _ = fig.colorbar(
+        im, ax=axs[2, j], orientation='horizontal', fraction=fraction, pad=pad
+      )
+      axs[2, j].axis("off")
+    fig.tight_layout(pad=0.0)
+    plt.savefig(f"results/fig/{fig_name}.png")
+    plt.clf()
 
 
 ###############################################################################

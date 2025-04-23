@@ -4,6 +4,7 @@ from functools import partial
 from time import time
 
 import jax
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import yaml
 from box import Box
@@ -12,8 +13,6 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 from ml4dynamics import utils
-
-jax.config.update("jax_enable_x64", True)
 
 
 def main():
@@ -105,14 +104,21 @@ def main():
     plt.savefig(f"results/fig/loss_hist_{model_type}.png")
     plt.clf()
 
-    _plot = True
+    dim = 2
+    inputs_ = inputs
+    outputs_ = outputs
     if pde_type == "ks":
-      _plot = False
+      dim = 1
+      if config.sim.BC == "Dirichlet-Neumann":
+        inputs_ = inputs[:, :-1]
+        outputs_ = outputs[:, :-1]
     utils.eval_a_priori(
-      train_state, train_dataloader, test_dataloader, inputs, outputs, _plot
+      train_state, train_dataloader, test_dataloader, inputs, outputs, dim,
+      f"{args.config}_apriori_{model_type}"
     )
     utils.eval_a_posteriori(
-      config_dict, train_state, inputs, outputs, f"tr_aposteriori_{model_type}"
+      config_dict, train_state, inputs_, outputs_, dim,
+      f"{args.config}_aposteriori_{model_type}"
     )
 
   parser = argparse.ArgumentParser()
@@ -133,7 +139,7 @@ def main():
   )
   print(f"finis loading data with {time() - start:.2f}s...")
   # models_array = ["ae", "ols", "mols", "aols", "tr"]
-  models_array = ["ae"]
+  models_array = ["ols"]
 
   for _ in models_array:
     print(f"Training {_}...")

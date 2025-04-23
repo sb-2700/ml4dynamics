@@ -340,7 +340,6 @@ class Decoder2D(nn.Module):
     z9 = nn.relu(z9)
 
     y = nn.Conv(self.output_features, kernel_size=(1, 1))(z9)
-    # y = nn.sigmoid(y)
 
     return y
 
@@ -355,14 +354,15 @@ class UNet(nn.Module):
   def __call__(self, x):
     if self.DIM == 2:
       z1, z2, z3, z4_dropout, z5_dropout = Encoder2D(
-        self.input_features * 8, self.training
+        self.input_features * 4, self.training
       )(x)
-      y = Decoder2D(self.input_features * 8, self.output_features,
+      y = Decoder2D(self.input_features * 4, self.output_features,
                   self.training)(z1, z2, z3, z4_dropout, z5_dropout)
     elif self.DIM == 1:
-      z1, z2, z3, z4, z5 = Encoder1D(self.input_features, self.training)(x)
-      y = Decoder1D(self.input_features, self.output_features, self.training)(
+      z1, z2, z3, z4, z5 = Encoder1D(self.input_features * 8, self.training)(x)
+      y = Decoder1D(self.input_features * 8, self.output_features, self.training)(
         z1, z2, z3, z4, z5
       )
+      y = nn.softplus(y)
 
     return y

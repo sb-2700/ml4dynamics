@@ -39,12 +39,9 @@ def run_simulation_coarse_grid_correction(
       uv.reshape(1, *uv.shape),
       is_training=False
     )
-    correction = correction.reshape(nx, nx, -1)
-    tmp = jnp.zeros((nx // r, nx // r, 2))
-    for k in range(r):
-      for j in range(r):
-        tmp += uv[k::r, j::r]
-    tmp = tmp / (r**2)
+    breakpoint()
+    correction = correction.reshape(*uv.shape)
+    tmp = uv @ res_op
     uv = coarse_model.adi(tmp.transpose(2, 0, 1).reshape(-1)
                           ).reshape(2, nx // r, nx // r)
     uv = jnp.vstack(
@@ -58,8 +55,10 @@ def run_simulation_coarse_grid_correction(
   nx = uv.shape[1]
   dt = coarse_model.dt
   step_num = coarse_model.step_num
-  x_hist = np.zeros([step_num, nx, nx, 2])
+  breakpoint()
+  x_hist = np.zeros([step_num, *uv.shape])
   for i in range(step_num):
+    breakpoint()
     x_hist[i] = uv
     uv = iter(uv, label[i])
 
@@ -105,12 +104,15 @@ def run_simulation_coarse_grid_correction_torch(
 
 
 def run_simulation_sgs(
-  train_state, model, _iter: callable, label: jnp.ndarray, dim: int,
-  beta: float, uv: jnp.ndarray
+  train_state, model, _iter: callable, label: jnp.ndarray, beta: float,
+  type_: str, uv: jnp.ndarray
 ):
 
   # @jax.jit
   def iter(uv: jnp.array, expert: jnp.array = 0):
+    uv_next = _iter(uv)
+    if type_ == "pad":
+      uv = jnp.concatenate([uv, jnp.zeros((1, 1))], axis=0)
     correction, _ = train_state.apply_fn_with_bn(
       {
         "params": train_state.params,
@@ -119,14 +121,14 @@ def run_simulation_sgs(
       uv[None],
       is_training=False
     )
-    uv = _iter(uv)
-    return uv + (correction[0] * (1 - beta) + beta * expert) * dt * dx**2
+    if type_ == "pad":
+      correction = correction[:, :-1] / dx**2
+    return uv_next + (correction[0] * (1 - beta) + beta * expert) * dt * dx**2
 
-  nx = uv.shape[0]
   dt = model.dt
   dx = model.dx
   step_num = model.step_num
-  x_hist = np.zeros([step_num, nx, nx, dim])
+  x_hist = np.zeros([step_num, *uv.shape])
   for i in range(step_num):
     x_hist[i] = uv
     uv = iter(uv, label[i])
@@ -139,9 +141,8 @@ def run_ns_simulation_pressue_correction(
 ):
 
   uv = jnp.array(uv)
-  nx, ny = uv.shape[:-1]
   step_num = ns_model.step_num
-  x_hist = np.zeros([step_num, nx, ny, 2])
+  x_hist = np.zeros([step_num, *uv.shape])
   for i in range(step_num):
     x_hist[i] = uv
     correction, _ = train_state.apply_fn_with_bn(
