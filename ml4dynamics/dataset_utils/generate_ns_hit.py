@@ -3,6 +3,7 @@ from functools import partial
 
 import h5py
 import jax
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import numpy as np
 import yaml
@@ -11,8 +12,6 @@ from jax import random
 from jax.lax import conv_general_dilated
 
 from ml4dynamics.utils import create_fine_coarse_simulator
-
-jax.config.update("jax_enable_x64", True)
 
 def main():
 
@@ -40,6 +39,7 @@ def main():
   patience = 50
   writeInterval = 1
   model_fine, model_coarse = create_fine_coarse_simulator(config)
+  # model_fine.nu = 0
   n = model_coarse.N
   u_ = np.zeros((case_num, int(T/dt), n, n, 1))
   tau_ = np.zeros((case_num, int(T/dt), n, n, 1))
@@ -50,14 +50,20 @@ def main():
   while j < case_num and i < patience:
     i = i + 1
     print('generating the {}-th trajectory...'.format(j))
-    model_fine.w_hat = jnp.zeros((model_fine.N, model_fine.N//2+1))
-    f0 = int(jnp.sqrt(n/2)) # init frequency
-    # model_fine.w_hat = model_fine.w_hat.at[:f0, :f0].set(
-    #   random.normal(random.PRNGKey(0), (f0, f0)) * model_fine.init_scale
+    # model_fine.w = random.normal(
+    #   random.PRNGKey(0), (model_fine.N, model_fine.N)
     # )
+    # model_fine.w_hat = jnp.fft.rfft2(model_fine.w)
     # model_fine.w_hat = model_fine.w_hat.at[0, 0].set(0)
-    model_fine.w_hat = model_fine.w_hat.at[1, 1].set(n**2 / 2)
-    model_fine.w_hat = model_fine.w_hat.at[-1, 1].set(n**2 / 2)
+    model_fine.w_hat = jnp.zeros((model_fine.N, model_fine.N//2+1))
+    f0 = int(jnp.sqrt(n * 2)) # init frequency
+    f0 = 8
+    model_fine.w_hat = model_fine.w_hat.at[:f0, :f0].set(
+      random.normal(random.PRNGKey(0), (f0, f0)) * model_fine.init_scale
+    )
+    model_fine.w_hat = model_fine.w_hat.at[0, 0].set(0)
+    # # model_fine.w_hat = model_fine.w_hat.at[1, 1].set(n**2 / 2)
+    # # model_fine.w_hat = model_fine.w_hat.at[-1, 1].set(n**2 / 2)
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
 
     kernel_x = 2
@@ -99,8 +105,10 @@ def main():
       tau_[j] = tau
       j = j + 1
 
-  inputs = model_fine.u_hist[..., 0]
-  outputs = model_fine.u_hist[..., 1]
+  # inputs = model_fine.u_hist[..., 0]
+  # outputs = model_fine.u_hist[..., 1]
+  inputs = w_coarse
+  outputs = tau
   n_plot = 4
   from matplotlib import pyplot as plt
   from matplotlib import cm
@@ -123,6 +131,9 @@ def main():
     axs[1, j].axis("off")
   fig.tight_layout(pad=0.0)
   plt.savefig("results/fig/dataset.png")
+  plt.clf()
+  plt.plot(jnp.sum(inputs**2 + outputs**2, axis=(1, 2)))
+  plt.savefig("results/fig/e_kin.png")
 
   breakpoint()
   if j == case_num:

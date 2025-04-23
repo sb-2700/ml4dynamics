@@ -5,6 +5,8 @@ import jax.numpy as jnp
 import jax.random as random
 import yaml
 from box import Box
+from matplotlib import cm
+from matplotlib import pyplot as plt
 
 from ml4dynamics import utils
 
@@ -77,15 +79,32 @@ def main():
           input[j]
         )  # shape = [step_num, N2]
         output = output.at[j].set(res_op @ next_step_fine - next_step_coarse)
+        output /= dt
     inputs = inputs.at[i].set(input)
     outputs = outputs.at[i].set(output)
 
   inputs = inputs.reshape(-1, N2)
-  outputs = outputs.reshape(-1, N2) / dt
+  outputs = outputs.reshape(-1, N2)
   if jnp.any(jnp.isnan(inputs)) or jnp.any(jnp.isnan(outputs)) or\
     jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs)):
     raise Exception("The data contains Inf or NaN")
   
+  plot_ = True
+  if plot_:
+    plt.figure(figsize=(10, 8))
+    plt.subplot(311)
+    plt.imshow(inputs.T, cmap=cm.twilight)
+    plt.colorbar(orientation="horizontal")
+    plt.subplot(312)
+    plt.imshow(outputs.T, cmap=cm.twilight)
+    plt.colorbar(orientation="horizontal")
+    plt.subplot(313)
+    inputs_hat = jnp.fft.fft(inputs, axis=-1)
+    # inputs_hat = jnp.roll(inputs_hat, inputs_hat.shape[1] // 2, axis=-1)
+    inputs_hat = jnp.fft.fftshift(inputs_hat, axes=-1)
+    plt.imshow(jnp.abs(inputs_hat).T, cmap=cm.twilight)
+    plt.colorbar(orientation="horizontal")
+    plt.savefig("ks.png")
   breakpoint()
   data = {
     "metadata": {

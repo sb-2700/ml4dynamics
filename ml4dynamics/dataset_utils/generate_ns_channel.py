@@ -109,7 +109,7 @@ def main():
     }
 
     with h5py.File(
-      f"data/ns/channel{BC}_Re{Re}_nx{nx}_n{case_num}.h5", "w"
+      f"data/ns_channel/{BC}_Re{Re}_nx{nx}_n{case_num}.h5", "w"
     ) as f:
       metadata_group = f.create_group("metadata")
       for key, value in data["metadata"].items():
