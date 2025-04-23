@@ -224,25 +224,25 @@ def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
     input_features = 2
     output_features = 2
     nx = ny = config.sim.n
-    n_sample = 4000
+    n_sample = int(config.sim.T / config.sim.dt * 0.8)
     DIM = 2
   elif config.case == "ns_channel":
     input_features = 2
     output_features = 1
-    n_sample = 800
+    n_sample = int(config.sim.T / config.sim.dt * 0.8)
     nx = config.sim.nx
     ny = config.sim.ny
     DIM = 2
   elif config.case == "ns_hit":
     input_features = 1
     output_features = 1
-    n_sample = 800
+    n_sample = int(config.sim.T / config.sim.dt * 0.8)
     nx = ny = config.sim.n
     DIM = 2
   elif config.case == "ks":
     input_features = 1
     output_features = 1
-    n_sample = int(config.sim.T * 8)
+    n_sample = int(config.sim.T / config.sim.dt * 0.8)
     nx = config.sim.n
     DIM = 1
   unet = UNet(
@@ -553,7 +553,7 @@ def eval_a_posteriori(
     elif config.sim.sgs == "filter":
       run_simulation = partial(
         train_utils.run_simulation_sgs, train_state, model, model.adi, outputs,
-        2, beta, None
+        beta, None
       )
   elif config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
@@ -596,18 +596,18 @@ def eval_a_posteriori(
   if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
     print("similation contains NaN!")
     breakpoint()
-  print(
-    "L2 error: x{:.4e}".format(
-      np.sum(
-        np.linalg.norm(
-          x_hist.reshape(step_num, -1) -
-          (inputs.transpose(0, 3, 1, 2)).reshape(step_num, -1),
-          axis=1
-        )
-      )
-    )
-  )
-  breakpoint()
+  # print(
+  #   "L2 error: x{:.4e}".format(
+  #     np.sum(
+  #       np.linalg.norm(
+  #         x_hist.reshape(step_num, -1) -
+  #         (inputs.transpose(0, 3, 1, 2)).reshape(step_num, -1),
+  #         axis=1
+  #       )
+  #     )
+  #   )
+  # )
+  x_hist = jnp.where(jnp.abs(x_hist) < 5, x_hist, 5)
 
   # visualization
   if dim == 1:
@@ -1055,10 +1055,10 @@ def projection_correction(
 
   def inlet(y: jnp.ndarray):
     """set the inlet velocity"""
-    return y * (1 - y) * jnp.exp(-10 * (y - y0)**2)
+    return y * (1 - y) * jnp.exp(-10 * (y - y0)**2) * 3
 
   u_inlet = inlet(np.linspace(dy / 2, 1 - dy / 2, ny))
-  v_inlet = inlet(np.linspace(dy, 1, ny)) * jnp.cos(t)
+  v_inlet = inlet(np.linspace(dy, 1, ny)) * jnp.sin(t)
 
   dpdx, dpdy = grad_p(p)
   lapl_u, lapl_v = laplace_uv(u, v)

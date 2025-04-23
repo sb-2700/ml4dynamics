@@ -26,9 +26,9 @@ def main():
   dy = 1 / ny
   BC = config.sim.BC
   case_num = config.sim.case_num
-  dt = .01
-  step_num = 2000
-  t = step_num * dt
+  T = config.sim.T
+  dt = config.sim.dt
+  step_num = int(T / dt)
   patience = 50  # we admit 50 times blow up generations
   warm_up = 500
   writeInterval = 1
@@ -39,6 +39,9 @@ def main():
   u_hist_ = np.zeros([case_num, step_num // writeInterval, nx, ny])
   v_hist_ = np.zeros([case_num, step_num // writeInterval, nx, ny])
   p_hist_ = np.zeros([case_num, step_num // writeInterval, nx, ny])
+  def inlet(y: jnp.ndarray):
+    """set the inlet velocity"""
+    return y * (1 - y) * jnp.exp(-10 * (y - y0)**2) * 3
 
   j = 0
   i = 0
@@ -50,7 +53,7 @@ def main():
       utils.projection_correction,
       dx=dx, dy=dy, nx=nx, ny=ny, dt=dt, Re=Re, BC=BC
     )
-    u_inlet = np.exp(-(np.linspace(dy / 2, 1 - dy / 2, ny) - y0)**2)
+    u_inlet = inlet(np.linspace(dy / 2, 1 - dy / 2, ny))
     u = jnp.tile(u_inlet, (nx, 1))
     v = jnp.zeros([nx, ny])
     p = jnp.zeros([nx, ny])  # staggered grid, the size of grid p is undetermined

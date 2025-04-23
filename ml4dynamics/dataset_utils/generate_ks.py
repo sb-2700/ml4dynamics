@@ -34,17 +34,13 @@ def main():
   
   res_op = jnp.zeros((N2, N1))
   int_op = jnp.zeros((N1, N2))
-  # NOTE: this restriction operator is useless for filter, as at returns
-  # vanishing SGS stress
-  res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 1].set(1)
-  int_op = int_op.at[jnp.arange(N2) * r + 1, jnp.arange(N2)].set(1)
-  for i in range(N2):
-    res_op = res_op.at[i, i * r:i * r + 7].set(1)
-  res_op /= 7
   # for i in range(N2):
-  #   res_op = res_op.at[i, i * r + 1:i * r + 6].set(1)
-  # res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 3].set(0)
-  # res_op /= 4
+  #   res_op = res_op.at[i, i * r:i * r + 7].set(1)
+  # res_op /= 7
+  for i in range(N2):
+    res_op = res_op.at[i, i * r + 1:i * r + 6].set(1)
+  res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 3].set(0)
+  res_op /= 4
   int_op = jnp.linalg.pinv(res_op)
   assert jnp.allclose(res_op @ int_op, jnp.eye(N2))
   assert jnp.allclose(res_op.sum(axis=-1), jnp.ones(N2))
@@ -94,7 +90,7 @@ def main():
     jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs)):
     raise Exception("The data contains Inf or NaN")
   
-  plot_ = False
+  plot_ = True
   if plot_:
     plt.figure(figsize=(10, 8))
     plt.subplot(311)
