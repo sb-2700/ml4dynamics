@@ -110,6 +110,7 @@ def run_simulation_sgs(
 
   # @jax.jit
   def iter(uv: jnp.array, expert: jnp.array = 0):
+    breakpoint()
     uv_next = _iter(uv)
     if type_ == "pad":
       uv = jnp.concatenate([uv, jnp.zeros((1, 1))], axis=0)

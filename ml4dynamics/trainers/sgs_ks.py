@@ -36,16 +36,49 @@ def main():
   BC = config.sim.BC
   # solver parameters
   if BC == "periodic":
-    N1 = config.sim.nx
+    N1 = config.sim.n
   elif BC == "Dirichlet-Neumann":
-    N1 = config.sim.nx - 1
+    N1 = config.sim.n - 1
   r = config.sim.r
   N2 = N1 // r
   rng = random.PRNGKey(config.sim.seed)
   case_num = config.sim.case_num
   ks_fine, ks_coarse = utils.create_fine_coarse_simulator(config)
-  inputs, outputs, input_dim, output_dim = utils.data_process(config_dict)
-  breakpoint()
+  inputs, outputs, train_dataloader, test_dataloader = utils.load_data(
+    config_dict, config.train.batch_size_unet, mode="jax"
+  )
+  inputs = inputs[:, :-1]
+  outputs = outputs[:, :-1]
+
+  if config.train.input == "uglobal":
+    # training global ROM
+    input_dim = output_dim = N2
+    inputs = inputs.reshape(-1, input_dim)
+    outputs = outputs.reshape(-1, output_dim)
+  else:
+    # training local ROM with local input
+    input_dim = output_dim = 1
+    if BC == "periodic":
+      dx = config.sim.L / N2
+    elif BC == "Dirichlet-Neumann":
+      dx = config.sim.L / (N2 + 1)
+    u = jnp.array(inputs)
+    u_x = (jnp.roll(inputs, 1, axis=1) - jnp.roll(inputs, -1, axis=1)) / dx / 2
+    u_xx = (
+      (jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) - 2 * inputs
+    ) / dx**2
+    u_xxxx = ((jnp.roll(inputs, 2, axis=1) + jnp.roll(inputs, -2, axis=1)) -\
+        4*(jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) +\
+        6 * inputs) / dx**4
+    outputs = outputs.reshape(-1, output_dim)
+    if config.train.input == "ux":
+      inputs = u_x.reshape(-1, input_dim)
+    elif config.train.input == "uxx":
+      inputs = u_xx.reshape(-1, input_dim)
+    elif config.train.input == "uxxxx":
+      inputs = u_xxxx.reshape(-1, input_dim)
+    else:
+      inputs = u.reshape(-1, input_dim)
 
   # NOTE: visualize and compare the full and stratified dataset
   # bins = config.train.bins

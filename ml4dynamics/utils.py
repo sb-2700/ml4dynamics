@@ -277,57 +277,6 @@ def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
   return train_state, schedule
 
 
-def data_process(config_dict: ml_collections.ConfigDict):
-  config = Box(config_dict)
-  BC = config.sim.BC
-  L = config.sim.L
-  T = config.sim.T
-  c = config.sim.c
-  # solver parameters
-  if BC == "periodic":
-    N1 = config.sim.nx
-  elif BC == "Dirichlet-Neumann":
-    N1 = config.sim.nx - 1
-  r = config.sim.r
-  N2 = N1 // r
-  sgs_model = config.train.sgs
-  case_num = config.sim.case_num
-  data = np.load(f'data/ks/c{c:.1f}T{T}n{case_num}_{sgs_model}.npz')
-  inputs = data["input"]
-  outputs = data["output"]
-  # preprocess the input-output pair for training
-  if config.train.input == "uglobal":
-    # training global ROM
-    input_dim = output_dim = N2
-    inputs = inputs.reshape(-1, input_dim)
-    outputs = outputs.reshape(-1, output_dim)
-  else:
-    # training local ROM with local input
-    input_dim = output_dim = 1
-    if BC == "periodic":
-      dx = L / N2
-    elif BC == "Dirichlet-Neumann":
-      dx = L / (N2 + 1)
-    u = jnp.array(inputs)
-    u_x = (jnp.roll(inputs, 1, axis=1) - jnp.roll(inputs, -1, axis=1)) / dx / 2
-    u_xx = (
-      (jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) - 2 * inputs
-    ) / dx**2
-    u_xxxx = ((jnp.roll(inputs, 2, axis=1) + jnp.roll(inputs, -2, axis=1)) -\
-        4*(jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) +\
-        6 * inputs) / dx**4
-    outputs = outputs.reshape(-1, output_dim)
-    if config.train.input == "ux":
-      inputs = u_x.reshape(-1, input_dim)
-    elif config.train.input == "uxx":
-      inputs = u_xx.reshape(-1, input_dim)
-    elif config.train.input == "uxxxx":
-      inputs = u_xxxx.reshape(-1, input_dim)
-    else:
-      inputs = u.reshape(-1, input_dim)
-  return inputs, outputs, input_dim, output_dim
-
-
 def data_stratification(config_dict: ml_collections.ConfigDict):
   config = Box(config_dict)
   # stratify the data to balance it
@@ -1110,9 +1059,9 @@ def a_posteriori_analysis(
   BC = config.sim.BC
   # solver parameters
   if BC == "periodic":
-    N1 = config.sim.nx
+    N1 = config.sim.n
   elif BC == "Dirichlet-Neumann":
-    N1 = config.sim.nx - 1
+    N1 = config.sim.n - 1
   r = config.sim.r
   N2 = N1 // r
   rng = random.PRNGKey(config.sim.seed)
@@ -1175,6 +1124,9 @@ def a_posteriori_analysis(
       elif config.train.input == "uxxxx":
         return partial(correction_nn.apply,
                        params)(u_xxxx.reshape(-1, 1)).reshape(-1)
+      elif config.train.input == "uglobal":
+        return partial(correction_nn.apply,
+                       params)(input.reshape(1, -1)).reshape(-1)
       # global model: [N] to [N]
       # return partial(correction_nn.apply,
       #                params)(input.reshape(1, -1)).reshape(-1)
