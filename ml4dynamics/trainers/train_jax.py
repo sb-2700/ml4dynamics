@@ -46,7 +46,9 @@ def main():
         elif model_type == "aols":
           pass
         elif model_type == "tr":
-          pass
+          breakpoint()
+          grad = jax.grad(ae_loss_fn)(x)
+          loss += jnp.mean(grad**2) * lambda_
 
         return loss, batch_stats
 
@@ -70,6 +72,19 @@ def main():
       jax.tree_util.tree_map(lambda x: x.size, flat_params).values()
     )
     print(f"total parameters for {model_type}:", total_params)
+    if model_type == "tr":
+      lambda_ = config.train.lambda_
+      ae_train_state, _ = utils.prepare_unet_train_state(
+        config_dict, f"{pde_type}/ae"
+      )
+      ae_fn = partial(ae_train_state.apply_fn_with_bn, 
+        {"params": ae_train_state.params,
+        "batch_stats": ae_train_state.batch_stats})
+      def ae_loss_fn(x):
+        x_pred, _ = ae_fn(x, is_training=False)
+        loss = jnp.linalg.norm(x - x_pred, axis=-1)
+        return loss
+
     iters = tqdm(range(epochs))
     loss_hist = []
     for epoch in iters:
@@ -112,6 +127,12 @@ def main():
       if config.sim.BC == "Dirichlet-Neumann":
         inputs_ = inputs[:, :-1]
         outputs_ = outputs[:, :-1]
+    if model_type == "ae":
+      utils.eval_a_priori(
+        train_state, train_dataloader, test_dataloader, inputs, inputs, dim,
+        f"{args.config}_apriori_{model_type}"
+      )
+      return
     utils.eval_a_priori(
       train_state, train_dataloader, test_dataloader, inputs, outputs, dim,
       f"{args.config}_apriori_{model_type}"
@@ -139,7 +160,7 @@ def main():
   )
   print(f"finis loading data with {time() - start:.2f}s...")
   # models_array = ["ae", "ols", "mols", "aols", "tr"]
-  models_array = ["ols"]
+  models_array = ["tr"]
 
   for _ in models_array:
     print(f"Training {_}...")

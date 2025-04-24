@@ -9,6 +9,7 @@ import jax.scipy.sparse.linalg as jsla
 import ml_collections
 import numpy as np
 import optax
+import pickle
 import torch
 from box import Box
 from jax import random as random
@@ -216,7 +217,9 @@ def create_ns_hit_simulator(config_dict: ml_collections.ConfigDict):
   return model
 
 
-def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
+def prepare_unet_train_state(
+  config_dict: ml_collections.ConfigDict, load_dict = None
+):
 
   config = Box(config_dict)
   rng = random.PRNGKey(config.sim.seed)
@@ -250,11 +253,15 @@ def prepare_unet_train_state(config_dict: ml_collections.ConfigDict):
   )
   rng1, rng2 = random.split(rng)
   init_rngs = {'params': rng1, 'dropout': rng2}
-  if config.case == "ks":
-    # init 1D UNet
-    unet_variables = unet.init(init_rngs, jnp.ones([1, nx, input_features]))
+  if load_dict:
+    with open(f"ckpts/{load_dict}.pkl", "rb") as f:
+      unet_variables = pickle.load(f)
   else:
-    unet_variables = unet.init(init_rngs, jnp.ones([1, nx, ny, input_features]))
+    if config.case == "ks":
+      # init 1D UNet
+      unet_variables = unet.init(init_rngs, jnp.ones([1, nx, input_features]))
+    else:
+      unet_variables = unet.init(init_rngs, jnp.ones([1, nx, ny, input_features]))
   step_per_epoch = n_sample * config.sim.case_num // config.train.batch_size_unet
   # TODO: need to specify the scheduler here for different training
   schedule = optax.piecewise_constant_schedule(

@@ -11,6 +11,7 @@ import yaml
 from box import Box
 from jax import random as random
 from jaxtyping import Array
+from matplotlib import cm
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
@@ -144,7 +145,7 @@ def main():
       rng: PRNGKey,
     ) -> float:
       predict = correction_nn.apply(params, input)
-      return jnp.mean((output - predict)**2)
+      return jnp.mean((input - predict)**2)
 
     @jax.jit
     def update(
@@ -331,6 +332,28 @@ def main():
 
   # A priori analysis: visualize the error distribution
   if config.train.input == "uglobal":
+    predicts = correction_nn.apply(params, inputs)
+    breakpoint()
+    fig, axs = plt.subplots(3, 1, figsize=(12, 6))
+    fraction = 0.05
+    pad = 0.001
+    im = axs[0].imshow(outputs.T, cmap=cm.twilight)
+    axs[0].axis("off")
+    _ = fig.colorbar(
+      im, ax=axs[0], orientation='horizontal', fraction=fraction, pad=pad
+    )
+    im = axs[1].imshow(predicts.T, cmap=cm.twilight)
+    axs[1].axis("off")
+    _ = fig.colorbar(
+      im, ax=axs[1], orientation='horizontal', fraction=fraction, pad=pad
+    )
+    im = axs[2].imshow((outputs - predicts).T, cmap=cm.twilight)
+    axs[2].axis("off")
+    _ = fig.colorbar(
+      im, ax=axs[2], orientation='horizontal', fraction=fraction, pad=pad
+    )
+    plt.savefig(f"results/fig/mlp_a_priori.png")
+    plt.clf()
     err = jnp.linalg.norm(correction_nn.apply(params, inputs) - outputs, axis=1)
     err = err.reshape(ks_fine.step_num, -1)
     err = jnp.mean(err, axis=1)
