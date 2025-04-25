@@ -79,8 +79,9 @@ def main():
         next_step_coarse = ks_coarse.CN_FEM(
           input[j]
         )  # shape = [step_num, N2]
-        output = output.at[j].set(res_op @ next_step_fine - next_step_coarse)
-        output /= dt
+        output = output.at[j].set(
+          (res_op @ next_step_fine - next_step_coarse) / dt
+        )
     inputs = inputs.at[i].set(input)
     outputs = outputs.at[i].set(output)
 

@@ -46,9 +46,9 @@ def main():
         elif model_type == "aols":
           pass
         elif model_type == "tr":
+          normal_vector = jax.grad(ae_loss_fn)(x)
+          loss += jnp.mean(jnp.sum(normal_vector * tangent_vector(x), axis=-1))
           breakpoint()
-          grad = jax.grad(ae_loss_fn)(x)
-          loss += jnp.mean(grad**2) * lambda_
 
         return loss, batch_stats
 
@@ -83,7 +83,9 @@ def main():
       def ae_loss_fn(x):
         x_pred, _ = ae_fn(x, is_training=False)
         loss = jnp.linalg.norm(x - x_pred, axis=-1)
-        return loss
+        return jnp.sum(loss)
+      def tangent_vector(x):
+        return x
 
     iters = tqdm(range(epochs))
     loss_hist = []
@@ -160,7 +162,7 @@ def main():
   )
   print(f"finis loading data with {time() - start:.2f}s...")
   # models_array = ["ae", "ols", "mols", "aols", "tr"]
-  models_array = ["tr"]
+  models_array = ["ols"]
 
   for _ in models_array:
     print(f"Training {_}...")
