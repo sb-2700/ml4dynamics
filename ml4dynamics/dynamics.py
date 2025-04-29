@@ -151,7 +151,7 @@ class dynamics(object):
 
   def run_simulation(self, x, iter: callable):
     step_num = self.step_num
-    self.x_hist = jnp.zeros([step_num, self.N])
+    self.x_hist = jnp.zeros([step_num, *x.shape])
     for i in range(step_num):
       self.x_hist = self.x_hist.at[i].set(x)
       x = iter(x)
@@ -894,22 +894,20 @@ class react_diff(dynamics):
     self.L_vminus = jnp.eye(n) - L * gamma * dt / 2 * d
     self.L_vplus = jnp.eye(n) + L * gamma * dt / 2 * d
 
-  def adi(self, uv):
+  def adi(self, u):
 
-    n = self.n
-    u = uv[:n**2].reshape((n, n))
-    v = uv[n**2:].reshape((n, n))
     dt = self.dt
-    rhsu = self.L_uplus @ u @ self.L_uplus + dt * (u - v - u**3 + self.alpha)
-    rhsv = self.L_vplus @ v @ self.L_vplus + self.beta * dt * (u - v)
+    rhsu = self.L_uplus @ u[..., 0] @ self.L_uplus +\
+      dt * (u[..., 0] - u[..., 1] - u[..., 0]**3 + self.alpha)
+    rhsv = self.L_vplus @ u[..., 1] @ self.L_vplus +\
+      self.beta * dt * (u[..., 0] - u[..., 1])
 
-    u = jax.scipy.linalg.solve(self.L_uminus, rhsu)
-    u = jax.scipy.linalg.solve(self.L_uminus, u.T)
-    u = u.T
-    v = jax.scipy.linalg.solve(self.L_vminus, rhsv)
-    v = jax.scipy.linalg.solve(self.L_vminus, v.T)
-    v = v.T
-    return jnp.hstack([u.reshape(-1), v.reshape(-1)])
+    result = jnp.concatenate(
+      [(solve(self.L_uminus, solve(self.L_uminus, rhsu).T).T)[..., None],
+       (solve(self.L_uminus, solve(self.L_vminus, rhsv).T).T)[..., None]],
+      axis=2
+    )
+    return result
 
 
 class ns_hit(dynamics):
@@ -1008,26 +1006,34 @@ class ns_hit(dynamics):
     dt = self.dt
     nu = self.nu
     n = w_hat.shape[0]
-    w_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
-    psi_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
-    w_hat2 = w_hat2.at[:n // 2, :n // 2 + 1].set(w_hat[:n // 2] * 4)
-    w_hat2 = w_hat2.at[-n // 2:, :n // 2 + 1].set(w_hat[n // 2:] * 4)
-    psi_hat2 = psi_hat2.at[:n // 2, :n // 2 + 1].set(
-      -(w_hat / self.laplacian_)[:n // 2] * 4
-    )
-    psi_hat2 = psi_hat2.at[-n // 2:, :n // 2 + 1].set(
-      -(w_hat / self.laplacian_)[n // 2:] * 4
-    )
-    wx2 = jnp.fft.irfft2(1j * w_hat2 * self.k2x)
-    wy2 = jnp.fft.irfft2(1j * w_hat2 * self.k2y)
-    psix2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2x)
-    psiy2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2y)
-    #force = np.cos(2*Y) * 0.0
-    #print(np.linalg.norm(wx2*psiy2-wy2*psix2))
-    tmp = jnp.zeros_like(w_hat)
-    tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)
-    tmp = tmp.at[:n // 2].set(tmp_[:n // 2, :n // 2 + 1] / 4)
-    tmp = tmp.at[n // 2:].set(tmp_[-n // 2:, :n // 2 + 1] / 4)
+    """implementation 1"""
+    # w_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
+    # psi_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
+    # w_hat2 = w_hat2.at[:n // 2, :n // 2 + 1].set(w_hat[:n // 2] * 4)
+    # w_hat2 = w_hat2.at[-n // 2:, :n // 2 + 1].set(w_hat[n // 2:] * 4)
+    # psi_hat2 = psi_hat2.at[:n // 2, :n // 2 + 1].set(
+    #   -(w_hat / self.laplacian_)[:n // 2] * 4
+    # )
+    # psi_hat2 = psi_hat2.at[-n // 2:, :n // 2 + 1].set(
+    #   -(w_hat / self.laplacian_)[n // 2:] * 4
+    # )
+    # wx2 = jnp.fft.irfft2(1j * w_hat2 * self.k2x)
+    # wy2 = jnp.fft.irfft2(1j * w_hat2 * self.k2y)
+    # psix2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2x)
+    # psiy2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2y)
+    # #force = np.cos(2*Y) * 0.0
+    # #print(np.linalg.norm(wx2*psiy2-wy2*psix2))
+    # tmp = jnp.zeros_like(w_hat)
+    # tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)
+    # tmp = tmp.at[:n // 2].set(tmp_[:n // 2, :n // 2 + 1] / 4)
+    # tmp = tmp.at[n // 2:].set(tmp_[-n // 2:, :n // 2 + 1] / 4)
+    """implementation 2"""
+    psi_hat = -(w_hat / self.laplacian_)
+    wx = jnp.fft.irfft2(1j * psi_hat * self.kx)
+    wy = jnp.fft.irfft2(1j * psi_hat * self.ky)
+    psix = jnp.fft.irfft2(1j * psi_hat * self.kx)
+    psiy = jnp.fft.irfft2(1j * psi_hat * self.ky)
+    tmp = jnp.fft.rfft2(wx * psiy - wy * psix)
     w_hat = ((1 + dt / 2 * nu * self.laplacian) * w_hat - dt * tmp) /\
       (1 - dt / 2 * nu * self.laplacian)
     return w_hat

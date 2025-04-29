@@ -6,8 +6,8 @@ from dlpack import asdlpack
 
 
 def run_simulation_coarse_grid_correction(
-  train_state, coarse_model, label: jnp.ndarray, r: int, beta: float,
-  uv: jnp.ndarray
+  train_state, coarse_model, _iter: callable, label: jnp.ndarray, beta: float,
+  res_fn: callable, int_fn: callable, type_: str, x: jnp.ndarray
 ):
   r"""
   TODO: Come up with a better name, this is more or less a synthetic
@@ -30,89 +30,12 @@ def run_simulation_coarse_grid_correction(
   """
 
   @jax.jit
-  def iter(uv: jnp.array, expert: jnp.array = 0):
-    correction, _ = train_state.apply_fn_with_bn(
-      {
-        "params": train_state.params,
-        "batch_stats": train_state.batch_stats
-      },
-      uv.reshape(1, *uv.shape),
-      is_training=False
-    )
-    breakpoint()
-    correction = correction.reshape(*uv.shape)
-    tmp = uv @ res_op
-    uv = coarse_model.adi(tmp.transpose(2, 0, 1).reshape(-1)
-                          ).reshape(2, nx // r, nx // r)
-    uv = jnp.vstack(
-      [
-        jnp.kron(uv[0], jnp.ones((r, r))).reshape(1, nx, nx),
-        jnp.kron(uv[1], jnp.ones((r, r))).reshape(1, nx, nx),
-      ]
-    ).reshape(nx, nx, 2)
-    return uv + (correction * (1 - beta) + beta * expert) * dt
-
-  nx = uv.shape[1]
-  dt = coarse_model.dt
-  step_num = coarse_model.step_num
-  breakpoint()
-  x_hist = np.zeros([step_num, *uv.shape])
-  for i in range(step_num):
-    breakpoint()
-    x_hist[i] = uv
-    uv = iter(uv, label[i])
-
-  return x_hist
-
-
-def run_simulation_coarse_grid_correction_torch(
-  model, rd_fine, coarse_model, r: int, device, uv: jnp.ndarray
-):
-
-  nx = uv.shape[1]
-  dt = coarse_model.dt
-  step_num = rd_fine.step_num
-  x_hist = jnp.zeros([step_num, 2, nx, nx])
-  for i in range(step_num):
-    x_hist = x_hist.at[i].set(uv)
-    tmp = (
-      uv[:, 0::2, 0::2] + uv[:, 1::2, 0::2] + uv[:, 0::2, 1::2] +
-      uv[:, 1::2, 1::2]
-    ) / 4
-    uv = coarse_model.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
-    uv = np.vstack(
-      [
-        np.kron(uv[0], np.ones((r, r))).reshape(1, nx, nx),
-        np.kron(uv[1], np.ones((r, r))).reshape(1, nx, nx),
-      ]
-    )
-
-    # naive jax-torch data exchange from numpy, gpu-cpu
-    # uv_np = np.asarray(uv)
-    # uv_torch = torch.from_numpy(uv_np).clone().to(device)
-    # correction = model(uv_torch.reshape((1, *uv.shape)))
-    # uv += jnp.array((correction[0].detach().cpu().numpy())) * dt
-
-    # jax-torch data exchange via dlpack
-    # reference: https://github.com/jax-ml/jax/issues/1100
-    correction = model(
-      torch.from_dlpack(asdlpack(uv)).reshape((1, *uv.shape)).to(device)
-    )
-    uv += jnp.array(jnp.from_dlpack(asdlpack(correction[0].detach()))) * dt
-
-  return x_hist
-
-
-def run_simulation_sgs(
-  train_state, model, _iter: callable, label: jnp.ndarray, beta: float,
-  type_: str, uv: jnp.ndarray
-):
-
-  # @jax.jit
-  def iter(uv: jnp.array, expert: jnp.array = 0):
-    uv_next = _iter(uv)
+  def iter(x: jnp.array, expert: jnp.array = 0):
+    x_res = res_fn(x)
+    x_res = _iter(x_res)
+    x_next = int_fn(x_res)
     if type_ == "pad":
-      uv = jnp.concatenate([uv, jnp.zeros((1, 1))], axis=0)
+      x = jnp.concatenate([x, jnp.zeros((1, 1))], axis=0)
     if train_state.batch_stats:
       # global model
       correction, _ = train_state.apply_fn_with_bn(
@@ -120,7 +43,7 @@ def run_simulation_sgs(
           "params": train_state.params,
           "batch_stats": train_state.batch_stats
         },
-        uv.reshape(1, *uv.shape),
+        x.reshape(1, *x.shape),
         is_training=False
       )
     else:
@@ -129,45 +52,127 @@ def run_simulation_sgs(
         {
           "params": train_state.params
         },
-        uv.reshape(-1, uv.shape[-1]),
+        x.reshape(-1, x.shape[-1]),
         is_training=False
       )
-      correction = correction.reshape(*uv.shape)
+      correction = correction.reshape(*x.shape)
+    if type_ == "pad":
+      correction = correction[:, :-1]
+    return x_next + (correction[0] * (1 - beta) + beta * expert) * dt
+
+  dt = coarse_model.dt
+  step_num = coarse_model.step_num
+  x_hist = np.zeros([step_num, *x.shape])
+  for i in range(step_num):
+    x_hist[i] = x
+    x = iter(x, label[i])
+
+  return x_hist
+
+
+def run_simulation_coarse_grid_correction_torch(
+  model, rd_fine, coarse_model, r: int, device, x: jnp.ndarray
+):
+
+  nx = x.shape[1]
+  dt = coarse_model.dt
+  step_num = rd_fine.step_num
+  x_hist = jnp.zeros([step_num, 2, nx, nx])
+  for i in range(step_num):
+    x_hist = x_hist.at[i].set(x)
+    tmp = (
+      x[:, 0::2, 0::2] + x[:, 1::2, 0::2] + x[:, 0::2, 1::2] +
+      x[:, 1::2, 1::2]
+    ) / 4
+    x = coarse_model.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
+    x = np.vstack(
+      [
+        np.kron(x[0], np.ones((r, r))).reshape(1, nx, nx),
+        np.kron(x[1], np.ones((r, r))).reshape(1, nx, nx),
+      ]
+    )
+
+    # naive jax-torch data exchange from numpy, gpu-cpu
+    # x_np = np.asarray(x)
+    # x_torch = torch.from_numpy(x_np).clone().to(device)
+    # correction = model(x_torch.reshape((1, *x.shape)))
+    # x += jnp.array((correction[0].detach().cpu().numpy())) * dt
+
+    # jax-torch data exchange via dlpack
+    # reference: https://github.com/jax-ml/jax/issues/1100
+    correction = model(
+      torch.from_dlpack(asdlpack(x)).reshape((1, *x.shape)).to(device)
+    )
+    x += jnp.array(jnp.from_dlpack(asdlpack(correction[0].detach()))) * dt
+
+  return x_hist
+
+
+def run_simulation_sgs(
+  train_state, model, _iter: callable, label: jnp.ndarray, beta: float,
+  type_: str, x: jnp.ndarray
+):
+
+  # @jax.jit
+  def iter(x: jnp.array, expert: jnp.array = 0):
+    x_next = _iter(x)
+    if type_ == "pad":
+      x = jnp.concatenate([x, jnp.zeros((1, 1))], axis=0)
+    if train_state.batch_stats:
+      # global model
+      correction, _ = train_state.apply_fn_with_bn(
+        {
+          "params": train_state.params,
+          "batch_stats": train_state.batch_stats
+        },
+        x.reshape(1, *x.shape),
+        is_training=False
+      )
+    else:
+      # local model
+      correction, _ = train_state.apply_fn(
+        {
+          "params": train_state.params
+        },
+        x.reshape(-1, x.shape[-1]),
+        is_training=False
+      )
+      correction = correction.reshape(*x.shape)
     if type_ == "pad":
       correction = correction[:, :-1] / dx**2
-    return uv_next + (correction[0] * (1 - beta) + beta * expert) * dt * dx**2
+    return x_next + (correction[0] * (1 - beta) + beta * expert) * dt * dx**2
 
   dt = model.dt
   dx = model.dx
   step_num = model.step_num
-  x_hist = np.zeros([step_num, *uv.shape])
+  x_hist = np.zeros([step_num, *x.shape])
   for i in range(step_num):
-    x_hist[i] = uv
-    uv = iter(uv, label[i])
+    x_hist[i] = x
+    x = iter(x, label[i])
 
   return x_hist
 
 
 def run_ns_simulation_pressue_correction(
-  train_state, ns_model, label: jnp.ndarray, beta: float, uv: jnp.ndarray
+  train_state, ns_model, label: jnp.ndarray, beta: float, x: jnp.ndarray
 ):
 
-  uv = jnp.array(uv)
+  x = jnp.array(x)
   step_num = ns_model.step_num
-  x_hist = np.zeros([step_num, *uv.shape])
+  x_hist = np.zeros([step_num, *x.shape])
   for i in range(step_num):
-    x_hist[i] = uv
+    x_hist[i] = x
     correction, _ = train_state.apply_fn_with_bn(
       {
         "params": train_state.params,
         "batch_stats": train_state.batch_stats
       },
-      uv.reshape(1, *uv.shape),
+      x.reshape(1, *x.shape),
       is_training=False
     )
     u, v, _ = ns_model.projection_correction(
-      uv[..., 0], uv[..., 1], correction[0, ..., 0], correction=True
+      x[..., 0], x[..., 1], correction[0, ..., 0], correction=True
     )
-    uv = jnp.concatenate([u[..., None], v[..., None]], axis=-1)
+    x = jnp.concatenate([u[..., None], v[..., None]], axis=-1)
 
   return x_hist

@@ -60,7 +60,7 @@ def test_reaction_diffusion_equation_solver():
   dt = 0.01
   omega = 2 * jnp.pi / widthx
 
-  utils.assembly_RDmatrix(n, dt, dx, beta=beta, gamma=gamma, d=1.0)c
+  utils.assembly_RDmatrix(n, dt, dx, beta=beta, gamma=gamma, d=1.0)
   mesh_1d = jnp.linspace(0, widthx, n + 1)
   u = jnp.sin(mesh_1d[:-1] * omega).reshape(n, 1) + jnp.zeros((1, n))
   v = jnp.sin(mesh_1d[:-1] * omega).reshape(1, n) + jnp.zeros((n, 1))

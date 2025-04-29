@@ -1,14 +1,17 @@
 from datetime import datetime
 
 import h5py
+import jax
 import jax.numpy as jnp
 import jax.random as random
+import numpy as np
 import yaml
 from box import Box
 from matplotlib import cm
 from matplotlib import pyplot as plt
 
 from ml4dynamics import utils
+from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
 
 
 def main():
@@ -31,22 +34,14 @@ def main():
   rng = random.PRNGKey(config.sim.seed)
   case_num = config.sim.case_num
   ks_fine, ks_coarse = utils.create_fine_coarse_simulator(config)
-  
-  res_op = jnp.zeros((N2, N1))
-  int_op = jnp.zeros((N1, N2))
-  # for i in range(N2):
-  #   res_op = res_op.at[i, i * r:i * r + 7].set(1)
-  # res_op /= 7
-  for i in range(N2):
-    res_op = res_op.at[i, i * r + 1:i * r + 6].set(1)
-  res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 3].set(0)
-  res_op /= 4
-  int_op = jnp.linalg.pinv(res_op)
-  assert jnp.allclose(res_op @ int_op, jnp.eye(N2))
-  assert jnp.allclose(res_op.sum(axis=-1), jnp.ones(N2))
+  res_fn, int_fn = res_int_fn(config_dict)
     
-  inputs = jnp.zeros((case_num, ks_fine.step_num, N2))
-  outputs = jnp.zeros((case_num, ks_fine.step_num, N2))
+  if sgs_model == "fine_correction":
+    N = N1
+  else:
+    N = N2
+  inputs = np.zeros((case_num, ks_fine.step_num, N))
+  outputs = np.zeros((case_num, ks_fine.step_num, N))
   for i in range(case_num):
     print(i)
     rng, key = random.split(rng)
@@ -67,26 +62,27 @@ def main():
       r0 = random.uniform(key) * 20 + 44
       u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
     ks_fine.run_simulation(u0, ks_fine.CN_FEM)
-    input = ks_fine.x_hist @ res_op.T  # shape = [step_num, N2]
-    output = jnp.zeros_like(input)
-    for j in range(ks_fine.step_num):
-      if sgs_model == "filter":
-        output = ks_fine.x_hist**2 @ res_op.T - input**2
-      elif sgs_model == "correction":
-        next_step_fine = ks_fine.CN_FEM(
-          ks_fine.x_hist[j]
-        )  # shape = [N1, step_num]
-        next_step_coarse = ks_coarse.CN_FEM(
-          input[j]
-        )  # shape = [step_num, N2]
-        output = output.at[j].set(
-          (res_op @ next_step_fine - next_step_coarse) / dt
-        )
-    inputs = inputs.at[i].set(input)
+    input = jax.vmap(res_fn)(ks_fine.x_hist)[..., 0]  # shape = [step_num, N2]
+    output = np.zeros_like(outputs[0])
+    if sgs_model == "filter":
+      output = jax.vmap(res_fn)(ks_fine.x_hist**2)[..., 0] - input**2
+    else:
+      for j in range(ks_fine.step_num):
+        next_step_fine = ks_fine.CN_FEM(ks_fine.x_hist[j])
+        next_step_coarse = ks_coarse.CN_FEM(input[j])
+        if sgs_model == "coarse_correction":
+          output[j] = (res_fn(next_step_fine)[:, 0] - next_step_coarse) / dt
+        elif sgs_model == "fine_correction":
+          output[j] = (next_step_fine - int_fn(next_step_coarse)[:, 0]) / dt
+
+    if sgs_model == "fine_correction":
+      inputs[i] = ks_fine.x_hist
+    else:
+      inputs[i] = input
     outputs = outputs.at[i].set(output)
 
-  inputs = inputs.reshape(-1, N2)
-  outputs = outputs.reshape(-1, N2)
+  inputs = inputs.reshape(-1, N)
+  outputs = outputs.reshape(-1, N)
   if jnp.any(jnp.isnan(inputs)) or jnp.any(jnp.isnan(outputs)) or\
     jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs)):
     raise Exception("The data contains Inf or NaN")

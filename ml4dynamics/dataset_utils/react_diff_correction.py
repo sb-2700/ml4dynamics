@@ -28,19 +28,20 @@ def main():
   step_num = int(T / dt)
   n = config.sim.n
   r = config.sim.r
-  sgs_model = config.sim.sgs
+  sgs_model = config.train.sgs
   # solver parameters
   rng = random.PRNGKey(config.sim.seed)
   case_num = config.sim.case_num
   # react_diff simulator with periodic BC
   rd_fine, rd_coarse = utils.create_fine_coarse_simulator(config)
+  res_fn, _ = dataset_utils.res_int_fn(config_dict)
 
-  if sgs_model == "correction":
-    inputs = np.zeros((case_num, step_num, n, n, 2))
-    outputs = np.zeros((case_num, step_num, n, n, 2))
-  elif sgs_model == "filter":
-    inputs = np.zeros((case_num, step_num, n//r, n//r, 2))
-    outputs = np.zeros((case_num, step_num, n // r, n // r, 2))
+  if sgs_model == "fine_correction":
+    N = n
+  elif sgs_model == "filter" or sgs_model == "coarse_correction":
+    N = n // r
+  inputs = np.zeros((case_num, step_num, N, N, 2))
+  outputs = np.zeros((case_num, step_num, N, N, 2))
   for i in range(case_num):
     print(i)
     rng, key = random.split(rng)
@@ -49,43 +50,34 @@ def main():
     u_fft = u_fft.at[:max_freq, :max_freq].set(
       random.normal(key, shape=(max_freq, max_freq, 2))
     )
-    u0 = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1)).reshape(-1)) / n
+    u0 = jnp.real(jnp.fft.fftn(u_fft, axes=(0, 1))) / n * 10
     rd_fine.run_simulation(u0, rd_fine.adi)
 
-    if sgs_model == "correction":
-      input = rd_fine.x_hist.reshape((step_num, 2, n, n))
-      output = np.zeros_like(input)
+    output = np.zeros_like(outputs[0])
+    if sgs_model == "fine_correction":
       calc_correction = jax.jit(partial(
         dataset_utils.calc_correction, rd_fine, rd_coarse, n, r
       ))
       for j in range(rd_fine.step_num):
-        output[j] = calc_correction(input[j]) / dt
-      input = input.transpose(0, 2, 3, 1)
-      output = output.transpose(0, 2, 3, 1)
-    elif sgs_model == "filter":
-      input = rd_fine.x_hist.reshape((step_num, 2, n, n)).transpose(0, 2, 3, 1)
-      input_ = np.zeros((step_num, n // r, n // r, 2))
-      output = np.zeros_like(input_)
-      for k in range(r):
-        for j in range(r):
-          input_ += input[:, k::r, j::r]
-          output[..., 0] += input[:, k::r, j::r, 0]**3
-      input_ = input_ / (r**2)
-      output = output / (r**2)
-      output[..., 0] = output[..., 0] - input_[..., 0]**3
+        output[j] = calc_correction(rd_fine.x_hist[j]) / dt
+    else:
+      input = jax.vmap(res_fn)(rd_fine.x_hist)
+      for j in range(rd_fine.step_num):
+        next_step_fine = rd_fine.adi(rd_fine.x_hist[j])
+        next_step_coarse = rd_coarse.adi(input[j])
+        if sgs_model == "coarse_correction":
+          output[j] = (res_fn(next_step_fine) - next_step_coarse) / dt
+        elif sgs_model == "filter":
+          output = jax.vmap(res_fn)(rd_fine.x_hist**3)
+          output[..., 0] = (output[..., 0] - input[..., 0]**3) /\
+            (config.sim.L / n * r)**2
+          output[..., 1] = 0
       input = input
     inputs[i] = input
     outputs[i] = output
 
-  if sgs_model == "correction":
-    inputs = inputs.reshape(-1, n, n, 2)
-    outputs = outputs.reshape(-1, n, n, 2)
-  elif sgs_model == "filter":
-    # NOTE: the treatment of the stress is inconsistent with the
-    # KS equation, as the stress is not divided by dx**2
-    inputs = inputs.reshape(-1, n // r, n // r, 2)
-    outputs = outputs.reshape(-1, n // r, n // r, 2) /\
-      (config.sim.L / n * r)**2
+  inputs = inputs.reshape(-1, N, N, 2)
+  outputs = outputs.reshape(-1, N, N, 2)
   if np.any(np.isnan(inputs)) or np.any(np.isnan(outputs)) or\
     np.any(np.isinf(inputs)) or np.any(np.isinf(outputs)):
     raise Exception("The data contains Inf or NaN")
@@ -104,9 +96,9 @@ def main():
     },
     "data": {
       "inputs":
-      inputs,  # shape [case_num, step_num // writeInterval, n, ny, 2]
+      inputs,  # shape [case_num, step_num // writeInterval, n, n, 2]
       "outputs":
-      outputs,  # shape [case_num, step_num // writeInterval, n, ny, 2]
+      outputs,  # shape [case_num, step_num // writeInterval, n, n, 2]
     },
     "config":
     config_dict,

@@ -13,12 +13,14 @@ import pickle
 import torch
 from box import Box
 from jax import random as random
+from jax.numpy.linalg import solve
 from matplotlib import cm
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 
 from ml4dynamics import dynamics
+from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
 from ml4dynamics.models.models_jax import CustomTrainState, UNet
 from ml4dynamics.trainers import train_utils
 from ml4dynamics.types import PRNGKey
@@ -41,7 +43,7 @@ def load_data(
     alpha = config.sim.alpha
     beta = config.sim.beta
     gamma = config.sim.gamma
-    sgs = config.sim.sgs
+    sgs = config.train.sgs
     dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}_{}".format(
       alpha, beta, gamma, case_num, sgs
     )
@@ -498,43 +500,36 @@ def eval_a_posteriori(
 
   config = Box(config_dict)
   beta = 0.0
-  if config.case == "react_diff":
-    r = config.sim.r
-    _, model = create_fine_coarse_simulator(config)
-    if config.sim.sgs == "correction":
-      run_simulation = partial(
-        train_utils.run_simulation_coarse_grid_correction, train_state, model,
-        outputs, r, beta
-      )
-    elif config.sim.sgs == "filter":
-      run_simulation = partial(
-        train_utils.run_simulation_sgs, train_state, model, model.adi, outputs,
-        beta, None
-      )
-  elif config.case == "ns_channel":
+  if config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
     run_simulation = partial(
       train_utils.run_ns_simulation_pressue_correction, train_state, model,
       outputs, beta
     )
-  elif config.case == "ns_hit":
-    _, model = create_fine_coarse_simulator(config)
-    run_simulation = partial(
-      train_utils.run_simulation_sgs, train_state, model, model.CN_real,
-      outputs, 1, beta, None
-    )
-  elif config.case == "ks":
+  else:
     r = config.sim.r
     _, model = create_fine_coarse_simulator(config)
-    if config.train.sgs == "correction":
+    if config.case == "react_diff":
+      iter_ = model.adi
+      type_ = None
+    elif config.case == "ns_hit":
+      run_simulation = partial(
+        train_utils.run_simulation_sgs, train_state, model, model.CN_real,
+        outputs, beta, None
+      )
+    elif config.case == "ks":
+      iter_ = model.CN_FEM
+      type_ = "pad"
+    if config.train.sgs == "fine_correction":
+      res_fn, int_fn = res_int_fn(config)
       run_simulation = partial(
         train_utils.run_simulation_coarse_grid_correction, train_state, model,
-        outputs, r, beta
+        iter_, outputs, beta, res_fn, int_fn, type_
       )
-    elif config.train.sgs == "filter":
+    elif config.train.sgs == "filter" or config.train.sgs == "coarse_correction":
       run_simulation = partial(
-        train_utils.run_simulation_sgs, train_state, model, model.CN_FEM, outputs,
-        beta, "pad"
+        train_utils.run_simulation_sgs, train_state, model, iter_, outputs,
+        beta, type_
       )
 
   start = time()
@@ -766,14 +761,8 @@ def RD_adi(
 
     rhsu = rhsu_ * dt + L_uplus @ u @ L_uplus + dt * (u - v - u**3 + alpha)
     rhsv = rhsv_ * dt + L_vplus @ v @ L_vplus + beta * dt * (u - v)
-
-    u = jax.scipy.linalg.solve(L_uminus, rhsu)
-    u = jax.scipy.linalg.solve(L_uminus, u.T)
-    u = u.T
-    v = jax.scipy.linalg.solve(L_vminus, rhsv)
-    v = jax.scipy.linalg.solve(L_vminus, v.T)
-    v = v.T
-    return u, v
+    return solve(L_uminus, solve(L_uminus, rhsu).T).T,\
+      solve(L_uminus, solve(L_vminus, rhsv).T).T
 
   nx = u.shape[0]
   ny = u.shape[1]
