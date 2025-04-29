@@ -406,35 +406,20 @@ def eval_a_priori(
       jnp.array(inputs),
       is_training=False
     )
-    fig, axs = plt.subplots(3, 1, figsize=(12, 6))
-    fraction = 0.05
-    pad = 0.001
-    im = axs[0].imshow(outputs[..., 0].T, cmap=cm.twilight)
-    axs[0].axis("off")
-    _ = fig.colorbar(
-      im, ax=axs[0], orientation='horizontal', fraction=fraction, pad=pad
+    im_array = np.zeros((3, 1, *(outputs[..., 0].T).shape))
+    im_array[0, 0] = outputs[..., 0].T
+    im_array[1, 0] = predicts[..., 0].T
+    im_array[2, 0] = (outputs - predicts)[..., 0].T
+    plot_with_horizontal_colorbar(
+      im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
     )
-    im = axs[1].imshow(predicts[..., 0].T, cmap=cm.twilight)
-    axs[1].axis("off")
-    _ = fig.colorbar(
-      im, ax=axs[1], orientation='horizontal', fraction=fraction, pad=pad
-    )
-    im = axs[2].imshow((outputs - predicts)[..., 0].T, cmap=cm.twilight)
-    axs[2].axis("off")
-    _ = fig.colorbar(
-      im, ax=axs[2], orientation='horizontal', fraction=fraction, pad=pad
-    )
-    plt.savefig(f"results/fig/{fig_name}.png")
-    plt.clf()
   elif dim == 2:
     # visualization
     n_plot = 4
-    fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
-    fraction = 0.05
-    pad = 0.001
     index_array = np.arange(
       0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
     )
+    im_array = np.zeros((3, n_plot, *(outputs[..., 0].T).shape))
     for j in range(n_plot):
       predict, _ = train_state.apply_fn_with_bn(
         {
@@ -444,49 +429,20 @@ def eval_a_priori(
         jnp.array(inputs[index_array[j]:index_array[j] + 1]),
         is_training=False
       )
-      # use cm.twilight to emphasize the middle range
-      # use cm.coolwarm to emphasize the extreme range
-      im = axs[0, j].imshow(outputs[index_array[j], ..., 0].T, cmap=cm.twilight)
-      _ = fig.colorbar(
-        im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
-      )
-      axs[0, j].axis("off")
-      im = axs[1, j].imshow(predict[0, ..., 0].T, cmap=cm.twilight)
-      _ = fig.colorbar(
-        im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
-      )
-      axs[1, j].axis("off")
-      im = axs[2, j].imshow(
-        outputs[index_array[j], ..., 0].T - predict[0, ..., 0].T,
-        cmap=cm.twilight
-      )
-      _ = fig.colorbar(
-        im, ax=axs[2, j], orientation='horizontal', fraction=fraction, pad=pad
-      )
-      axs[2, j].axis("off")
-
-    fig.tight_layout(pad=0.0)
-    plt.savefig(f"results/fig/{fig_name}.png")
-    plt.clf()
-
-    # visualize the dataset
-    fig, axs = plt.subplots(2, n_plot, figsize=(12, 5))
-    index_array = np.arange(
-      0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
+      im_array[0, j] = outputs[index_array[j], ..., 0].T
+      im_array[1, j] = predicts[index_array[j], ..., 0].T
+      im_array[2, j] = (outputs - predicts)[index_array[j], ..., 0].T
+    plot_with_horizontal_colorbar(
+      im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
     )
+
+    im_array = np.zeros((2, n_plot, *(outputs[..., 0].T).shape))
     for j in range(n_plot):
-      im = axs[0, j].imshow(inputs[index_array[j], ..., 0].T)
-      _ = fig.colorbar(
-        im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
-      )
-      axs[0, j].axis("off")
-      im = axs[1, j].imshow(outputs[index_array[j], ..., 0].T)
-      _ = fig.colorbar(
-        im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
-      )
-      axs[1, j].axis("off")
-    fig.tight_layout(pad=0.0)
-    plt.savefig(f"results/fig/dataset.png")
+      im_array[0, j] = inputs[index_array[j], ..., 0].T
+      im_array[1, j] = outputs[index_array[j], ..., 0].T
+    plot_with_horizontal_colorbar(
+      im_array, (12, 6), None, f"results/fig/dataset.png", 100
+    )
 
 
 def eval_a_posteriori(
@@ -561,55 +517,26 @@ def eval_a_posteriori(
 
   # visualization
   if dim == 1:
-    fig, axs = plt.subplots(3, 1, figsize=(12, 6))
-    fraction = 0.05
-    pad = 0.001
-    im = axs[0].imshow(inputs[..., 0].T, cmap=cm.twilight)
-    axs[0].axis("off")
-    _ = fig.colorbar(
-      im, ax=axs[0], orientation='horizontal', fraction=fraction, pad=pad
+    im_array = np.zeros((3, 1, *(outputs[..., 0].T).shape))
+    im_array[0, 0] = inputs[..., 0].T
+    im_array[1, 0] = x_hist[..., 0].T
+    im_array[2, 0] = (inputs - x_hist)[..., 0].T
+    plot_with_horizontal_colorbar(
+      im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
     )
-    im = axs[1].imshow(x_hist[..., 0].T, cmap=cm.twilight)
-    axs[1].axis("off")
-    _ = fig.colorbar(
-      im, ax=axs[1], orientation='horizontal', fraction=fraction, pad=pad
-    )
-    im = axs[2].imshow((inputs - x_hist)[..., 0].T, cmap=cm.twilight)
-    axs[2].axis("off")
-    _ = fig.colorbar(
-      im, ax=axs[2], orientation='horizontal', fraction=fraction, pad=pad
-    )
-    plt.savefig(f"results/fig/{fig_name}.png")
-    plt.clf()
   elif dim == 2:
     n_plot = 6
-    fig, axs = plt.subplots(3, n_plot, figsize=(12, 6))
-    fraction = 0.05
-    pad = 0.001
     index_array = np.arange(
       0, n_plot * step_num // n_plot - 1, step_num // n_plot
     )
+    im_array = np.zeros((3, n_plot, *(outputs[..., 0].T).shape))
     for j in range(n_plot):
-      im = axs[0, j].imshow(inputs[index_array[j], ..., 0], cmap=cm.twilight)
-      _ = fig.colorbar(
-        im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
-      )
-      axs[0, j].axis("off")
-      im = axs[1, j].imshow(x_hist[index_array[j], ..., 0], cmap=cm.twilight)
-      _ = fig.colorbar(
-        im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
-      )
-      axs[1, j].axis("off")
-      im = axs[2, j].imshow(
-        (inputs - x_hist)[index_array[j], ..., 0], cmap=cm.twilight
-      )
-      _ = fig.colorbar(
-        im, ax=axs[2, j], orientation='horizontal', fraction=fraction, pad=pad
-      )
-      axs[2, j].axis("off")
-    fig.tight_layout(pad=0.0)
-    plt.savefig(f"results/fig/{fig_name}.png")
-    plt.clf()
+      im_array[0, j] = inputs[index_array[j], ..., 0]
+      im_array[1, j] = x_hist[index_array[j], ..., 0]
+      im_array[2, j] = (inputs - x_hist)[index_array[j], ..., 0]
+    plot_with_horizontal_colorbar(
+      im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
+    )
 
 
 ###############################################################################

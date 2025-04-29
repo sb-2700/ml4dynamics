@@ -68,7 +68,7 @@ def main():
         if sgs_model == "coarse_correction":
           output[j] = (res_fn(next_step_fine) - next_step_coarse) / dt
         elif sgs_model == "filter":
-          output = jax.vmap(res_fn)(rd_fine.x_hist**3)
+          output = np.array(jax.vmap(res_fn)(rd_fine.x_hist**3))
           output[..., 0] = (output[..., 0] - input[..., 0]**3) /\
             (config.sim.L / n * r)**2
           output[..., 1] = 0
