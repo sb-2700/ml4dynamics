@@ -46,9 +46,11 @@ def main():
         elif model_type == "aols":
           pass
         elif model_type == "tr":
-          normal_vector = jax.grad(ae_loss_fn)(x)
-          loss += jnp.mean(jnp.sum(normal_vector * tangent_vector(x), axis=-1))
-          breakpoint()
+          # NOTE: currently only supports ks
+          normal_vector = jax.grad(ae_loss_fn)(x)[:, :-1]
+          loss += jnp.mean(jnp.abs(
+            jnp.sum(normal_vector * tangent_vector(x), axis=-1)
+          ))
 
         return loss, batch_stats
 
@@ -84,8 +86,11 @@ def main():
         x_pred, _ = ae_fn(x, is_training=False)
         loss = jnp.linalg.norm(x - x_pred, axis=-1)
         return jnp.sum(loss)
+      _, model_coarse = utils.create_fine_coarse_simulator(config_dict)
+      @jax.jit
       def tangent_vector(x):
-        return x
+        return jnp.einsum("ij, ajb -> aib", model_coarse.L1, (x[:, :-1]**2)/2) +\
+          jnp.einsum("ij, ajb -> aib", model_coarse.L, x[:, :-1])
 
     iters = tqdm(range(epochs))
     loss_hist = []

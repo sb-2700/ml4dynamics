@@ -113,14 +113,26 @@ def run_simulation_sgs(
     uv_next = _iter(uv)
     if type_ == "pad":
       uv = jnp.concatenate([uv, jnp.zeros((1, 1))], axis=0)
-    correction, _ = train_state.apply_fn_with_bn(
-      {
-        "params": train_state.params,
-        "batch_stats": train_state.batch_stats
-      },
-      uv[None],
-      is_training=False
-    )
+    if train_state.batch_stats:
+      # global model
+      correction, _ = train_state.apply_fn_with_bn(
+        {
+          "params": train_state.params,
+          "batch_stats": train_state.batch_stats
+        },
+        uv.reshape(1, *uv.shape),
+        is_training=False
+      )
+    else:
+      # local model
+      correction, _ = train_state.apply_fn(
+        {
+          "params": train_state.params
+        },
+        uv.reshape(-1, uv.shape[-1]),
+        is_training=False
+      )
+      correction = correction.reshape(*uv.shape)
     if type_ == "pad":
       correction = correction[:, :-1] / dx**2
     return uv_next + (correction[0] * (1 - beta) + beta * expert) * dt * dx**2

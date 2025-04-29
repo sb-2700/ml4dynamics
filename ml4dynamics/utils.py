@@ -551,7 +551,6 @@ def eval_a_posteriori(
   print(f"simulation takes {time() - start:.2f}s...")
   if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
     print("similation contains NaN!")
-    breakpoint()
   # print(
   #   "L2 error: x{:.4e}".format(
   #     np.sum(

@@ -9,6 +9,7 @@ import numpy as np
 import optax
 import yaml
 from box import Box
+from flax import traverse_util
 from jax import random as random
 from jaxtyping import Array
 from matplotlib import cm
@@ -125,12 +126,13 @@ def main():
       where the lr is chosen to be 1e-3 and 1e-4.
       """
 
+      hidden_dim = 256
       mlp = hk.Sequential(
         [
           hk.Flatten(),
-          hk.Linear(64),
+          hk.Linear(hidden_dim),
           jax.nn.relu,
-          hk.Linear(64),
+          hk.Linear(hidden_dim),
           jax.nn.relu,
           hk.Linear(output_dim),
         ]
@@ -145,7 +147,7 @@ def main():
       rng: PRNGKey,
     ) -> float:
       predict = correction_nn.apply(params, input)
-      return jnp.mean((input - predict)**2)
+      return jnp.mean((output - predict)**2)
 
     @jax.jit
     def update(
@@ -297,6 +299,11 @@ def main():
   batch_size = config.train.batch_size
   iters = tqdm(range(epochs))
   step = 0
+  flat_params = traverse_util.flatten_dict(params)
+  total_params = sum(
+    jax.tree_util.tree_map(lambda x: x.size, flat_params).values()
+  )
+  print(f"total parameters:", total_params)
   for _ in iters:
     for i in range(0, len(train_ds["input"]), batch_size):
       rng, key = random.split(rng)
@@ -306,7 +313,7 @@ def main():
       lr = schedule(step)
       if train_mode == "regression":
         relative_loss = loss / jnp.mean(output**2)
-        desc_str = f"{lr=:.1e}|{relative_loss=:.4e}"
+        desc_str = f"{lr=:.1e}|{loss:.4e}|{relative_loss=:.4e}"
         loss_hist.append(relative_loss)
       elif train_mode == "generative" or train_mode == "gaussian":
         desc_str = f"{lr=:.1e}|{loss=:.4e}"
@@ -333,7 +340,6 @@ def main():
   # A priori analysis: visualize the error distribution
   if config.train.input == "uglobal":
     predicts = correction_nn.apply(params, inputs)
-    breakpoint()
     fig, axs = plt.subplots(3, 1, figsize=(12, 6))
     fraction = 0.05
     pad = 0.001
