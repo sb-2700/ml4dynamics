@@ -62,17 +62,16 @@ def main():
         output[j] = calc_correction(rd_fine.x_hist[j]) / dt
     else:
       input = jax.vmap(res_fn)(rd_fine.x_hist)
-      for j in range(rd_fine.step_num):
-        next_step_fine = rd_fine.adi(rd_fine.x_hist[j])
-        next_step_coarse = rd_coarse.adi(input[j])
-        if sgs_model == "coarse_correction":
-          output[j] = (res_fn(next_step_fine) - next_step_coarse) / dt
-        elif sgs_model == "filter":
-          output = np.array(jax.vmap(res_fn)(rd_fine.x_hist**3))
-          output[..., 0] = (output[..., 0] - input[..., 0]**3) /\
+      if sgs_model == "filter":
+          output_ = jax.vmap(res_fn)(rd_fine.x_hist**3)
+          output[..., 0] = (output_[..., 0] - input[..., 0]**3) /\
             (config.sim.L / n * r)**2
-          output[..., 1] = 0
-      input = input
+      else:
+        for j in range(rd_fine.step_num):
+          next_step_fine = rd_fine.adi(rd_fine.x_hist[j])
+          next_step_coarse = rd_coarse.adi(input[j])
+          if sgs_model == "coarse_correction":
+            output[j] = (res_fn(next_step_fine) - next_step_coarse) / dt
     inputs[i] = input
     outputs[i] = output
 

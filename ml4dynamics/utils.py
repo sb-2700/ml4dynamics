@@ -419,9 +419,9 @@ def eval_a_priori(
     index_array = np.arange(
       0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
     )
-    im_array = np.zeros((3, n_plot, *(outputs[..., 0].T).shape))
+    im_array = np.zeros((3, n_plot, *(outputs[0, ..., 0].T).shape))
     for j in range(n_plot):
-      predict, _ = train_state.apply_fn_with_bn(
+      predicts, _ = train_state.apply_fn_with_bn(
         {
           "params": train_state.params,
           "batch_stats": train_state.batch_stats
@@ -436,13 +436,19 @@ def eval_a_priori(
       im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
     )
 
-    im_array = np.zeros((2, n_plot, *(outputs[..., 0].T).shape))
+    im_array = np.zeros((2, n_plot, *(outputs[0, ..., 0].T).shape))
     for j in range(n_plot):
       im_array[0, j] = inputs[index_array[j], ..., 0].T
       im_array[1, j] = outputs[index_array[j], ..., 0].T
     plot_with_horizontal_colorbar(
-      im_array, (12, 6), None, f"results/fig/dataset.png", 100
+      im_array, (12, 6), None, f"results/fig/dataset1.png", 100
     )
+    plt.hist(inputs.reshape(-1), bins=100, density=True, label="inputs")
+    plt.hist(outputs.reshape(-1), bins=100, density=True, label="outputs")
+    plt.yscale("log")
+    plt.legend()
+    plt.savefig(f"results/fig/dataset2.png")
+    plt.clf()
 
 
 def eval_a_posteriori(
@@ -529,7 +535,7 @@ def eval_a_posteriori(
     index_array = np.arange(
       0, n_plot * step_num // n_plot - 1, step_num // n_plot
     )
-    im_array = np.zeros((3, n_plot, *(outputs[..., 0].T).shape))
+    im_array = np.zeros((3, n_plot, *(outputs[0, ..., 0].T).shape))
     for j in range(n_plot):
       im_array[0, j] = inputs[index_array[j], ..., 0]
       im_array[1, j] = x_hist[index_array[j], ..., 0]
