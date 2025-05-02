@@ -49,8 +49,9 @@ def main():
           # NOTE: currently only supports ks
           normal_vector = jax.grad(ae_loss_fn)(x)[:, :-1]
           loss += jnp.mean(jnp.abs(
-            jnp.sum(normal_vector * tangent_vector(x), axis=-1)
+            jnp.sum(normal_vector * (tangent_vector(x) + y_pred[:, :-1]), axis=(-2, -1))
           ))
+          # breakpoint()
 
         return loss, batch_stats
 
@@ -89,8 +90,10 @@ def main():
       _, model_coarse = utils.create_fine_coarse_simulator(config_dict)
       @jax.jit
       def tangent_vector(x):
+
         return jnp.einsum("ij, ajb -> aib", model_coarse.L1, (x[:, :-1]**2)/2) +\
-          jnp.einsum("ij, ajb -> aib", model_coarse.L, x[:, :-1])
+          jnp.einsum("ij, ajb -> aib", 2 * model_coarse.L, x[:, :-1])
+          
 
     iters = tqdm(range(epochs))
     loss_hist = []
@@ -167,7 +170,7 @@ def main():
   )
   print(f"finis loading data with {time() - start:.2f}s...")
   # models_array = ["ae", "ols", "mols", "aols", "tr"]
-  models_array = ["ols"]
+  models_array = ["tr"]
 
   for _ in models_array:
     print(f"Training {_}...")
