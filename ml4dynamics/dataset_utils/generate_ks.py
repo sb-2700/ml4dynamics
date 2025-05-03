@@ -79,7 +79,7 @@ def main():
       inputs[i] = ks_fine.x_hist
     else:
       inputs[i] = input
-    outputs = outputs.at[i].set(output)
+    outputs[i] = output
 
   inputs = inputs.reshape(-1, N)
   outputs = outputs.reshape(-1, N)
