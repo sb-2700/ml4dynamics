@@ -437,11 +437,15 @@ def eval_a_priori(
     )
 
     im_array = np.zeros((2, n_plot, *(outputs[0, ..., 0].T).shape))
+    title_array1 = []
+    title_array2 = []
     for j in range(n_plot):
       im_array[0, j] = inputs[index_array[j], ..., 0].T
       im_array[1, j] = outputs[index_array[j], ..., 0].T
+      title_array1.append(f"{inputs[index_array[j], ..., 0].max():.1e}")
+      title_array2.append(f"{outputs[index_array[j], ..., 0].max():.1e}")
     plot_with_horizontal_colorbar(
-      im_array, (12, 6), None, f"results/fig/dataset1.png", 100
+      im_array, (12, 6), title_array1+title_array2, f"results/fig/dataset1.png", 100
     )
     plt.hist(inputs.reshape(-1), bins=100, density=True, label="inputs")
     plt.hist(outputs.reshape(-1), bins=100, density=True, label="outputs")
