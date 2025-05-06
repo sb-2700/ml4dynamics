@@ -178,6 +178,42 @@ def plot_stats(
     )
 
 
+def plot_stats_aux(
+  t_array: np.array, ground_truth: np.ndarray,
+  correction: np.ndarray, fig_name: str,
+):
+  
+  avg_length = 500
+  plt.figure(figsize=(6, 6))
+  plt.subplot(211)
+  plt.plot(t_array, np.mean(ground_truth, axis=1), label="truth")
+  plt.plot(
+    t_array,
+    np.mean(correction, axis=1),
+    label="stat_err={:.3e}|MSE={:.3e}".format(
+      np.mean(ground_truth[-avg_length:]) - np.mean(correction[-avg_length:]),
+      np.mean((ground_truth - correction)**2)
+    )
+  )
+  plt.legend()
+  plt.xlabel(r"$T$")
+  plt.ylabel(r"$\overline{u}$")
+  plt.subplot(212)
+  plt.plot(t_array, np.mean(ground_truth**2, axis=1), label="truth")
+  plt.plot(
+    t_array,
+    np.mean(correction**2, axis=1),
+    label="stat_err={:.3e}".format(
+      np.mean(ground_truth[-avg_length:]**2) -
+      np.mean(correction[-avg_length:]**2),
+    )
+  )
+  plt.legend()
+  plt.xlabel(r"$T$")
+  plt.ylabel(r"$\overline{u^2}$")
+  plt.savefig(fig_name)
+
+
 def plot_error_cloudmap(
   err: np.ndarray,
   u: np.ndarray,

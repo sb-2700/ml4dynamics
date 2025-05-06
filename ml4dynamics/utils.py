@@ -24,6 +24,7 @@ from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
 from ml4dynamics.models.models_jax import CustomTrainState, UNet
 from ml4dynamics.trainers import train_utils
 from ml4dynamics.types import PRNGKey
+from ml4dynamics.visualize import plot_stats_aux
 
 jax.config.update("jax_enable_x64", True)
 torch.set_default_dtype(torch.float64)
@@ -465,7 +466,7 @@ def eval_a_posteriori(
 ):
 
   config = Box(config_dict)
-  beta = 0.0
+  beta = 0.9
   if config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
     run_simulation = partial(
@@ -473,7 +474,6 @@ def eval_a_posteriori(
       outputs, beta
     )
   else:
-    r = config.sim.r
     _, model = create_fine_coarse_simulator(config)
     if config.case == "react_diff":
       iter_ = model.adi
@@ -547,6 +547,11 @@ def eval_a_posteriori(
     plot_with_horizontal_colorbar(
       im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
     )
+
+  plot_stats_aux(
+    np.arange(inputs.shape[0]) * model.dt,inputs[..., 0],
+    x_hist[..., 0],f"results/fig/{fig_name}_stats.png",
+  )
 
 
 ###############################################################################

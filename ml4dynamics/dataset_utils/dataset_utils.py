@@ -42,9 +42,13 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
     # for i in range(N2):
     #   res_op = res_op.at[i, i * r:i * r + 7].set(1)
     # res_op /= 7
-    for i in range(N2):
-      res_op = res_op.at[i, i * r + 1:i * r + 6].set(1)
-    res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 3].set(0)
+    if r == 2:
+      res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r].set(1)
+      res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 2].set(1)
+    elif r == 4:
+      for i in range(N2):
+        res_op = res_op.at[i, i * r + 1:i * r + 6].set(1)
+      res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 3].set(0)
     res_op /= r
     int_op = jnp.linalg.pinv(res_op)
     assert jnp.allclose(res_op @ int_op, jnp.eye(N2))
