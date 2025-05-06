@@ -139,14 +139,14 @@ def run_simulation_sgs(
       )
       correction = correction.reshape(*x.shape)
     if type_ == "pad":
-      correction = correction[:, :-1] / dx**2
-    tmp = (jnp.roll(correction[0], -1) - jnp.roll(correction[0], 1)) / 2 / dx
-    tmp = tmp.at[0].set(correction[0, 1] / 2 / dx)
-    tmp = tmp.at[-1].set(-correction[0, -2] / 2 / dx)
-    return x_next + (tmp * (1 - beta) + beta * expert) * dt * dx**2
+      correction = correction[:, :-1]
+    # tmp = (jnp.roll(correction[0], -1) - jnp.roll(correction[0], 1)) / 2 / dx
+    # tmp = tmp.at[0].set(correction[0, 1] / 2 / dx)
+    # tmp = tmp.at[-1].set(-correction[0, -2] / 2 / dx)
+    tmp = correction[0]
+    return x_next + (tmp * (1 - beta) + beta * expert) * dt
 
   dt = model.dt
-  dx = model.dx
   step_num = model.step_num
   x_hist = np.zeros([step_num, *x.shape])
   for i in range(step_num):

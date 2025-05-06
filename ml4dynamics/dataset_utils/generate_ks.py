@@ -87,7 +87,7 @@ def main():
     jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs)):
     raise Exception("The data contains Inf or NaN")
   
-  plot_ = True
+  plot_ = False
   if plot_:
     plt.figure(figsize=(10, 8))
     plt.subplot(311)
