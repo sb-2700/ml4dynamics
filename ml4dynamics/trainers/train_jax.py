@@ -126,7 +126,7 @@ def main():
     print(f"val loss: {val_loss:.4e}")
     plt.plot(loss_hist)
     plt.yscale("log")
-    plt.savefig(f"results/fig/loss_hist_{model_type}.png")
+    plt.savefig(f"results/fig/losshist_{config.train.sgs}_{model_type}.png")
     plt.clf()
 
     dim = 2
@@ -145,11 +145,11 @@ def main():
       return
     utils.eval_a_priori(
       train_state, train_dataloader, test_dataloader, inputs, outputs, dim,
-      f"{args.config}_apriori_{model_type}"
+      f"{args.config}_reg_{config.train.sgs}_{model_type}"
     )
     utils.eval_a_posteriori(
       config_dict, train_state, inputs_, outputs_, dim,
-      f"{args.config}_aposteriori_{model_type}"
+      f"{args.config}_sim_{config.train.sgs}_{model_type}"
     )
 
   parser = argparse.ArgumentParser()
@@ -169,8 +169,10 @@ def main():
     config_dict, config.train.batch_size_unet, mode="jax"
   )
   print(f"finis loading data with {time() - start:.2f}s...")
+  print(f"Problem type: {args.config} + {config.train.sgs}")
   # models_array = ["ae", "ols", "mols", "aols", "tr"]
-  models_array = ["tr"]
+  # models_array = ["ols"]
+  models_array = ["ae", "tr"]
 
   for _ in models_array:
     print(f"Training {_}...")

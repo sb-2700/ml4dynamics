@@ -466,7 +466,7 @@ def eval_a_posteriori(
 ):
 
   config = Box(config_dict)
-  beta = 0.9
+  beta = 1.0
   if config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
     run_simulation = partial(
@@ -489,13 +489,18 @@ def eval_a_posteriori(
     if config.train.sgs == "fine_correction":
       res_fn, int_fn = res_int_fn(config)
       run_simulation = partial(
-        train_utils.run_simulation_coarse_grid_correction, train_state, model,
+        train_utils.run_simulation_fine_grid_correction, train_state, model,
         iter_, outputs, beta, res_fn, int_fn, type_
       )
-    elif config.train.sgs == "filter" or config.train.sgs == "coarse_correction":
+    elif config.train.sgs == "filter":
       run_simulation = partial(
         train_utils.run_simulation_sgs, train_state, model, iter_, outputs,
         beta, type_
+      )
+    elif config.train.sgs == "coarse_correction":
+      run_simulation = partial(
+        train_utils.run_simulation_coarse_grid_correction,
+        train_state, model, iter_, outputs, beta, type_
       )
 
   start = time()

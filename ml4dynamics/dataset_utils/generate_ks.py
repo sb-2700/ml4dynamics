@@ -65,7 +65,7 @@ def main():
     input = jax.vmap(res_fn)(ks_fine.x_hist)[..., 0]  # shape = [step_num, N2]
     output = np.zeros_like(outputs[0])
     if sgs_model == "filter":
-      output = jax.vmap(res_fn)(ks_fine.x_hist**2)[..., 0] - input**2
+      output = (jax.vmap(res_fn)(ks_fine.x_hist**2)[..., 0] - input**2) / 2
     else:
       for j in range(ks_fine.step_num):
         next_step_fine = ks_fine.CN_FEM(ks_fine.x_hist[j])

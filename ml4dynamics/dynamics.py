@@ -504,7 +504,7 @@ class Lorenz(dynamics):
 
 
 class KS(dynamics):
-  """Kuramoto–Sivashinsky equation
+  r"""Kuramoto–Sivashinsky equation
 
   The 1d version of the Kuramoto–Sivashinsky equation is:
 

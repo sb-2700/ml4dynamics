@@ -5,7 +5,7 @@ import torch
 from dlpack import asdlpack
 
 
-def run_simulation_coarse_grid_correction(
+def run_simulation_fine_grid_correction(
   train_state, coarse_model, _iter: callable, label: jnp.ndarray, beta: float,
   res_fn: callable, int_fn: callable, type_: str, x: jnp.ndarray
 ):
@@ -70,7 +70,7 @@ def run_simulation_coarse_grid_correction(
   return x_hist
 
 
-def run_simulation_coarse_grid_correction_torch(
+def run_simulation_fine_grid_correction_torch(
   model, rd_fine, coarse_model, r: int, device, x: jnp.ndarray
 ):
 
@@ -108,12 +108,12 @@ def run_simulation_coarse_grid_correction_torch(
   return x_hist
 
 
-def run_simulation_sgs(
+def run_simulation_coarse_grid_correction(
   train_state, model, _iter: callable, label: jnp.ndarray, beta: float,
   type_: str, x: jnp.ndarray
 ):
 
-  # @jax.jit
+  @jax.jit
   def iter(x: jnp.array, expert: jnp.array = 0):
     x_next = _iter(x)
     if type_ == "pad":
@@ -140,13 +140,58 @@ def run_simulation_sgs(
       correction = correction.reshape(*x.shape)
     if type_ == "pad":
       correction = correction[:, :-1]
-    # tmp = (jnp.roll(correction[0], -1) - jnp.roll(correction[0], 1)) / 2 / dx
-    # tmp = tmp.at[0].set(correction[0, 1] / 2 / dx)
-    # tmp = tmp.at[-1].set(-correction[0, -2] / 2 / dx)
     tmp = correction[0]
     return x_next + (tmp * (1 - beta) + beta * expert) * dt
 
   dt = model.dt
+  step_num = model.step_num
+  x_hist = np.zeros([step_num, *x.shape])
+  for i in range(step_num):
+    x_hist[i] = x
+    x = iter(x, label[i])
+
+  return x_hist
+
+
+def run_simulation_sgs(
+  train_state, model, _iter: callable, label: jnp.ndarray, beta: float,
+  type_: str, x: jnp.ndarray
+):
+
+  @jax.jit
+  def iter(x: jnp.array, expert: jnp.array = 0):
+    x_next = _iter(x)
+    if type_ == "pad":
+      x = jnp.concatenate([x, jnp.zeros((1, 1))], axis=0)
+    if train_state.batch_stats:
+      # global model
+      correction, _ = train_state.apply_fn_with_bn(
+        {
+          "params": train_state.params,
+          "batch_stats": train_state.batch_stats
+        },
+        x.reshape(1, *x.shape),
+        is_training=False
+      )
+    else:
+      # local model
+      correction, _ = train_state.apply_fn(
+        {
+          "params": train_state.params
+        },
+        x.reshape(-1, x.shape[-1]),
+        is_training=False
+      )
+      correction = correction.reshape(*x.shape)
+    if type_ == "pad":
+      correction = correction[:, :-1]
+    tmp = (jnp.roll(correction[0], -1) - jnp.roll(correction[0], 1)) / 2 / dx
+    tmp = tmp.at[0].set(correction[0, 1] / 2 / dx)
+    tmp = tmp.at[-1].set(-correction[0, -2] / 2 / dx)
+    return x_next + (tmp * (1 - beta) + beta * expert) * dt
+
+  dt = model.dt
+  dx = model.dx
   step_num = model.step_num
   x_hist = np.zeros([step_num, *x.shape])
   for i in range(step_num):
