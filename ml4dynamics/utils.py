@@ -101,7 +101,7 @@ def load_data(
     batch_size=batch_size,
     shuffle=True  # , num_workers=num_workers
   )
-  return inputs, outputs, train_dataloader, test_dataloader
+  return inputs, outputs, train_dataloader, test_dataloader, dataset
 
 
 def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
@@ -466,7 +466,7 @@ def eval_a_posteriori(
 ):
 
   config = Box(config_dict)
-  beta = 1.0
+  beta = 0.0
   if config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
     run_simulation = partial(
