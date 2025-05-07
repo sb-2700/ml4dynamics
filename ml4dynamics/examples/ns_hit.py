@@ -23,7 +23,8 @@ case_num = config.sim.case_num
 writeInterval = 1
 
 model.w_hat = jnp.zeros((model.N, model.N//2+1))
-f0 = int(jnp.sqrt(n/2)) # init frequency
+# f0 = int(jnp.sqrt(n/2)) # init frequency
+f0 = 32
 model.w_hat = model.w_hat.at[:f0, :f0].set(
   random.normal(random.PRNGKey(0), (f0, f0)) * model.init_scale
 )
@@ -98,6 +99,10 @@ k_bins, E_k_avg = power_spec_2d_over_t(
 plt.plot(k_bins, E_k_avg)
 plt.xlabel("k")
 plt.ylabel("E(k)")
+plt.xscale("log")
+plt.yscale("log")
+plt.xticks(fontsize=10)
+plt.yticks(fontsize=10)
 plt.title("2D Power Spectrum")
 plt.savefig("power_spec_2d.png")
 plt.clf()
