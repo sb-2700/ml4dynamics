@@ -19,17 +19,17 @@ upload: false
 output_path: 2D_diff-react_NA_NA
 
 # name of the run, accessed by loggers
-case: ns
+case: ns_channel
 
 sim:
-  nx: 256
-  ny: 64
+  nx: 128
+  ny: 32
   Lx: 4.0
   Ly: 1.0
-  Re: 1000
+  Re: 500
   BC: Dirichlet
   dim: 2
-  T: 10
+  T: 20
   dt: .01
   seed: 42
   case_num: 1       # number of simulations to perform
@@ -43,11 +43,11 @@ plot:
   channel_idx: 0    # Index of the variable to be plotted
 
 train:
-  lr: 0.1
+  lr: 0.01
   batch_size_unet: 200
   buffer_size: 10
-  epochs: 1000
-  decay: 500 # number of epochs to decay the learning rate
+  epochs: 500
+  decay: 200 # number of epochs to decay the learning rate
   save: 100
   vae:
     latents: 128

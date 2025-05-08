@@ -363,6 +363,6 @@ class UNet(nn.Module):
       y = Decoder1D(self.input_features * 8, self.output_features, self.training)(
         z1, z2, z3, z4, z5
       )
-      y = nn.softplus(y)
+      # y = nn.softplus(y)
 
     return y

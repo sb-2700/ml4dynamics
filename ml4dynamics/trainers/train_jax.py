@@ -78,7 +78,7 @@ def main():
     if model_type == "tr":
       lambda_ = config.train.lambda_
       ae_train_state, _ = utils.prepare_unet_train_state(
-        config_dict, f"{pde_type}/ae"
+        config_dict, f"{pde_type}/{dataset}_ae", is_training=False
       )
       ae_fn = partial(ae_train_state.apply_fn_with_bn, 
         {"params": ae_train_state.params,
@@ -86,6 +86,7 @@ def main():
       def ae_loss_fn(x):
         x_pred, _ = ae_fn(x, is_training=False)
         loss = jnp.linalg.norm(x - x_pred, axis=-1)
+        # loss = jnp.sum((x - x_pred)**2, axis=-1)
         return jnp.sum(loss)
       _, model_coarse = utils.create_fine_coarse_simulator(config_dict)
       @jax.jit
@@ -93,7 +94,6 @@ def main():
 
         return jnp.einsum("ij, ajb -> aib", model_coarse.L1, (x[:, :-1]**2)/2) +\
           jnp.einsum("ij, ajb -> aib", 2 * model_coarse.L, x[:, :-1])
-          
 
     iters = tqdm(range(epochs))
     loss_hist = []
@@ -110,7 +110,7 @@ def main():
       loss_hist.append(total_loss)
 
       if (epoch + 1) % config.train.save == 0:
-        with open(f"ckpts/{pde_type}/{model_type}.pkl", "wb") as f:
+        with open(f"ckpts/{pde_type}/{dataset}_{model_type}.pkl", "wb") as f:
           dict = {
             "params": train_state.params,
             "batch_stats": train_state.batch_stats
@@ -137,18 +137,22 @@ def main():
       if config.sim.BC == "Dirichlet-Neumann":
         inputs_ = inputs[:, :-1]
         outputs_ = outputs[:, :-1]
+    one_traj_length = inputs.shape[0] // config.sim.case_num
     if model_type == "ae":
       utils.eval_a_priori(
-        train_state, train_dataloader, test_dataloader, inputs, inputs, dim,
-        f"{args.config}_apriori_{model_type}"
+        train_state, train_dataloader, test_dataloader,
+        inputs[:one_traj_length], inputs[:one_traj_length], dim,
+        f"{args.config}_reg_{config.train.sgs}_{model_type}"
       )
       return
     utils.eval_a_priori(
-      train_state, train_dataloader, test_dataloader, inputs, outputs, dim,
+      train_state, train_dataloader, test_dataloader,
+      inputs[:one_traj_length], outputs[:one_traj_length], dim,
       f"{args.config}_reg_{config.train.sgs}_{model_type}"
     )
     utils.eval_a_posteriori(
-      config_dict, train_state, inputs_, outputs_, dim,
+      config_dict, train_state,
+      inputs_[:one_traj_length], outputs_[:one_traj_length], dim,
       f"{args.config}_sim_{config.train.sgs}_{model_type}"
     )
 
@@ -165,14 +169,14 @@ def main():
   epochs = config.train.epochs
   print("start loading data...")
   start = time()
-  inputs, outputs, train_dataloader, test_dataloader = utils.load_data(
+  inputs, outputs, train_dataloader, test_dataloader, dataset = utils.load_data(
     config_dict, config.train.batch_size_unet, mode="jax"
   )
   print(f"finis loading data with {time() - start:.2f}s...")
   print(f"Problem type: {args.config} + {config.train.sgs}")
-  # models_array = ["ae", "ols", "mols", "aols", "tr"]
+  models_array = ["ae", "ols", "mols", "aols", "tr"]
   # models_array = ["ols"]
-  models_array = ["ae", "tr"]
+  # models_array = ["tr"]
 
   for _ in models_array:
     print(f"Training {_}...")

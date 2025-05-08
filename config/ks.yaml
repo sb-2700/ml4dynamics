@@ -12,12 +12,6 @@ defaults:
 # https://hydra.cc/docs/next/tutorials/basic/running_your_app/working_directory
 work_dir: ${hydra:runtime.cwd}
 
-# path to folder with data
-data_dir: data
-upload: false
-
-output_path: 2D_diff-react_NA_NA
-
 # name of the run, accessed by loggers
 case: ks
 
@@ -27,7 +21,7 @@ sim:
   T: 400
   dt: .1
   L: 128
-  nx: 1024
+  n: 1024
   r: 4
   init_scale: 1.
   BC: Dirichlet-Neumann
@@ -44,20 +38,21 @@ plot:
 
 train:
   stratify: False
-  sgs: correction # filter, correction
+  sgs: coarse_correction # filter, coarse_correction, fine_correction
   bins: 50
   subsample: 200
-  mode: gaussian # regression, gaussian, generative
+  mode: regression # regression, gaussian, generative
   linear: True # whether add a linear residue layer
   n_g: 1 # number of gaussian mixture components
-  input: uxx # uglobal, u, ux, uxx, uxxxx
+  input: uglobal # uglobal, u, ux, uxx, uxxxx
+  lambda_: 10
   lr: 0.01
   batch_size: 1000000
   batch_size_unet: 200
   buffer_size: 10
   epochs: 500
   epochs_ae: 200
-  decay: 50 # number of epochs to decay the learning rate
+  decay: 500 # number of epochs to decay the learning rate
   save: 100
   vae:
     latents: 128

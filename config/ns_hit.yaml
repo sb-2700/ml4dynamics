@@ -19,15 +19,16 @@ upload: false
 output_path: 2D_diff-react_NA_NA
 
 # name of the run, accessed by loggers
-case: ns
+case: ns_hit
 
 sim:
-  n: 256
+  n: 128
   L: 2
-  Re: 40000
+  Re: 10000
   dim: 2
-  T: 10
-  dt: .01
+  T: 100
+  dt: .1
+  r: 2
   seed: 42
   case_num: 1       # number of simulations to perform
   warm_up: 200      # warm up step for simulation
@@ -43,7 +44,7 @@ train:
   lr: 0.1
   batch_size_unet: 200
   buffer_size: 10
-  epochs: 000
+  epochs: 200
   decay: 500 # number of epochs to decay the learning rate
   save: 100
   vae:

@@ -221,7 +221,8 @@ def create_ns_hit_simulator(config_dict: ml_collections.ConfigDict):
 
 
 def prepare_unet_train_state(
-  config_dict: ml_collections.ConfigDict, load_dict = None
+  config_dict: ml_collections.ConfigDict, load_dict: str = None,
+  is_training: bool = True
 ):
 
   config = Box(config_dict)
@@ -252,7 +253,8 @@ def prepare_unet_train_state(
     nx = config.sim.n
     DIM = 1
   unet = UNet(
-    input_features=input_features, output_features=output_features, DIM=DIM
+    input_features=input_features, output_features=output_features,
+    DIM=DIM, training = is_training,
   )
   rng1, rng2 = random.split(rng)
   init_rngs = {'params': rng1, 'dropout': rng2}
