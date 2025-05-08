@@ -1,4 +1,5 @@
 import gc
+import pickle
 from functools import partial
 from time import time
 
@@ -9,7 +10,6 @@ import jax.scipy.sparse.linalg as jsla
 import ml_collections
 import numpy as np
 import optax
-import pickle
 import torch
 from box import Box
 from flax.training.train_state import TrainState
@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from ml4dynamics import dynamics
 from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
-from ml4dynamics.models.models_jax import CustomTrainState, UNet, MLP
+from ml4dynamics.models.models_jax import MLP, CustomTrainState, UNet
 from ml4dynamics.trainers import train_utils
 from ml4dynamics.types import PRNGKey
 from ml4dynamics.visualize import plot_stats_aux
@@ -234,8 +234,10 @@ def create_ns_hit_simulator(config_dict: ml_collections.ConfigDict):
 
 
 def prepare_unet_train_state(
-  config_dict: ml_collections.ConfigDict, load_dict: str = None,
-  is_global: bool = True, is_training: bool = True
+  config_dict: ml_collections.ConfigDict,
+  load_dict: str = None,
+  is_global: bool = True,
+  is_training: bool = True
 ):
 
   config = Box(config_dict)
@@ -281,8 +283,10 @@ def prepare_unet_train_state(
     )
     optimizer = optax.adam(schedule)
     unet = UNet(
-      input_features=input_features, output_features=output_features,
-      DIM=DIM, training = is_training,
+      input_features=input_features,
+      output_features=output_features,
+      DIM=DIM,
+      training=is_training,
     )
     rng1, rng2 = random.split(rng)
     init_rngs = {'params': rng1, 'dropout': rng2}
@@ -305,8 +309,7 @@ def prepare_unet_train_state(
     )
   else:
     schedule = optax.piecewise_constant_schedule(
-      init_value=config.train.lr,
-      boundaries_and_scales={}
+      init_value=config.train.lr, boundaries_and_scales={}
     )
     optimizer = optax.adam(schedule)
     mlp = MLP(output_features)
@@ -453,7 +456,8 @@ def eval_a_priori(
       title_array1.append(f"{inputs[index_array[j], ..., 0].max():.1e}")
       title_array2.append(f"{outputs[index_array[j], ..., 0].max():.1e}")
     plot_with_horizontal_colorbar(
-      im_array, (12, 6), title_array1+title_array2, f"results/fig/dataset1.png", 100
+      im_array, (12, 6), title_array1 + title_array2,
+      f"results/fig/dataset1.png", 100
     )
     plt.hist(inputs.reshape(-1), bins=100, density=True, label="inputs")
     plt.hist(outputs.reshape(-1), bins=100, density=True, label="outputs")
@@ -502,13 +506,13 @@ def eval_a_posteriori(
       )
     elif config.train.sgs == "filter":
       run_simulation = partial(
-        train_utils.run_simulation_sgs, forward_fn, model, iter_, outputs,
-        beta, type_
+        train_utils.run_simulation_sgs, forward_fn, model, iter_, outputs, beta,
+        type_
       )
     elif config.train.sgs == "coarse_correction":
       run_simulation = partial(
-        train_utils.run_simulation_coarse_grid_correction,
-        forward_fn, model, iter_, outputs, beta, type_
+        train_utils.run_simulation_coarse_grid_correction, forward_fn, model,
+        iter_, outputs, beta, type_
       )
 
   start = time()
@@ -562,8 +566,10 @@ def eval_a_posteriori(
     )
 
   plot_stats_aux(
-    np.arange(inputs.shape[0]) * model.dt,inputs[..., 0],
-    x_hist[..., 0],f"results/fig/{fig_name}_stats.png",
+    np.arange(inputs.shape[0]) * model.dt,
+    inputs[..., 0],
+    x_hist[..., 0],
+    f"results/fig/{fig_name}_stats.png",
   )
 
 

@@ -62,8 +62,7 @@ def run_simulation_fine_grid_correction_torch(
   for i in range(step_num):
     x_hist = x_hist.at[i].set(x)
     tmp = (
-      x[:, 0::2, 0::2] + x[:, 1::2, 0::2] + x[:, 0::2, 1::2] +
-      x[:, 1::2, 1::2]
+      x[:, 0::2, 0::2] + x[:, 1::2, 0::2] + x[:, 0::2, 1::2] + x[:, 1::2, 1::2]
     ) / 4
     x = coarse_model.adi(tmp.reshape(-1)).reshape(2, nx // r, nx // r)
     x = np.vstack(

@@ -3,6 +3,7 @@ from functools import partial
 
 import h5py
 import jax
+
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import numpy as np
@@ -12,6 +13,7 @@ from jax import random
 from jax.lax import conv_general_dilated
 
 from ml4dynamics.utils import create_fine_coarse_simulator
+
 
 def main():
 
@@ -110,8 +112,8 @@ def main():
   inputs = w_coarse
   outputs = tau
   n_plot = 4
-  from matplotlib import pyplot as plt
   from matplotlib import cm
+  from matplotlib import pyplot as plt
   fraction = 0.05
   pad = 0.001
   fig, axs = plt.subplots(2, n_plot, figsize=(12, 5))

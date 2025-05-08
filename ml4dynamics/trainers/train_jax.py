@@ -5,6 +5,7 @@ from functools import partial
 from time import time
 
 import jax
+
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import yaml
@@ -77,8 +78,9 @@ def main():
       if is_training:
         grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
         if _global:
-          (loss, batch_stats
-          ), grads = grad_fn(train_state.params, train_state.batch_stats, True)
+          (loss, batch_stats), grads = grad_fn(
+            train_state.params, train_state.batch_stats, True
+          )
 
           train_state = train_state.apply_gradients(grads=grads)
           train_state = train_state.update_batch_stats(batch_stats)
@@ -118,19 +120,23 @@ def main():
         config_dict, f"ckpts/{pde}/{dataset}_ae_unet.pkl", True, False
       )
       ae_fn = partial(
-        ae_train_state.apply_fn_with_bn, 
-        {"params": ae_train_state.params,
-        "batch_stats": ae_train_state.batch_stats}
+        ae_train_state.apply_fn_with_bn, {
+          "params": ae_train_state.params,
+          "batch_stats": ae_train_state.batch_stats
+        }
       )
+
       def ae_loss_fn(x):
         x_pred, _ = ae_fn(x, is_training=False)
         loss = jnp.linalg.norm(x - x_pred, axis=-1)
         # loss = jnp.sum((x - x_pred)**2, axis=-1)
         return jnp.sum(loss)
+
       if pde == "ns_channel":
         sim_model = utils.create_ns_channel_simulator(config_dict)
       else:
         _, sim_model = utils.create_fine_coarse_simulator(config_dict)
+
       @jax.jit
       def tangent_vector(x):
         """TODO: only support ks for now"""
@@ -190,6 +196,7 @@ def main():
       config_dict, f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl", _global, False
     )
     if _global:
+
       @jax.jit
       def forward_fn(x):
         y_pred, _ = train_state.apply_fn_with_bn(
@@ -202,6 +209,7 @@ def main():
         )
         return y_pred
     else:
+
       @jax.jit
       def forward_fn(x):
         """forward function for the local model
@@ -211,22 +219,20 @@ def main():
         """
         x_ = x.reshape(-1, x.shape[-1])
         return train_state.apply_fn(train_state.params, x_).reshape(x.shape)
+
     if mode == "ae":
       utils.eval_a_priori(
-        forward_fn, train_dataloader, test_dataloader,
-        inputs[:one_traj_length], inputs[:one_traj_length], dim,
-        f"reg_{fig_name}"
+        forward_fn, train_dataloader, test_dataloader, inputs[:one_traj_length],
+        inputs[:one_traj_length], dim, f"reg_{fig_name}"
       )
       return
     utils.eval_a_priori(
-      forward_fn, train_dataloader, test_dataloader,
-      inputs[:one_traj_length], outputs[:one_traj_length], dim,
-      f"reg_{fig_name}"
+      forward_fn, train_dataloader, test_dataloader, inputs[:one_traj_length],
+      outputs[:one_traj_length], dim, f"reg_{fig_name}"
     )
     utils.eval_a_posteriori(
-      config_dict, forward_fn,
-      inputs_[:one_traj_length], outputs_[:one_traj_length], dim,
-      f"sim_{fig_name}"
+      config_dict, forward_fn, inputs_[:one_traj_length],
+      outputs_[:one_traj_length], dim, f"sim_{fig_name}"
     )
 
   parser = argparse.ArgumentParser()

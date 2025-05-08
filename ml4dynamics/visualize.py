@@ -179,10 +179,12 @@ def plot_stats(
 
 
 def plot_stats_aux(
-  t_array: np.array, ground_truth: np.ndarray,
-  correction: np.ndarray, fig_name: str,
+  t_array: np.array,
+  ground_truth: np.ndarray,
+  correction: np.ndarray,
+  fig_name: str,
 ):
-  
+
   avg_length = 500
   plt.figure(figsize=(6, 6))
   plt.subplot(211)
