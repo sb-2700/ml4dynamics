@@ -44,10 +44,12 @@ plot:
 
 train:
   lr: 0.01
+  input: global
   batch_size_unet: 200
   buffer_size: 10
-  epochs: 500
-  decay: 200 # number of epochs to decay the learning rate
+  epochs: 400
+  lambda_: 1
+  decay: 100 # number of epochs to decay the learning rate
   save: 100
   vae:
     latents: 128

@@ -42,9 +42,11 @@ plot:
 
 train:
   lr: 0.1
+  sgs: filter
+  input: global
   batch_size_unet: 200
   buffer_size: 10
-  epochs: 200
+  epochs: 2000
   decay: 500 # number of epochs to decay the learning rate
   save: 100
   vae:

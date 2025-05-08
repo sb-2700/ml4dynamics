@@ -1006,40 +1006,45 @@ class ns_hit(dynamics):
     dt = self.dt
     nu = self.nu
     n = w_hat.shape[0]
+    # forcing = np.zeros_like(w_hat)
+    # f0 = 4
+    # forcing = w_hat.at[:f0, :f0].set(
+    #   random.normal(random.PRNGKey(0), (f0, f0))
+    # )
     """implementation 1"""
-    # w_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
-    # psi_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
-    # w_hat2 = w_hat2.at[:n // 2, :n // 2 + 1].set(w_hat[:n // 2] * 4)
-    # w_hat2 = w_hat2.at[-n // 2:, :n // 2 + 1].set(w_hat[n // 2:] * 4)
-    # psi_hat2 = psi_hat2.at[:n // 2, :n // 2 + 1].set(
-    #   -(w_hat / self.laplacian_)[:n // 2] * 4
-    # )
-    # psi_hat2 = psi_hat2.at[-n // 2:, :n // 2 + 1].set(
-    #   -(w_hat / self.laplacian_)[n // 2:] * 4
-    # )
-    # wx2 = jnp.fft.irfft2(1j * w_hat2 * self.k2x)
-    # wy2 = jnp.fft.irfft2(1j * w_hat2 * self.k2y)
-    # psix2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2x)
-    # psiy2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2y)
-    # #force = np.cos(2*Y) * 0.0
-    # #print(np.linalg.norm(wx2*psiy2-wy2*psix2))
-    # tmp = jnp.zeros_like(w_hat)
-    # tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)
-    # tmp = tmp.at[:n // 2].set(tmp_[:n // 2, :n // 2 + 1] / 4)
-    # tmp = tmp.at[n // 2:].set(tmp_[-n // 2:, :n // 2 + 1] / 4)
+    w_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
+    psi_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
+    w_hat2 = w_hat2.at[:n // 2, :n // 2 + 1].set(w_hat[:n // 2] * 4)
+    w_hat2 = w_hat2.at[-n // 2:, :n // 2 + 1].set(w_hat[n // 2:] * 4)
+    psi_hat2 = psi_hat2.at[:n // 2, :n // 2 + 1].set(
+      -(w_hat / self.laplacian_)[:n // 2] * 4
+    )
+    psi_hat2 = psi_hat2.at[-n // 2:, :n // 2 + 1].set(
+      -(w_hat / self.laplacian_)[n // 2:] * 4
+    )
+    wx2 = jnp.fft.irfft2(1j * w_hat2 * self.k2x)
+    wy2 = jnp.fft.irfft2(1j * w_hat2 * self.k2y)
+    psix2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2x)
+    psiy2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2y)
+    #force = np.cos(2*Y) * 0.0
+    #print(np.linalg.norm(wx2*psiy2-wy2*psix2))
+    tmp = jnp.zeros_like(w_hat)
+    tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)
+    tmp = tmp.at[:n // 2].set(tmp_[:n // 2, :n // 2 + 1] / 4)
+    tmp = tmp.at[n // 2:].set(tmp_[-n // 2:, :n // 2 + 1] / 4)
     """implementation 2"""
-    psi_hat = -(w_hat / self.laplacian_)
-    wx = jnp.fft.irfft2(1j * psi_hat * self.kx)
-    wy = jnp.fft.irfft2(1j * psi_hat * self.ky)
-    psix = jnp.fft.irfft2(1j * psi_hat * self.kx)
-    psiy = jnp.fft.irfft2(1j * psi_hat * self.ky)
-    tmp = jnp.fft.rfft2(wx * psiy - wy * psix)
+    # psi_hat = -(w_hat / self.laplacian_)
+    # wx = jnp.fft.irfft2(1j * psi_hat * self.kx)
+    # wy = jnp.fft.irfft2(1j * psi_hat * self.ky)
+    # psix = jnp.fft.irfft2(1j * psi_hat * self.kx)
+    # psiy = jnp.fft.irfft2(1j * psi_hat * self.ky)
+    # tmp = jnp.fft.rfft2(wx * psiy - wy * psix)
     w_hat = ((1 + dt / 2 * nu * self.laplacian) * w_hat - dt * tmp) /\
-      (1 - dt / 2 * nu * self.laplacian)
+      (1 - dt / 2 * nu * self.laplacian)# + dt * forcing
     return w_hat
 
   def CN_real(self, w):
-    return np.fft.irfft2(self.CN(np.fft.rfft2(w[..., 0])))[..., None]
+    return jnp.fft.irfft2(self.CN(jnp.fft.rfft2(w[..., 0])))[..., None]
 
   def CN_adj(self, lambda_, i):
     # CN scheme for the dual variable \lambda

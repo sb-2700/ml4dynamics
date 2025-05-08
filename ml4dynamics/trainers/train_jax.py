@@ -98,6 +98,7 @@ def main():
 
     load_dict = f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl"
     if not os.path.exists(load_dict):
+      """TODO: no architecture check for the models"""
       load_dict = None
     train_state, schedule = utils.prepare_unet_train_state(
       config_dict, load_dict, _global
@@ -126,12 +127,15 @@ def main():
         loss = jnp.linalg.norm(x - x_pred, axis=-1)
         # loss = jnp.sum((x - x_pred)**2, axis=-1)
         return jnp.sum(loss)
-      _, model_coarse = utils.create_fine_coarse_simulator(config_dict)
+      if pde == "ns_channel":
+        sim_model = utils.create_ns_channel_simulator(config_dict)
+      else:
+        _, sim_model = utils.create_fine_coarse_simulator(config_dict)
       @jax.jit
       def tangent_vector(x):
-
-        return jnp.einsum("ij, ajb -> aib", model_coarse.L1, (x[:, :-1]**2)/2) +\
-          jnp.einsum("ij, ajb -> aib", 2 * model_coarse.L, x[:, :-1])
+        """TODO: only support ks for now"""
+        return jnp.einsum("ij, ajb -> aib", sim_model.L1, (x[:, :-1]**2)/2) +\
+          jnp.einsum("ij, ajb -> aib", 2 * sim_model.L, x[:, :-1])
 
     iters = tqdm(range(epochs))
     loss_hist = []
@@ -253,8 +257,8 @@ def main():
   if pde != "ns_channel":
     print(f"{config.train.sgs}")
   # modes_array = ["ae", "ols", "mols", "aols", "tr"]
-  # modes_array = ["tr"]
-  modes_array = ["ae", "ols", "tr"]
+  # modes_array = ["ols"]
+  modes_array = ["ae", "ols"]
 
   for _ in modes_array:
     print(f"Training {_}...")

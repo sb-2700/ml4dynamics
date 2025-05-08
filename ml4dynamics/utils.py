@@ -482,10 +482,11 @@ def eval_a_posteriori(
     )
   else:
     _, model = create_fine_coarse_simulator(config)
+    type_ = None
     if config.case == "react_diff":
       iter_ = model.adi
-      type_ = None
     elif config.case == "ns_hit":
+      iter_ = model.CN_real
       run_simulation = partial(
         train_utils.run_simulation_sgs, forward_fn, model, model.CN_real,
         outputs, beta, None

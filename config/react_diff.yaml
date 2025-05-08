@@ -50,12 +50,12 @@ train:
   mode: gaussian # regression, gaussian, generative
   linear: True # whether add a linear residue layer
   n_g: 1 # number of gaussian mixture components
-  input: uxx # uglobal, u, ux, uxx, uxxxx
+  input: global # global, u, ux, uxx, uxxxx
   lr: 0.01
   batch_size: 1000000
   batch_size_unet: 200
   buffer_size: 10
-  epochs: 50
+  epochs: 400
   decay: 100 # number of epochs to decay the learning rate
   save: 100
   vae:
