@@ -212,6 +212,7 @@ def plot_stats_aux(
   plt.xlabel(r"$T$")
   plt.ylabel(r"$\overline{u^2}$")
   plt.savefig(fig_name)
+  plt.close()
 
 
 def plot_error_cloudmap(

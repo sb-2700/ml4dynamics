@@ -548,9 +548,9 @@ def eval_a_posteriori(
     )
     im_array = np.zeros((3, n_plot, *(outputs[0, ..., 0].T).shape))
     for j in range(n_plot):
-      im_array[0, j] = inputs[index_array[j], ..., 0]
-      im_array[1, j] = x_hist[index_array[j], ..., 0]
-      im_array[2, j] = (inputs - x_hist)[index_array[j], ..., 0]
+      im_array[0, j] = inputs[index_array[j], ..., 0].T
+      im_array[1, j] = x_hist[index_array[j], ..., 0].T
+      im_array[2, j] = (inputs - x_hist)[index_array[j], ..., 0].T
     plot_with_horizontal_colorbar(
       im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
     )

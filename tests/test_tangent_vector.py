@@ -9,10 +9,8 @@ import jax
 import jax.numpy as jnp
 import pytest
 import yaml
-from jax import random
 
 from ml4dynamics import utils
-from ml4dynamics.dynamics import KS
 
 
 jax.config.update('jax_enable_x64', True)
@@ -42,10 +40,12 @@ def test_ks_tangent_space():
   inputs, outputs, _, _, dataset = utils.load_data(
     config_dict, 10, mode="jax"
   )
-  ae_train_state, _ = utils.prepare_unet_train_state(config_dict, f"ks/{dataset}_ae")
-  ae_fn = partial(ae_train_state.apply_fn_with_bn, 
-    {"params": ae_train_state.params,
-    "batch_stats": ae_train_state.batch_stats}
+  train_state, _ = utils.prepare_unet_train_state(
+    config_dict, f"ks/{dataset}_ae", is_training=False
+  )
+  ae_fn = partial(train_state.apply_fn_with_bn, 
+    {"params": train_state.params,
+    "batch_stats": train_state.batch_stats}
   )
   def ae_loss_fn(x):
     x_pred, _ = ae_fn(x, is_training=False)
@@ -58,12 +58,20 @@ def test_ks_tangent_space():
     return jnp.einsum("ij, ajb -> aib", model_coarse.L1, (x[:, :-1]**2)/2) +\
       jnp.einsum("ij, ajb -> aib", 2 * model_coarse.L, x[:, :-1])
   
-  x = inputs[0:1]
-  normal_vector = jax.grad(ae_loss_fn)(x)[:, :-1]
-  loss = jnp.mean(jnp.abs(
-    jnp.sum(normal_vector * tangent_vector(x), axis=(-2, -1))
-  ))
-  breakpoint()
+  def calc_cos(i: int):
+    x = inputs[i:i+1]
+    normal_vector = jax.grad(ae_loss_fn)(x)[:, :-1]
+    tangent_vector_ = tangent_vector(x)
+    cos1 = jnp.abs(jnp.sum(normal_vector * tangent_vector_, axis=(-2, -1)))
+    cos1 /= jnp.linalg.norm(normal_vector) * jnp.linalg.norm(tangent_vector_)
+    tangent_vector_ = tangent_vector(x) + outputs[i:i+1, :-1]
+    cos2 = jnp.abs(jnp.sum(normal_vector * tangent_vector_, axis=(-2, -1)))
+    cos2 /= jnp.linalg.norm(normal_vector) * jnp.linalg.norm(tangent_vector_)
+    return cos1, cos2
+
+  for i in range(inputs.shape[0]):  
+    cos1, cos2 = calc_cos(i)
+    print(i, cos1, cos2)
           
 
 if __name__ == "__main__":

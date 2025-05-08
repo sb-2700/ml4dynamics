@@ -48,10 +48,12 @@ def main():
         elif model_type == "tr":
           # NOTE: currently only supports ks
           normal_vector = jax.grad(ae_loss_fn)(x)[:, :-1]
-          loss += jnp.mean(jnp.abs(
-            jnp.sum(normal_vector * (tangent_vector(x) + y_pred[:, :-1]), axis=(-2, -1))
-          ))
-          # breakpoint()
+          loss += jnp.mean(
+            jnp.sum(
+              normal_vector * (tangent_vector(x) + y_pred[:, :-1]),
+              axis=(-2, -1)
+            )**2
+          )
 
         return loss, batch_stats
 
@@ -75,6 +77,10 @@ def main():
       jax.tree_util.tree_map(lambda x: x.size, flat_params).values()
     )
     print(f"total parameters for {model_type}:", total_params)
+    if args.config != "ns_channel":
+      fig_name = f"{args.config}_reg_{config.train.sgs}_{model_type}"
+    else:
+      fig_name = f"{args.config}_{model_type}"
     if model_type == "tr":
       lambda_ = config.train.lambda_
       ae_train_state, _ = utils.prepare_unet_train_state(
@@ -99,11 +105,14 @@ def main():
     loss_hist = []
     for epoch in iters:
       total_loss = 0
+      count = 0
       for batch_inputs, batch_outputs in train_dataloader:
         loss, train_state = train_step(
           jnp.array(batch_inputs), jnp.array(batch_outputs), train_state, True
         )
         total_loss += loss
+        count += 1
+      total_loss /= count
       lr = schedule(train_state.step)
       desc_str = f"{lr=:.2e}|{total_loss=:.4e}"
       iters.set_description_str(desc_str)
@@ -126,7 +135,7 @@ def main():
     print(f"val loss: {val_loss:.4e}")
     plt.plot(loss_hist)
     plt.yscale("log")
-    plt.savefig(f"results/fig/losshist_{config.train.sgs}_{model_type}.png")
+    plt.savefig(f"results/fig/losshist_{fig_name}.png")
     plt.close()
 
     dim = 2
@@ -145,18 +154,18 @@ def main():
       utils.eval_a_priori(
         train_state, train_dataloader, test_dataloader,
         inputs[:one_traj_length], inputs[:one_traj_length], dim,
-        f"{args.config}_reg_{config.train.sgs}_{model_type}"
+        f"reg_{fig_name}"
       )
       return
     utils.eval_a_priori(
       train_state, train_dataloader, test_dataloader,
       inputs[:one_traj_length], outputs[:one_traj_length], dim,
-      f"{args.config}_reg_{config.train.sgs}_{model_type}"
+      f"reg_{fig_name}"
     )
     utils.eval_a_posteriori(
       config_dict, train_state,
       inputs_[:one_traj_length], outputs_[:one_traj_length], dim,
-      f"{args.config}_sim_{config.train.sgs}_{model_type}"
+      f"sim_{fig_name}"
     )
 
   parser = argparse.ArgumentParser()
@@ -176,9 +185,11 @@ def main():
     config_dict, config.train.batch_size_unet, mode="jax"
   )
   print(f"finis loading data with {time() - start:.2f}s...")
-  print(f"Problem type: {args.config} + {config.train.sgs}")
+  print(f"Problem type: {args.config}")
+  if args.config != "ns_channel":
+    print(f"{config.train.sgs}")
   # models_array = ["ae", "ols", "mols", "aols", "tr"]
-  # models_array = ["ols"]
+  # models_array = ["tr"]
   models_array = ["ae", "ols", "tr"]
 
   for _ in models_array:
