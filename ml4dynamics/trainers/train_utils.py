@@ -6,7 +6,7 @@ from dlpack import asdlpack
 
 
 def run_simulation_fine_grid_correction(
-  train_state, coarse_model, _iter: callable, label: jnp.ndarray, beta: float,
+  forward_fn, coarse_model, _iter: callable, label: jnp.ndarray, beta: float,
   res_fn: callable, int_fn: callable, type_: str, x: jnp.ndarray
 ):
   r"""
@@ -36,26 +36,7 @@ def run_simulation_fine_grid_correction(
     x_next = int_fn(x_res)
     if type_ == "pad":
       x = jnp.concatenate([x, jnp.zeros((1, 1))], axis=0)
-    if train_state.batch_stats:
-      # global model
-      correction, _ = train_state.apply_fn_with_bn(
-        {
-          "params": train_state.params,
-          "batch_stats": train_state.batch_stats
-        },
-        x.reshape(1, *x.shape),
-        is_training=False
-      )
-    else:
-      # local model
-      correction, _ = train_state.apply_fn(
-        {
-          "params": train_state.params
-        },
-        x.reshape(-1, x.shape[-1]),
-        is_training=False
-      )
-      correction = correction.reshape(*x.shape)
+    correction = forward_fn(x.reshape(1, *x.shape))
     if type_ == "pad":
       correction = correction[:, :-1]
     return x_next + (correction[0] * (1 - beta) + beta * expert) * dt
@@ -109,7 +90,7 @@ def run_simulation_fine_grid_correction_torch(
 
 
 def run_simulation_coarse_grid_correction(
-  train_state, model, _iter: callable, label: jnp.ndarray, beta: float,
+  forward_fn, model, _iter: callable, label: jnp.ndarray, beta: float,
   type_: str, x: jnp.ndarray
 ):
 
@@ -118,26 +99,7 @@ def run_simulation_coarse_grid_correction(
     x_next = _iter(x)
     if type_ == "pad":
       x = jnp.concatenate([x, jnp.zeros((1, 1))], axis=0)
-    if train_state.batch_stats:
-      # global model
-      correction, _ = train_state.apply_fn_with_bn(
-        {
-          "params": train_state.params,
-          "batch_stats": train_state.batch_stats
-        },
-        x.reshape(1, *x.shape),
-        is_training=False
-      )
-    else:
-      # local model
-      correction, _ = train_state.apply_fn(
-        {
-          "params": train_state.params
-        },
-        x.reshape(-1, x.shape[-1]),
-        is_training=False
-      )
-      correction = correction.reshape(*x.shape)
+    correction = forward_fn(x.reshape(1, *x.shape))
     if type_ == "pad":
       correction = correction[:, :-1]
     tmp = correction[0]
@@ -154,7 +116,7 @@ def run_simulation_coarse_grid_correction(
 
 
 def run_simulation_sgs(
-  train_state, model, _iter: callable, label: jnp.ndarray, beta: float,
+  forward_fn, model, _iter: callable, label: jnp.ndarray, beta: float,
   type_: str, x: jnp.ndarray
 ):
 
@@ -163,26 +125,7 @@ def run_simulation_sgs(
     x_next = _iter(x)
     if type_ == "pad":
       x = jnp.concatenate([x, jnp.zeros((1, 1))], axis=0)
-    if train_state.batch_stats:
-      # global model
-      correction, _ = train_state.apply_fn_with_bn(
-        {
-          "params": train_state.params,
-          "batch_stats": train_state.batch_stats
-        },
-        x.reshape(1, *x.shape),
-        is_training=False
-      )
-    else:
-      # local model
-      correction, _ = train_state.apply_fn(
-        {
-          "params": train_state.params
-        },
-        x.reshape(-1, x.shape[-1]),
-        is_training=False
-      )
-      correction = correction.reshape(*x.shape)
+    correction = forward_fn(x.reshape(1, *x.shape))
     if type_ == "pad":
       correction = correction[:, :-1]
     tmp = (jnp.roll(correction[0], -1) - jnp.roll(correction[0], 1)) / 2 / dx
@@ -202,7 +145,7 @@ def run_simulation_sgs(
 
 
 def run_ns_simulation_pressue_correction(
-  train_state, ns_model, label: jnp.ndarray, beta: float, x: jnp.ndarray
+  forward_fn, ns_model, label: jnp.ndarray, beta: float, x: jnp.ndarray
 ):
 
   x = jnp.array(x)
@@ -210,14 +153,7 @@ def run_ns_simulation_pressue_correction(
   x_hist = np.zeros([step_num, *x.shape])
   for i in range(step_num):
     x_hist[i] = x
-    correction, _ = train_state.apply_fn_with_bn(
-      {
-        "params": train_state.params,
-        "batch_stats": train_state.batch_stats
-      },
-      x.reshape(1, *x.shape),
-      is_training=False
-    )
+    correction = forward_fn(x.reshape(1, *x.shape))
     u, v, _ = ns_model.projection_correction(
       x[..., 0], x[..., 1], correction[0, ..., 0], correction=True
     )

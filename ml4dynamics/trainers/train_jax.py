@@ -1,4 +1,5 @@
 import argparse
+import os
 import pickle
 from functools import partial
 from time import time
@@ -18,7 +19,7 @@ from ml4dynamics import utils
 def main():
 
   def train(
-    model_type: str,
+    mode: str,
     epochs: int,
   ):
 
@@ -26,70 +27,92 @@ def main():
     def train_step(x, y, train_state, is_training=True):
 
       def loss_fn(params, batch_stats, is_training):
-        y_pred, batch_stats = train_state.apply_fn_with_bn(
-          {
-            "params": params,
-            "batch_stats": batch_stats
-          },
-          x,
-          is_training=is_training
-        )
+        if _global:
+          y_pred, batch_stats = train_state.apply_fn_with_bn(
+            {
+              "params": params,
+              "batch_stats": batch_stats
+            },
+            x,
+            is_training=is_training
+          )
+        else:
+          y_pred = train_state.apply_fn(params, x)
+          batch_stats = None
         loss = jnp.mean((y - y_pred)**2)
 
-        if model_type == "ae":
+        if mode == "ae":
           loss = jnp.mean((x - y_pred)**2)
-        elif model_type == "mols":
+        elif mode == "mols":
           squared_norms = jax.tree_map(lambda param: jnp.sum(param**2), params)
           loss += jax.tree_util.tree_reduce(
             lambda x, y: x + y, squared_norms
           ) * config.tr.lambda_mols
-        elif model_type == "aols":
+        elif mode == "aols":
           pass
-        elif model_type == "tr":
+        elif mode == "tr":
           # NOTE: currently only supports ks
+          # if not _global:
+          #   x = x.reshape(-1, x.shape[-1])
           normal_vector = jax.grad(ae_loss_fn)(x)[:, :-1]
           loss += jnp.mean(
             jnp.sum(
               normal_vector * (tangent_vector(x) + y_pred[:, :-1]),
               axis=(-2, -1)
             )**2
-          )
+          ) * lambda_
 
         return loss, batch_stats
 
       if is_training:
         grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-        (loss, batch_stats
-         ), grads = grad_fn(train_state.params, train_state.batch_stats, True)
+        if _global:
+          (loss, batch_stats
+          ), grads = grad_fn(train_state.params, train_state.batch_stats, True)
 
-        train_state = train_state.apply_gradients(grads=grads)
-        train_state = train_state.update_batch_stats(batch_stats)
+          train_state = train_state.apply_gradients(grads=grads)
+          train_state = train_state.update_batch_stats(batch_stats)
+        else:
+          (loss, _), grads = grad_fn(train_state.params, None, True)
+
+          train_state = train_state.apply_gradients(grads=grads)
       else:
-        loss, batch_stats = loss_fn(
-          train_state.params, train_state.batch_stats, False
-        )
+        if _global:
+          loss, batch_stats = loss_fn(
+            train_state.params, train_state.batch_stats, False
+          )
+        else:
+          loss, _ = loss_fn(train_state.params, None, False)
 
       return loss, train_state
 
-    train_state, schedule = utils.prepare_unet_train_state(config_dict)
+    load_dict = f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl"
+    if not os.path.exists(load_dict):
+      load_dict = None
+    train_state, schedule = utils.prepare_unet_train_state(
+      config_dict, load_dict, _global
+    )
     flat_params = traverse_util.flatten_dict(train_state.params)
     total_params = sum(
       jax.tree_util.tree_map(lambda x: x.size, flat_params).values()
     )
-    print(f"total parameters for {model_type}:", total_params)
-    if args.config != "ns_channel":
-      fig_name = f"{args.config}_reg_{config.train.sgs}_{model_type}"
+    print(f"total parameters for {mode}_{arch}:", total_params)
+    if pde != "ns_channel":
+      fig_name = f"{pde}_{config.train.sgs}_{mode}_{arch}"
     else:
-      fig_name = f"{args.config}_{model_type}"
-    if model_type == "tr":
+      fig_name = f"{pde}_{mode}_{arch}"
+    if mode == "tr":
       lambda_ = config.train.lambda_
       ae_train_state, _ = utils.prepare_unet_train_state(
-        config_dict, f"{pde_type}/{dataset}_ae", is_training=False
+        config_dict, f"ckpts/{pde}/{dataset}_ae_unet.pkl", True, False
       )
-      ae_fn = partial(ae_train_state.apply_fn_with_bn, 
+      ae_fn = partial(
+        ae_train_state.apply_fn_with_bn, 
         {"params": ae_train_state.params,
-        "batch_stats": ae_train_state.batch_stats})
+        "batch_stats": ae_train_state.batch_stats}
+      )
       def ae_loss_fn(x):
+        breakpoint()
         x_pred, _ = ae_fn(x, is_training=False)
         loss = jnp.linalg.norm(x - x_pred, axis=-1)
         # loss = jnp.sum((x - x_pred)**2, axis=-1)
@@ -119,11 +142,14 @@ def main():
       loss_hist.append(total_loss)
 
       if (epoch + 1) % config.train.save == 0:
-        with open(f"ckpts/{pde_type}/{dataset}_{model_type}.pkl", "wb") as f:
-          dict = {
-            "params": train_state.params,
-            "batch_stats": train_state.batch_stats
-          }
+        with open(f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl", "wb") as f:
+          if _global:
+            dict = {
+              "params": train_state.params,
+              "batch_stats": train_state.batch_stats
+            }
+          else:
+            dict = train_state.params
           pickle.dump(dict, f)
 
     val_loss = 0
@@ -141,29 +167,51 @@ def main():
     dim = 2
     inputs_ = inputs
     outputs_ = outputs
-    if pde_type == "ks":
+    if pde == "ks":
       dim = 1
-      if config.sim.BC == "Dirichlet-Neumann":
+      if config.sim.BC == "Dirichlet-Neumann" and config.train.input == "global":
         inputs_ = inputs[:, :-1]
         outputs_ = outputs[:, :-1]
     one_traj_length = inputs.shape[0] // config.sim.case_num
     train_state, schedule = utils.prepare_unet_train_state(
-      config_dict, f"{pde_type}/{dataset}_{model_type}", is_training=False
+      config_dict, f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl", _global, False
     )
-    if model_type == "ae":
+    if _global:
+      @jax.jit
+      def forward_fn(x):
+        y_pred, _ = train_state.apply_fn_with_bn(
+          {
+            "params": train_state.params,
+            "batch_stats": train_state.batch_stats
+          },
+          x,
+          is_training=False
+        )
+        return y_pred
+    else:
+      @jax.jit
+      def forward_fn(x):
+        """forward function for the local model
+
+        The shape of the input and output is aligned with the
+        global model for the a-posteriori simulation
+        """
+        x_ = x.reshape(-1, x.shape[-1])
+        return train_state.apply_fn(train_state.params, x_).reshape(x.shape)
+    if mode == "ae":
       utils.eval_a_priori(
-        train_state, train_dataloader, test_dataloader,
+        forward_fn, train_dataloader, test_dataloader,
         inputs[:one_traj_length], inputs[:one_traj_length], dim,
         f"reg_{fig_name}"
       )
       return
     utils.eval_a_priori(
-      train_state, train_dataloader, test_dataloader,
+      forward_fn, train_dataloader, test_dataloader,
       inputs[:one_traj_length], outputs[:one_traj_length], dim,
       f"reg_{fig_name}"
     )
     utils.eval_a_posteriori(
-      config_dict, train_state,
+      config_dict, forward_fn,
       inputs_[:one_traj_length], outputs_[:one_traj_length], dim,
       f"sim_{fig_name}"
     )
@@ -177,22 +225,29 @@ def main():
     config_dict = yaml.safe_load(file)
 
   config = Box(config_dict)
-  pde_type = config.case
+  pde = config.case
+  _global = (config.train.input == "global")
   epochs = config.train.epochs
   print("start loading data...")
   start = time()
+  if _global:
+    batch_size = config.train.batch_size_unet
+    arch = "unet"
+  else:
+    batch_size = config.train.batch_size
+    arch = "mlp"
   inputs, outputs, train_dataloader, test_dataloader, dataset = utils.load_data(
-    config_dict, config.train.batch_size_unet, mode="jax"
+    config_dict, batch_size
   )
   print(f"finis loading data with {time() - start:.2f}s...")
-  print(f"Problem type: {args.config}")
-  if args.config != "ns_channel":
+  print(f"Problem type: {pde}")
+  if pde != "ns_channel":
     print(f"{config.train.sgs}")
-  # models_array = ["ae", "ols", "mols", "aols", "tr"]
-  # models_array = ["tr"]
-  models_array = ["ae", "ols", "tr"]
+  # modes_array = ["ae", "ols", "mols", "aols", "tr"]
+  modes_array = ["tr"]
+  # modes_array = ["ols", "tr"]
 
-  for _ in models_array:
+  for _ in modes_array:
     print(f"Training {_}...")
     train(_, epochs)
 

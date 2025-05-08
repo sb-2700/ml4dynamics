@@ -12,6 +12,7 @@ import optax
 import pickle
 import torch
 from box import Box
+from flax.training.train_state import TrainState
 from jax import random as random
 from jax.numpy.linalg import solve
 from matplotlib import cm
@@ -21,7 +22,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from ml4dynamics import dynamics
 from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
-from ml4dynamics.models.models_jax import CustomTrainState, UNet
+from ml4dynamics.models.models_jax import CustomTrainState, UNet, MLP
 from ml4dynamics.trainers import train_utils
 from ml4dynamics.types import PRNGKey
 from ml4dynamics.visualize import plot_stats_aux
@@ -34,7 +35,6 @@ def load_data(
   config_dict: ml_collections.ConfigDict,
   batch_size: int,
   num_workers: int = 16,
-  mode: str = "jax"
 ):
 
   config = Box(config_dict)
@@ -67,19 +67,25 @@ def load_data(
   with h5py.File(h5_filename, "r") as h5f:
     inputs = h5f["data"]["inputs"][()]
     outputs = h5f["data"]["outputs"][()]
-    if mode == "torch":
-      inputs = inputs.transpose(0, 3, 1, 2)
-      outputs = outputs.transpose(0, 3, 1, 2)
-      GPU = 0
-      device = torch.device(
-        "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
-      )
-      inputs = torch.from_numpy(inputs).to(device)
-      outputs = torch.from_numpy(outputs).to(device)
-  if pde_type == "ks" and config.sim.BC == "Dirichlet-Neumann":
-    padding = np.zeros((inputs.shape[0], 1, 1))
-    inputs = np.concatenate([inputs, padding], axis=1)
-    outputs = np.concatenate([outputs, padding], axis=1)
+    # if mode == "torch":
+    #   inputs = inputs.transpose(0, 3, 1, 2)
+    #   outputs = outputs.transpose(0, 3, 1, 2)
+    #   GPU = 0
+    #   device = torch.device(
+    #     "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
+    #   )
+    #   inputs = torch.from_numpy(inputs).to(device)
+    #   outputs = torch.from_numpy(outputs).to(device)
+  if config.train.input == "global":
+    if pde_type == "ks" and config.sim.BC == "Dirichlet-Neumann":
+      padding = np.zeros((inputs.shape[0], 1, 1))
+      inputs = np.concatenate([inputs, padding], axis=1)
+      outputs = np.concatenate([outputs, padding], axis=1)
+  if config.train.input != "global":
+    inputs_shape = inputs.shape
+    outputs_shape = outputs.shape
+    inputs = inputs.reshape(-1, inputs.shape[-1])
+    outputs = outputs.reshape(-1, outputs.shape[-1])
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=config.sim.seed
   )
@@ -101,6 +107,9 @@ def load_data(
     batch_size=batch_size,
     shuffle=True  # , num_workers=num_workers
   )
+  if config.train.input != "global":
+    inputs = inputs.reshape(inputs_shape)
+    outputs = outputs.reshape(outputs_shape)
   return inputs, outputs, train_dataloader, test_dataloader, dataset
 
 
@@ -222,7 +231,7 @@ def create_ns_hit_simulator(config_dict: ml_collections.ConfigDict):
 
 def prepare_unet_train_state(
   config_dict: ml_collections.ConfigDict, load_dict: str = None,
-  is_training: bool = True
+  is_global: bool = True, is_training: bool = True
 ):
 
   config = Box(config_dict)
@@ -252,40 +261,58 @@ def prepare_unet_train_state(
     n_sample = int(config.sim.T / config.sim.dt * 0.8)
     nx = config.sim.n
     DIM = 1
-  unet = UNet(
-    input_features=input_features, output_features=output_features,
-    DIM=DIM, training = is_training,
-  )
-  rng1, rng2 = random.split(rng)
-  init_rngs = {'params': rng1, 'dropout': rng2}
-  if load_dict:
-    with open(f"ckpts/{load_dict}.pkl", "rb") as f:
-      unet_variables = pickle.load(f)
-  else:
-    if config.case == "ks":
-      # init 1D UNet
-      unet_variables = unet.init(init_rngs, jnp.ones([1, nx, input_features]))
+  if is_global:
+    step_per_epoch = n_sample * config.sim.case_num //\
+      config.train.batch_size_unet
+    # TODO: need to specify the scheduler here for different training
+    schedule = optax.piecewise_constant_schedule(
+      init_value=config.train.lr,
+      boundaries_and_scales={
+        int(b): 0.1
+        for b in jnp.arange(
+          config.train.decay * step_per_epoch, config.train.epochs *
+          step_per_epoch, config.train.decay * step_per_epoch
+        )
+      }
+    )
+    optimizer = optax.adam(schedule)
+    unet = UNet(
+      input_features=input_features, output_features=output_features,
+      DIM=DIM, training = is_training,
+    )
+    rng1, rng2 = random.split(rng)
+    init_rngs = {'params': rng1, 'dropout': rng2}
+    if load_dict:
+      with open(f"{load_dict}", "rb") as f:
+        unet_variables = pickle.load(f)
     else:
-      unet_variables = unet.init(init_rngs, jnp.ones([1, nx, ny, input_features]))
-  step_per_epoch = n_sample * config.sim.case_num // config.train.batch_size_unet
-  # TODO: need to specify the scheduler here for different training
-  schedule = optax.piecewise_constant_schedule(
-    init_value=config.train.lr,
-    boundaries_and_scales={
-      int(b): 0.1
-      for b in jnp.arange(
-        config.train.decay * step_per_epoch, config.train.epochs *
-        step_per_epoch, config.train.decay * step_per_epoch
-      )
-    }
-  )
-  optimizer = optax.adam(schedule)
-  train_state = CustomTrainState.create(
-    apply_fn=unet.apply,
-    params=unet_variables["params"],
-    tx=optimizer,
-    batch_stats=unet_variables["batch_stats"]
-  )
+      if config.case == "ks":
+        # init 1D UNet
+        unet_variables = unet.init(init_rngs, jnp.ones([1, nx, input_features]))
+      else:
+        unet_variables = unet.init(
+          init_rngs, jnp.ones([1, nx, ny, input_features])
+        )
+    train_state = CustomTrainState.create(
+      apply_fn=unet.apply,
+      params=unet_variables["params"],
+      tx=optimizer,
+      batch_stats=unet_variables["batch_stats"]
+    )
+  else:
+    schedule = optax.piecewise_constant_schedule(
+      init_value=config.train.lr,
+      boundaries_and_scales={}
+    )
+    optimizer = optax.adam(schedule)
+    mlp = MLP(output_features)
+    rng = jax.random.PRNGKey(0)
+    params = mlp.init(random.PRNGKey(0), np.zeros((1, input_features)))
+    train_state = TrainState.create(
+      apply_fn=mlp.apply,
+      params=params,
+      tx=optimizer,
+    )
   return train_state, schedule
 
 
@@ -360,7 +387,7 @@ def data_stratification(config_dict: ml_collections.ConfigDict):
 
 
 def eval_a_priori(
-  train_state: CustomTrainState,
+  forward_fn: callable,
   train_dataloader: DataLoader,
   test_dataloader: DataLoader,
   inputs: jnp.ndarray,
@@ -372,14 +399,7 @@ def eval_a_priori(
   total_loss = 0
   count = 0
   for batch_inputs, batch_outputs in train_dataloader:
-    predict, _ = train_state.apply_fn_with_bn(
-      {
-        "params": train_state.params,
-        "batch_stats": train_state.batch_stats
-      },
-      jnp.array(batch_inputs),
-      is_training=False
-    )
+    predict = forward_fn(jnp.array(batch_inputs))
     loss = jnp.mean((predict - jnp.array(batch_outputs))**2)
     total_loss += loss
     count += 1
@@ -387,28 +407,14 @@ def eval_a_priori(
   total_loss = 0
   count = 0
   for batch_inputs, batch_outputs in test_dataloader:
-    predict, _ = train_state.apply_fn_with_bn(
-      {
-        "params": train_state.params,
-        "batch_stats": train_state.batch_stats
-      },
-      jnp.array(batch_inputs),
-      is_training=False
-    )
+    predict = forward_fn(jnp.array(batch_inputs))
     loss = jnp.mean((predict - jnp.array(batch_outputs))**2)
     total_loss += loss
     count += 1
   print(f"test loss: {total_loss/count:.4e}")
 
   if dim == 1:
-    predicts, _ = train_state.apply_fn_with_bn(
-      {
-        "params": train_state.params,
-        "batch_stats": train_state.batch_stats
-      },
-      jnp.array(inputs),
-      is_training=False
-    )
+    predicts = forward_fn(jnp.array(inputs))
     im_array = np.zeros((3, 1, *(outputs[..., 0].T).shape))
     im_array[0, 0] = outputs[..., 0].T
     im_array[1, 0] = predicts[..., 0].T
@@ -424,13 +430,8 @@ def eval_a_priori(
     )
     im_array = np.zeros((3, n_plot, *(outputs[0, ..., 0].T).shape))
     for j in range(n_plot):
-      predicts, _ = train_state.apply_fn_with_bn(
-        {
-          "params": train_state.params,
-          "batch_stats": train_state.batch_stats
-        },
-        jnp.array(inputs[index_array[j]:index_array[j] + 1]),
-        is_training=False
+      predicts = forward_fn(
+        jnp.array(inputs[index_array[j]:index_array[j] + 1])
       )
       im_array[0, j] = outputs[index_array[j], ..., 0].T
       im_array[1, j] = predicts[index_array[j], ..., 0].T
@@ -460,7 +461,7 @@ def eval_a_priori(
 
 def eval_a_posteriori(
   config_dict: ml_collections.ConfigDict,
-  train_state: CustomTrainState,
+  forward_fn: callable,
   inputs: jnp.ndarray,
   outputs: jnp.ndarray,
   dim: int = 2,
@@ -468,11 +469,11 @@ def eval_a_posteriori(
 ):
 
   config = Box(config_dict)
-  beta = 0.0
+  beta = 1.0
   if config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
     run_simulation = partial(
-      train_utils.run_ns_simulation_pressue_correction, train_state, model,
+      train_utils.run_ns_simulation_pressue_correction, forward_fn, model,
       outputs, beta
     )
   else:
@@ -482,7 +483,7 @@ def eval_a_posteriori(
       type_ = None
     elif config.case == "ns_hit":
       run_simulation = partial(
-        train_utils.run_simulation_sgs, train_state, model, model.CN_real,
+        train_utils.run_simulation_sgs, forward_fn, model, model.CN_real,
         outputs, beta, None
       )
     elif config.case == "ks":
@@ -491,18 +492,18 @@ def eval_a_posteriori(
     if config.train.sgs == "fine_correction":
       res_fn, int_fn = res_int_fn(config)
       run_simulation = partial(
-        train_utils.run_simulation_fine_grid_correction, train_state, model,
+        train_utils.run_simulation_fine_grid_correction, forward_fn, model,
         iter_, outputs, beta, res_fn, int_fn, type_
       )
     elif config.train.sgs == "filter":
       run_simulation = partial(
-        train_utils.run_simulation_sgs, train_state, model, iter_, outputs,
+        train_utils.run_simulation_sgs, forward_fn, model, iter_, outputs,
         beta, type_
       )
     elif config.train.sgs == "coarse_correction":
       run_simulation = partial(
         train_utils.run_simulation_coarse_grid_correction,
-        train_state, model, iter_, outputs, beta, type_
+        forward_fn, model, iter_, outputs, beta, type_
       )
 
   start = time()
@@ -1068,7 +1069,7 @@ def a_posteriori_analysis(
       elif config.train.input == "uxxxx":
         return partial(correction_nn.apply,
                        params)(u_xxxx.reshape(-1, 1)).reshape(-1)
-      elif config.train.input == "uglobal":
+      elif config.train.input == "global":
         return partial(correction_nn.apply,
                        params)(input.reshape(1, -1)).reshape(-1)
       # global model: [N] to [N]

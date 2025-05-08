@@ -36,6 +36,26 @@ class CustomTrainState(TrainState):
     return self.replace(batch_stats=new_batch_stats)
 
 
+class MLP(nn.Module):
+  output_dim: int
+  hidden_dim: int = 256
+
+  def setup(self):
+    self.dense1 = nn.Dense(self.hidden_dim)
+    self.dense2 = nn.Dense(self.hidden_dim)
+    self.dense3 = nn.Dense(self.output_dim)
+    self.linear_residue = nn.Dense(self.output_dim)
+
+  def __call__(self, inputs):
+    x = inputs.reshape(inputs.shape[0], -1)
+    x = self.dense1(x)
+    x = nn.relu(x)
+    x = self.dense2(x)
+    x = nn.relu(x)
+    x = self.dense3(x)
+    return x + self.linear_residue(inputs.reshape(inputs.shape[0], -1))
+
+
 """cVAE model definitions."""
 
 
@@ -106,7 +126,9 @@ def model(latents, features):
   return cVAE(latents=latents, features=features)
 
 
-"""UNet model definitions."""
+"""UNet model definitions.
+Implementation adapted from https://gitlab.com/1kaiser/jax-unet
+"""
 class Encoder1D(nn.Module):
   features: int = 2
   training: bool = True

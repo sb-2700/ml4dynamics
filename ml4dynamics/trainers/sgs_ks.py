@@ -52,7 +52,7 @@ def main():
   inputs = inputs[:, :-1]
   outputs = outputs[:, :-1]
 
-  if config.train.input == "uglobal":
+  if config.train.input == "global":
     # training global ROM
     input_dim = output_dim = N2
     inputs = inputs.reshape(-1, input_dim)
@@ -166,7 +166,7 @@ def main():
   elif train_mode == "gaussian":
     # training a fully connected neural network to do the closure modeling
     # by gaussian process
-    if config.train.input == "uglobal":
+    if config.train.input == "global":
       raise Exception("Gaussian process only supports local modeling!")
 
     n_g = config.train.n_g
@@ -338,7 +338,7 @@ def main():
   print("validation loss: {:.4e}".format(valid_loss))
 
   # A priori analysis: visualize the error distribution
-  if config.train.input == "uglobal":
+  if config.train.input == "global":
     predicts = correction_nn.apply(params, inputs)
     fig, axs = plt.subplots(3, 1, figsize=(12, 6))
     fraction = 0.05
