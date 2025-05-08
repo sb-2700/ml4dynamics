@@ -52,15 +52,25 @@ def main():
           pass
         elif mode == "tr":
           # NOTE: currently only supports ks
-          # if not _global:
-          #   x = x.reshape(-1, x.shape[-1])
-          normal_vector = jax.grad(ae_loss_fn)(x)[:, :-1]
-          loss += jnp.mean(
-            jnp.sum(
-              normal_vector * (tangent_vector(x) + y_pred[:, :-1]),
-              axis=(-2, -1)
-            )**2
-          ) * lambda_
+          if _global:
+            normal_vector = jax.grad(ae_loss_fn)(x)[:, :-1]
+            loss += jnp.mean(
+              jnp.sum(
+                normal_vector * (tangent_vector(x) + y_pred[:, :-1]),
+                axis=(-2, -1)
+              )**2
+            ) * lambda_
+          else:
+            pred = train_state.apply_fn(
+              params, inputs.reshape(-1, inputs.shape[-1])
+            ).reshape(inputs.shape)
+            normal_vector = jax.grad(ae_loss_fn)(inputs)[:, :-1]
+            loss += jnp.mean(
+              jnp.sum(
+                normal_vector * (tangent_vector(inputs) + pred[:, :-1]),
+                axis=(-2, -1)
+              )**2
+            ) * lambda_
 
         return loss, batch_stats
 
@@ -112,7 +122,6 @@ def main():
         "batch_stats": ae_train_state.batch_stats}
       )
       def ae_loss_fn(x):
-        breakpoint()
         x_pred, _ = ae_fn(x, is_training=False)
         loss = jnp.linalg.norm(x - x_pred, axis=-1)
         # loss = jnp.sum((x - x_pred)**2, axis=-1)
@@ -169,7 +178,7 @@ def main():
     outputs_ = outputs
     if pde == "ks":
       dim = 1
-      if config.sim.BC == "Dirichlet-Neumann" and config.train.input == "global":
+      if config.sim.BC == "Dirichlet-Neumann":
         inputs_ = inputs[:, :-1]
         outputs_ = outputs[:, :-1]
     one_traj_length = inputs.shape[0] // config.sim.case_num
@@ -244,8 +253,8 @@ def main():
   if pde != "ns_channel":
     print(f"{config.train.sgs}")
   # modes_array = ["ae", "ols", "mols", "aols", "tr"]
-  modes_array = ["tr"]
-  # modes_array = ["ols", "tr"]
+  # modes_array = ["tr"]
+  modes_array = ["ae", "ols", "tr"]
 
   for _ in modes_array:
     print(f"Training {_}...")

@@ -110,6 +110,10 @@ def load_data(
   if config.train.input != "global":
     inputs = inputs.reshape(inputs_shape)
     outputs = outputs.reshape(outputs_shape)
+    if pde_type == "ks" and config.sim.BC == "Dirichlet-Neumann":
+      padding = np.zeros((inputs.shape[0], 1, 1))
+      inputs = np.concatenate([inputs, padding], axis=1)
+      outputs = np.concatenate([outputs, padding], axis=1)
   return inputs, outputs, train_dataloader, test_dataloader, dataset
 
 
@@ -469,7 +473,7 @@ def eval_a_posteriori(
 ):
 
   config = Box(config_dict)
-  beta = 1.0
+  beta = 0.0
   if config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
     run_simulation = partial(
