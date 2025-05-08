@@ -57,7 +57,7 @@ def plot_from_h5py_cmp():
         )
         plt.axis("off")
     plt.savefig("results/fig/traj_128_" + str(random_integer) + ".pdf")
-    plt.clf()
+    plt.close()
 
     plt.figure(figsize=(20, 20))
     for i in range(n1):
@@ -249,4 +249,4 @@ def plot_error_cloudmap(
   plt.axis("off")
   plt.ylabel(r"$u_{xxxx}$")
   plt.savefig(f"results/fig/{name}_err_dist.pdf")
-  plt.clf()
+  plt.close()

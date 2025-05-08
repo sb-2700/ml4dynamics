@@ -123,7 +123,7 @@ def main(config_dict: ml_collections.ConfigDict):
     plt.plot(jnp.array(loss_hist) - jnp.array(loss_hist).min() + 0.001)
     plt.yscale("log")
     plt.savefig(f"results/fig/{i}th_loss.pdf")
-    plt.clf()
+    plt.close()
     val_loss = 0
     count = 0
     for batch_inputs, batch_outputs in test_dataloader:
@@ -184,7 +184,7 @@ def main(config_dict: ml_collections.ConfigDict):
       axs[2, j].axis("off")
 
     plt.savefig(f"results/fig/dagger_cloudmap_{i}.pdf")
-    plt.clf()
+    plt.close()
 
     # generate new dataset
     inputs = np.vstack([inputs, np.asarray(input.transpose(0, 2, 3, 1))])

@@ -127,7 +127,7 @@ def main():
     plt.plot(loss_hist)
     plt.yscale("log")
     plt.savefig(f"results/fig/losshist_{config.train.sgs}_{model_type}.png")
-    plt.clf()
+    plt.close()
 
     dim = 2
     inputs_ = inputs
@@ -138,6 +138,9 @@ def main():
         inputs_ = inputs[:, :-1]
         outputs_ = outputs[:, :-1]
     one_traj_length = inputs.shape[0] // config.sim.case_num
+    train_state, schedule = utils.prepare_unet_train_state(
+      config_dict, f"{pde_type}/{dataset}_{model_type}", is_training=False
+    )
     if model_type == "ae":
       utils.eval_a_priori(
         train_state, train_dataloader, test_dataloader,
@@ -174,9 +177,9 @@ def main():
   )
   print(f"finis loading data with {time() - start:.2f}s...")
   print(f"Problem type: {args.config} + {config.train.sgs}")
-  models_array = ["ae", "ols", "mols", "aols", "tr"]
+  # models_array = ["ae", "ols", "mols", "aols", "tr"]
   # models_array = ["ols"]
-  # models_array = ["tr"]
+  models_array = ["ae", "ols", "tr"]
 
   for _ in models_array:
     print(f"Training {_}...")

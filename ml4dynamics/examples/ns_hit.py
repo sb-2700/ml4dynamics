@@ -105,7 +105,7 @@ plt.xticks(fontsize=10)
 plt.yticks(fontsize=10)
 plt.title("2D Power Spectrum")
 plt.savefig("power_spec_2d.png")
-plt.clf()
+plt.close()
 
 
 breakpoint()

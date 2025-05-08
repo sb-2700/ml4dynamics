@@ -131,7 +131,7 @@ def main():
     axs[1, j].axis("off")
   fig.tight_layout(pad=0.0)
   plt.savefig("results/fig/dataset.png")
-  plt.clf()
+  plt.close()
   plt.plot(jnp.sum(inputs**2 + outputs**2, axis=(1, 2)))
   plt.savefig("results/fig/e_kin.png")
 

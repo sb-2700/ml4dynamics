@@ -215,7 +215,7 @@ def main():
     pad_inches=0
   )
   plt.show()
-  #plt.clf()
+  #plt.close()
 
   #################################################################
   #              Plot of the ds & error comparison                #

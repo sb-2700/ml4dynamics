@@ -87,7 +87,7 @@ def main():
     plt.savefig('../../fig/exp4/{}/1.pdf'.format(simu_type), dpi = 1000, bbox_inches='tight', pad_inches=0)
     plt.savefig('../../fig/exp4/{}/1.svg'.format(simu_type), dpi = 1000, bbox_inches='tight', pad_inches=0, format='svg')
     plt.show()
-    #plt.clf()
+    #plt.close()
 
     #################################################################
     #              Plot of the ds & error comparison                #

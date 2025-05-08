@@ -455,7 +455,7 @@ def eval_a_priori(
     plt.yscale("log")
     plt.legend()
     plt.savefig(f"results/fig/dataset2.png")
-    plt.clf()
+    plt.close()
 
 
 def eval_a_posteriori(
@@ -1221,7 +1221,7 @@ def plot_with_horizontal_colorbar(
 
   if file_path is not None:
     plt.savefig(file_path, dpi=dpi)
-  plt.clf()
+  plt.close()
 
 
 def jax_memory_profiler(verbose: bool = False):

@@ -136,7 +136,7 @@ for i in range(c_array.shape[0]):
   print(u2bar[:, i])
   if n_sample <= 2:
     plt.savefig(f"results/fig/hist{c_array[i]:.2f}.png")
-  plt.clf()
+  plt.close()
 _, axs = plt.subplots(1, 2, figsize=(10, 4))
 for j in range(len(ks_models)):
   axs[0].fill_between(

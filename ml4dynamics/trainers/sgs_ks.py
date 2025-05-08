@@ -326,7 +326,7 @@ def main():
   plt.xlabel("iter")
   plt.yscale("log")
   plt.savefig(f"results/fig/ks_c{c}T{T}n{case_num}_{train_mode}_loss.png")
-  plt.clf()
+  plt.close()
 
   valid_loss = 0
   for i in range(0, len(test_ds["input"]), batch_size):
@@ -359,7 +359,7 @@ def main():
       im, ax=axs[2], orientation='horizontal', fraction=fraction, pad=pad
     )
     plt.savefig(f"results/fig/mlp_a_priori.png")
-    plt.clf()
+    plt.close()
     err = jnp.linalg.norm(correction_nn.apply(params, inputs) - outputs, axis=1)
     err = err.reshape(ks_fine.step_num, -1)
     err = jnp.mean(err, axis=1)
@@ -440,7 +440,7 @@ def main():
     f"results/fig/ks_c{c}T{T}n{case_num}_{train_mode}_{config.train.input}_scatter.png",
     dpi=500
   )
-  plt.clf()
+  plt.close()
 
   utils.a_posteriori_analysis(
     config,
