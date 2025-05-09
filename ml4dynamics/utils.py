@@ -267,6 +267,9 @@ def prepare_unet_train_state(
     n_sample = int(config.sim.T / config.sim.dt * 0.8)
     nx = config.sim.n
     DIM = 1
+  if load_dict:
+    with open(f"{load_dict}", "rb") as f:
+      params = pickle.load(f)
   if is_global:
     step_per_epoch = n_sample * config.sim.case_num //\
       config.train.batch_size_unet
@@ -290,22 +293,19 @@ def prepare_unet_train_state(
     )
     rng1, rng2 = random.split(rng)
     init_rngs = {'params': rng1, 'dropout': rng2}
-    if load_dict:
-      with open(f"{load_dict}", "rb") as f:
-        unet_variables = pickle.load(f)
-    else:
+    if not load_dict:
       if config.case == "ks":
         # init 1D UNet
-        unet_variables = unet.init(init_rngs, jnp.ones([1, nx, input_features]))
+        params = unet.init(init_rngs, jnp.ones([1, nx, input_features]))
       else:
-        unet_variables = unet.init(
+        params = unet.init(
           init_rngs, jnp.ones([1, nx, ny, input_features])
         )
     train_state = CustomTrainState.create(
       apply_fn=unet.apply,
-      params=unet_variables["params"],
+      params=params["params"],
       tx=optimizer,
-      batch_stats=unet_variables["batch_stats"]
+      batch_stats=params["batch_stats"]
     )
   else:
     schedule = optax.piecewise_constant_schedule(
@@ -314,7 +314,8 @@ def prepare_unet_train_state(
     optimizer = optax.adam(schedule)
     mlp = MLP(output_features)
     rng = jax.random.PRNGKey(0)
-    params = mlp.init(random.PRNGKey(0), np.zeros((1, input_features)))
+    if not load_dict:
+      params = mlp.init(random.PRNGKey(0), np.zeros((1, input_features)))
     train_state = TrainState.create(
       apply_fn=mlp.apply,
       params=params,
