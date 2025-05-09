@@ -37,11 +37,9 @@ def test_ks_tangent_space():
   with open(f"config/ks.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
 
-  inputs, outputs, _, _, dataset = utils.load_data(
-    config_dict, 10, mode="jax"
-  )
+  inputs, outputs, _, _, dataset = utils.load_data(config_dict, 10)
   train_state, _ = utils.prepare_unet_train_state(
-    config_dict, f"ks/{dataset}_ae", is_training=False
+    config_dict, f"ckpts/ks/{dataset}_ae_unet.pkl", is_training=False
   )
   ae_fn = partial(train_state.apply_fn_with_bn, 
     {"params": train_state.params,
@@ -68,6 +66,24 @@ def test_ks_tangent_space():
     cos2 = jnp.abs(jnp.sum(normal_vector * tangent_vector_, axis=(-2, -1)))
     cos2 /= jnp.linalg.norm(normal_vector) * jnp.linalg.norm(tangent_vector_)
     return cos1, cos2
+
+  x = jnp.array(inputs)
+  normal_vector = jax.grad(ae_loss_fn)(x)[:, :-1]
+  tangent_vector_ = tangent_vector(x)
+  cos1 = jnp.sum(
+    jnp.abs(jnp.sum(normal_vector * tangent_vector_, axis=(-2, -1))) /
+    jnp.linalg.norm(normal_vector, axis=(-2, -1)) /
+    jnp.linalg.norm(tangent_vector_, axis=(-2, -1)) 
+  )
+  tangent_vector_ = tangent_vector(x) + outputs[:, :-1]
+  cos2 = jnp.sum(
+    jnp.abs(jnp.sum(normal_vector * tangent_vector_, axis=(-2, -1))) /
+    jnp.linalg.norm(normal_vector, axis=(-2, -1)) /
+    jnp.linalg.norm(tangent_vector_, axis=(-2, -1)) 
+  )
+  print("cos1", cos1)
+  print("cos2", cos2)
+  breakpoint()
 
   for i in range(inputs.shape[0]):  
     cos1, cos2 = calc_cos(i)
