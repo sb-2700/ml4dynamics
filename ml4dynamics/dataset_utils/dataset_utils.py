@@ -7,7 +7,7 @@ from box import Box
 def calc_correction(rd_fine, rd_coarse, nx: float, r: int, uv: jnp.ndarray):
   """
   Args:
-    uv: shape = [2, nx, nx]
+    uv: shape = [nx, nx, 2]
   """
   next_step_fine = rd_fine.adi(uv)
   tmp = jnp.zeros((nx // r, nx // r, 2))
@@ -59,11 +59,11 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
     @jax.jit
     def int_fn(x):
       return (x.reshape(-1, N2) @ int_op.T).reshape(N1, -1)
-  elif config.case == "react_diff":
+  elif config.case == "react_diff" or config.case == "ns_hit":
     n = config.sim.n
     @jax.jit
     def res_fn(x):
-      result = jnp.zeros((n // r, n // r, 2))
+      result = jnp.zeros((n // r, n // r, x.shape[-1]))
       for k in range(r):
         for j in range(r):
           result += x[k::r, j::r]
@@ -71,6 +71,7 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
 
     @jax.jit
     def int_fn(x):
+      # only works for the case with 2 components
       return jnp.concatenate(
         [
           jnp.kron(x[..., 0], jnp.ones((r, r)))[..., None],

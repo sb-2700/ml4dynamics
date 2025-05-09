@@ -12,6 +12,7 @@ from box import Box
 from jax import random
 from jax.lax import conv_general_dilated
 
+from ml4dynamics.dataset_utils import dataset_utils
 from ml4dynamics.utils import create_fine_coarse_simulator
 
 
@@ -37,6 +38,7 @@ def main():
   T = config.sim.T
   dt = config.sim.dt
   L = config.sim.L
+  r = config.sim.r
   case_num = config.sim.case_num
   patience = 50
   writeInterval = 1
@@ -59,23 +61,22 @@ def main():
     # model_fine.w_hat = model_fine.w_hat.at[0, 0].set(0)
     model_fine.w_hat = jnp.zeros((model_fine.N, model_fine.N//2+1))
     f0 = int(jnp.sqrt(n * 2)) # init frequency
-    f0 = 8
+    f0 = 4
     model_fine.w_hat = model_fine.w_hat.at[:f0, :f0].set(
       random.normal(random.PRNGKey(0), (f0, f0)) * model_fine.init_scale
     )
     model_fine.w_hat = model_fine.w_hat.at[0, 0].set(0)
-    # # model_fine.w_hat = model_fine.w_hat.at[1, 1].set(n**2 / 2)
-    # # model_fine.w_hat = model_fine.w_hat.at[-1, 1].set(n**2 / 2)
+    # model_fine.w_hat = model_fine.w_hat.at[1, 1].set(n**2 / 2)
+    # model_fine.w_hat = model_fine.w_hat.at[-1, 1].set(n**2 / 2)
+    model_fine.nu = 0
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
 
-    kernel_x = 2
-    kernel_y = 2
-    assert kernel_x == config.sim.r and kernel_y == config.sim.r
+    kernel_x = kernel_y = r
     kernel = jnp.ones((1, kernel_x, kernel_y, 1)) / kernel_x / kernel_y
     conv = partial(
       conv_general_dilated,
       rhs=kernel,
-      window_strides=(2, 2),
+      window_strides=(r, r),
       padding='VALID',
       dimension_numbers=('NXYC', 'OXYI', 'NXYC'),
     )
@@ -88,13 +89,16 @@ def main():
     )
 
     padded_w = periodic_pad(model_fine.x_hist[..., None])
+    res_fn, _ = dataset_utils.res_int_fn(config_dict)
     w_coarse = conv(padded_w)
+    # w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
     J = calc_J(model_fine.xhat_hist, model_fine)
     J_coarse = calc_J(
       jnp.fft.rfft2(w_coarse[..., 0], axes=(1, 2)), model_coarse
     )[..., None]
     padded_J = periodic_pad(J[..., None])
     J_filter = conv(padded_J)
+    # J_filter = jax.vmap(res_fn)(J[..., None])
     tau = (J_filter - J_coarse) / model_coarse.dx**2
 
     if not tau.shape[1] == tau.shape[2] == n:
@@ -120,17 +124,17 @@ def main():
   index_array = np.arange(
     0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
   )
-  for j in range(n_plot):
-    im = axs[0, j].imshow(inputs[index_array[j]], cmap=cm.twilight)
+  for k in range(n_plot):
+    im = axs[0, k].imshow(inputs[index_array[k]], cmap=cm.twilight)
     _ = fig.colorbar(
-      im, ax=axs[0, j], orientation='horizontal', fraction=fraction, pad=pad
+      im, ax=axs[0, k], orientation='horizontal', fraction=fraction, pad=pad
     )
-    axs[0, j].axis("off")
-    im = axs[1, j].imshow(outputs[index_array[j]], cmap=cm.twilight)
+    axs[0, k].axis("off")
+    im = axs[1, k].imshow(outputs[index_array[k]], cmap=cm.twilight)
     _ = fig.colorbar(
-      im, ax=axs[1, j], orientation='horizontal', fraction=fraction, pad=pad
+      im, ax=axs[1, k], orientation='horizontal', fraction=fraction, pad=pad
     )
-    axs[1, j].axis("off")
+    axs[1, k].axis("off")
   fig.tight_layout(pad=0.0)
   plt.savefig("results/fig/dataset.png")
   plt.close()
