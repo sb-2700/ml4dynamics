@@ -461,12 +461,16 @@ def eval_a_priori(
       im_array, (12, 6), title_array1 + title_array2,
       f"results/fig/dataset1.png", 100
     )
-    plt.hist(inputs.reshape(-1), bins=100, density=True, label="inputs")
-    plt.hist(outputs.reshape(-1), bins=100, density=True, label="outputs")
-    plt.yscale("log")
-    plt.legend()
-    plt.savefig(f"results/fig/dataset2.png")
-    plt.close()
+  plt.hist(
+    inputs.reshape(-1), bins=100, density=True, alpha=0.3, label="inputs"
+  )
+  plt.hist(
+    outputs.reshape(-1), bins=100, density=True, alpha=0.3, label="outputs"
+  )
+  plt.yscale("log")
+  plt.legend()
+  plt.savefig(f"results/fig/dataset.png")
+  plt.close()
 
 
 def eval_a_posteriori(

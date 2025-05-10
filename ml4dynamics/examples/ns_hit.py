@@ -1,3 +1,12 @@
+"""
+simulation example for 2D incompressible Navier-Stokes equations
+using spectral method
+
+For both fine and coarse simulation to be stable, use
+Re = 2000
+r = 2 (N_fine = 256, N_coarse = 128)
+"""
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -7,8 +16,8 @@ from jax import random
 from matplotlib import pyplot as plt
 from pyfoam.utils import calc_utils
 
-from ml4dynamics.dynamics import ns_hit
-from ml4dynamics.utils import plot_with_horizontal_colorbar
+from ml4dynamics.utils import plot_with_horizontal_colorbar,\
+  create_fine_coarse_simulator
 
 with open(f"config/ns_hit.yaml", "r") as file:
   config_dict = yaml.safe_load(file)
@@ -18,36 +27,49 @@ n = config.sim.n
 T = config.sim.T
 dt = config.sim.dt
 L = config.sim.L
-model = ns_hit(L=L * jnp.pi, N=n, nu=1 / Re, T=T, dt=dt, init_scale=n**(1.5))
+model_fine, model_coarse = create_fine_coarse_simulator(config)
 case_num = config.sim.case_num
 writeInterval = 1
 
-model.w_hat = jnp.zeros((model.N, model.N // 2 + 1))
+model_fine.w_hat = jnp.zeros((model_fine.N, model_fine.N // 2 + 1))
 # f0 = int(jnp.sqrt(n/2)) # init frequency
-f0 = 32
-model.w_hat = model.w_hat.at[:f0, :f0].set(
-  random.normal(random.PRNGKey(0), (f0, f0)) * model.init_scale
+f0 = 8
+model_fine.w_hat = model_fine.w_hat.at[:f0, :f0].set(
+  random.normal(random.PRNGKey(0), (f0, f0)) * model_fine.init_scale
 )
-model.set_x_hist(model.w_hat, model.CN)
+w_hat = jnp.roll(
+  model_fine.w_hat, shift=model_fine.N // 2, axis=0
+)[model_fine.N // 2 - model_coarse.N // 2:
+  model_fine.N // 2 + model_coarse.N // 2, : model_coarse.N // 2 + 1]
+w_hat = jnp.roll(w_hat, shift=-model_coarse.N // 2, axis=0)
+model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
+model_coarse.set_x_hist(w_hat, model_coarse.CN)
 
 n_plot = 3
-plot_interval = model.step_num // n_plot**2
-im_array = np.zeros((n_plot, n_plot, n, n))
+plot_interval = model_fine.step_num // n_plot**2
+im_array1 = np.zeros((n_plot, n_plot, n, n))
+im_array2 = np.zeros((n_plot, n_plot, model_coarse.N, model_coarse.N))
 title_array = []
 for i in range(n_plot**2):
-  im_array[i // 3, i % 3] = model.x_hist[i * plot_interval]
+  im_array1[i // 3, i % 3] = model_fine.x_hist[i * plot_interval]
+  im_array2[i // 3, i % 3] = model_coarse.x_hist[i * plot_interval]
   title_array.append(f"t={i * plot_interval * dt:.2f}")
 
-plot_with_horizontal_colorbar(im_array, (12, 12), title_array, "ns_hit.png")
+plot_with_horizontal_colorbar(
+  im_array1, (12, 12), title_array, "results/fig/ns_hit_fine.png"
+)
+plot_with_horizontal_colorbar(
+  im_array2, (12, 12), title_array, "results/fig/ns_hit_coarse.png"
+)
 
-tau = calc_utils.calc_reynolds_stress(model.u_hist[..., None, :], 900)
+tau = calc_utils.calc_reynolds_stress(model_fine.u_hist[..., None, :], 900)
 im_array = np.zeros((2, 2, n, n))
 title_array = [r"$\tau_{xx}$", r"$\tau_{xy}$", r"$\tau_{yx}$", r"$\tau_{yy}$"]
 for i in range(2):
   for j in range(2):
     im_array[i, j] = tau[:, :, 0, i, j]
 plot_with_horizontal_colorbar(
-  im_array, (12, 12), title_array, "ns_hit_reynolds.png"
+  im_array, (12, 12), title_array, "results/fig/ns_hit_reynolds.png"
 )
 
 y_grid = jnp.linspace(0, L * jnp.pi, n, endpoint=False)
@@ -94,8 +116,14 @@ def power_spec_2d_over_t(U: jnp.array, dx: float, dy: float):
   return k_bins[:-1], E_k_avg
 
 
-k_bins, E_k_avg = power_spec_2d_over_t(model.u_hist, model.dx, model.dx)
-plt.plot(k_bins, E_k_avg)
+k_bins_fine, E_k_avg_fine = power_spec_2d_over_t(
+  model_fine.u_hist, model_fine.dx, model_fine.dx
+)
+k_bins_coarse, E_k_avg_coarse = power_spec_2d_over_t(
+  model_coarse.u_hist, model_coarse.dx, model_coarse.dx
+)
+plt.plot(k_bins_fine, E_k_avg_fine, label="fine")
+plt.plot(k_bins_coarse, E_k_avg_coarse, label="coarse")
 plt.xlabel("k")
 plt.ylabel("E(k)")
 plt.xscale("log")
@@ -103,13 +131,14 @@ plt.yscale("log")
 plt.xticks(fontsize=10)
 plt.yticks(fontsize=10)
 plt.title("2D Power Spectrum")
-plt.savefig("power_spec_2d.png")
+plt.legend()
+plt.savefig("results/fig/power_spec_2d.png")
 plt.close()
 
 breakpoint()
 
 calc_utils.power_spec(
-  model.u_hist[..., None, :], y_grid, model.dx, 1, (1, ), "psd.png"
+  model_fine.u_hist[..., None, :], y_grid, model_fine.dx, 1, (1, ), "results/fig/psd.png"
 )
 
 breakpoint()
