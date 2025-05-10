@@ -22,13 +22,13 @@ output_path: 2D_diff-react_NA_NA
 case: ns_hit
 
 sim:
-  n: 128
+  n: 256
   L: 2
   Re: 10000
   dim: 2
-  T: 100
+  T: 500
   dt: .1
-  r: 2
+  r: 4
   seed: 42
   case_num: 1       # number of simulations to perform
   warm_up: 200      # warm up step for simulation

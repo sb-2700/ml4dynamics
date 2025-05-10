@@ -54,21 +54,27 @@ def main():
   while j < case_num and i < patience:
     i = i + 1
     print('generating the {}-th trajectory...'.format(j))
+
+    # initialization scheme 1: random real-space initialization
     # model_fine.w = random.normal(
     #   random.PRNGKey(0), (model_fine.N, model_fine.N)
     # )
     # model_fine.w_hat = jnp.fft.rfft2(model_fine.w)
     # model_fine.w_hat = model_fine.w_hat.at[0, 0].set(0)
+
+    # initialization scheme 2: random spectral-space initialization
     model_fine.w_hat = jnp.zeros((model_fine.N, model_fine.N//2+1))
     f0 = int(jnp.sqrt(n * 2)) # init frequency
-    f0 = 4
+    f0 = 8
     model_fine.w_hat = model_fine.w_hat.at[:f0, :f0].set(
       random.normal(random.PRNGKey(0), (f0, f0)) * model_fine.init_scale
     )
     model_fine.w_hat = model_fine.w_hat.at[0, 0].set(0)
+
+    # initialization scheme 3: Taylor-Green vortex
     # model_fine.w_hat = model_fine.w_hat.at[1, 1].set(n**2 / 2)
     # model_fine.w_hat = model_fine.w_hat.at[-1, 1].set(n**2 / 2)
-    model_fine.nu = 0
+    
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
 
     kernel_x = kernel_y = r
@@ -138,7 +144,12 @@ def main():
   fig.tight_layout(pad=0.0)
   plt.savefig("results/fig/dataset.png")
   plt.close()
-  plt.plot(jnp.sum(inputs**2 + outputs**2, axis=(1, 2)))
+  plt.plot(jnp.sum(inputs**2 + outputs**2, axis=(1, 2)), label='e_kin')
+  plt.plot(
+    jnp.sum(inputs**2 + outputs**2, axis=(1, 2))[0] *
+    jnp.exp(-model_fine.nu * jnp.linspace(0, model_fine.T, int(T/dt)+1)), label='decay'
+  )
+  plt.legend()
   plt.savefig("results/fig/e_kin.png")
 
   breakpoint()

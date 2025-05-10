@@ -39,16 +39,24 @@ def main():
     return u_godunov
 
   def burgers_spectral(u0: jnp.ndarray) -> jnp.ndarray:
-    """Solving Burgers equ using spectral method"""
+    """Solving Burgers equ using spectral method
+    
+    pseudo-spectral method: expand = dealias = False
+    dealiasing: expand = False, dealias = True
+    expansion: expand = True, dealias = False (not sure the correct name)
+    In Burgers equation, it seems that the expansion > pseudo-spectral > dealiasing
+    """
 
     @jax.jit
     def spectral_step(u_hat):
 
       def rhs(u_hat):
-        u_hat = jnp.hstack(
-          [u_hat[:nx // 2],
-           jnp.zeros_like(u_hat), u_hat[nx // 2:]]
-        ) * 2
+        if expand:
+          u_hat = jnp.hstack(
+            [u_hat[:nx // 2],
+            jnp.zeros_like(u_hat), u_hat[nx // 2:]]
+          ) * 2
+        u_hat = jnp.fft.ifftshift(u_hat)
         u = jnp.fft.ifft(u_hat)
         if dealias:
           u_hat_trunc = jnp.fft.fftshift(u_hat)
@@ -57,23 +65,26 @@ def main():
           u = jnp.fft.ifft(u_hat_trunc)
         nonlinear = 0.5 * u**2
         nonlinear_hat = jnp.fft.fft(nonlinear)
-        nonlinear_hat = jnp.hstack(
-          [nonlinear_hat[:nx // 2], nonlinear_hat[-nx // 2:]]
-        ) / 2
+        if expand:
+          nonlinear_hat = jnp.hstack(
+            [nonlinear_hat[:nx // 2], nonlinear_hat[-nx // 2:]]
+          ) / 2
         return -1j * k * nonlinear_hat
 
-      # k1 = rhs(u_hat)
-      # k2 = rhs(u_hat + 0.5*dt*k1)
-      # k3 = rhs(u_hat + 0.5*dt*k2)
-      # k4 = rhs(u_hat + dt*k3)
-      # return u_hat + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
-      return u_hat + dt * rhs(u_hat)
+      k1 = rhs(u_hat)
+      k2 = rhs(u_hat + 0.5*dt*k1)
+      k3 = rhs(u_hat + 0.5*dt*k2)
+      k4 = rhs(u_hat + dt*k3)
+      return u_hat + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
 
     nx = u0.shape[0]
     dealias = False
-    if dealias:
-      # TODO: implement dealiasing
-      k_max = nx // 2 * 2 // 3
+    expand = True
+    k_max = nx // 3
+    if dealias and expand:
+      raise Exception(
+        "dealiasing and expansion cannot be used at the same time"
+      )
     k = jnp.fft.fftfreq(nx, d=1.0 / nx) * 2 * jnp.pi / L
     u_spectral = np.zeros((step_num, nx), dtype=np.complex128)
     u0_hat = jnp.fft.fft(u0)
@@ -122,7 +133,7 @@ def main():
   plt.ylabel('u')
   plt.legend()
   plt.savefig('results/fig/burgers_solution.png')
-  plt.clf()
+  plt.close()
   breakpoint()
 
 

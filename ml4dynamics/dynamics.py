@@ -1010,12 +1010,11 @@ class ns_hit(dynamics):
     dt = self.dt
     nu = self.nu
     n = w_hat.shape[0]
-    # forcing = np.zeros_like(w_hat)
-    # f0 = 4
-    # forcing = w_hat.at[:f0, :f0].set(
-    #   random.normal(random.PRNGKey(0), (f0, f0))
-    # )
-    """implementation 1"""
+    # the forcing is consistent with the choice of 
+    # https://arxiv.org/pdf/2010.08895
+    forcing = np.zeros_like(w_hat)
+    # forcing = forcing.at[1, 1].set(n**2 / 2)
+    """implementation 1: expansion method"""
     w_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
     psi_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
     w_hat2 = w_hat2.at[:n // 2, :n // 2 + 1].set(w_hat[:n // 2] * 4)
@@ -1034,15 +1033,23 @@ class ns_hit(dynamics):
     tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)
     tmp = tmp.at[:n // 2].set(tmp_[:n // 2, :n // 2 + 1] / 4)
     tmp = tmp.at[n // 2:].set(tmp_[-n // 2:, :n // 2 + 1] / 4)
-    """implementation 2"""
+    """implementation 2: dealiasing method"""
     # psi_hat = -(w_hat / self.laplacian_)
-    # wx = jnp.fft.irfft2(1j * psi_hat * self.kx)
-    # wy = jnp.fft.irfft2(1j * psi_hat * self.ky)
+    # wx = jnp.fft.irfft2(1j * w_hat * self.kx)
+    # wy = jnp.fft.irfft2(1j * w_hat * self.ky)
     # psix = jnp.fft.irfft2(1j * psi_hat * self.kx)
     # psiy = jnp.fft.irfft2(1j * psi_hat * self.ky)
     # tmp = jnp.fft.rfft2(wx * psiy - wy * psix)
+    """implementation 3: pseudo spectral method"""
+    # psi_hat = -(w_hat / self.laplacian_)
+    # wx = jnp.fft.irfft2(1j * w_hat * self.kx)
+    # wy = jnp.fft.irfft2(1j * w_hat * self.ky)
+    # psix = jnp.fft.irfft2(1j * psi_hat * self.kx)
+    # psiy = jnp.fft.irfft2(1j * psi_hat * self.ky)
+    # tmp = jnp.fft.rfft2(wx * psiy - wy * psix)
+
     w_hat = ((1 + dt / 2 * nu * self.laplacian) * w_hat - dt * tmp) /\
-      (1 - dt / 2 * nu * self.laplacian)# + dt * forcing
+      (1 - dt / 2 * nu * self.laplacian) + dt * forcing
     return w_hat
 
   def CN_real(self, w):
@@ -1060,6 +1067,7 @@ class ns_hit(dynamics):
     )
     self.u_hist = np.zeros((step_num, self.N, self.N, 2))
     self.ke = np.zeros(step_num)
+    self.t = 0
     self.err_hist = np.zeros(step_num)
     # self.kappa = 4
     for i in range(step_num):
@@ -1076,6 +1084,7 @@ class ns_hit(dynamics):
     self.u_hist[..., 1] = -jnp.fft.irfft2(1j * psi * self.kx[None], axes=(1, 2))
     self.u_hist[..., 0] = jnp.fft.irfft2(1j * psi * self.ky[None], axes=(1, 2))
     self.e_kin = np.sum(self.u_hist**2, axis=(-3, -2, -1)) / 2
+    self.t += self.dt
 
 
 class ns_channel(dynamics):
