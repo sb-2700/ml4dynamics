@@ -288,6 +288,7 @@ def prepare_unet_train_state(
     unet = UNet(
       input_features=input_features,
       output_features=output_features,
+      kernel_size=config.train.kernel_size,
       DIM=DIM,
       training=is_training,
     )

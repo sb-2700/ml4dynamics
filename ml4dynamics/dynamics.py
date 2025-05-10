@@ -1012,7 +1012,7 @@ class ns_hit(dynamics):
     n = w_hat.shape[0]
     # the forcing is consistent with the choice of 
     # https://arxiv.org/pdf/2010.08895
-    forcing = np.zeros_like(w_hat)
+    forcing = jnp.zeros_like(w_hat)
     # forcing = forcing.at[1, 1].set(n**2 / 2)
     """implementation 1: expansion method"""
     w_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
@@ -1027,7 +1027,6 @@ class ns_hit(dynamics):
     wy2 = jnp.fft.irfft2(1j * w_hat2 * self.k2y)
     psix2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2x)
     psiy2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2y)
-    #force = np.cos(2*Y) * 0.0
     #print(np.linalg.norm(wx2*psiy2-wy2*psix2))
     tmp = jnp.zeros_like(w_hat)
     tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)
