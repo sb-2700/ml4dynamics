@@ -1033,9 +1033,15 @@ class ns_hit(dynamics):
     tmp = tmp.at[:n // 2].set(tmp_[:n // 2, :n // 2 + 1] / 4)
     tmp = tmp.at[n // 2:].set(tmp_[-n // 2:, :n // 2 + 1] / 4)
     """implementation 2: dealiasing method"""
-    # psi_hat = -(w_hat / self.laplacian_)
-    # wx = jnp.fft.irfft2(1j * w_hat * self.kx)
-    # wy = jnp.fft.irfft2(1j * w_hat * self.ky)
+    # w_hat_ = jnp.roll(w_hat, n // 2, axis=0)
+    # w_hat_dealias = jnp.zeros_like(w_hat)
+    # w_hat_dealias = w_hat_dealias.at[n // 2 - n // 3: n // 2 + n // 3, :n // 3].set(
+    #   w_hat_[n // 2 - n // 3: n // 2 + n // 3, :n // 3]
+    # )
+    # w_hat_ = jnp.roll(w_hat_dealias, -n // 2, axis=0)
+    # psi_hat = -(w_hat_ / self.laplacian_)
+    # wx = jnp.fft.irfft2(1j * w_hat_ * self.kx)
+    # wy = jnp.fft.irfft2(1j * w_hat_ * self.ky)
     # psix = jnp.fft.irfft2(1j * psi_hat * self.kx)
     # psiy = jnp.fft.irfft2(1j * psi_hat * self.ky)
     # tmp = jnp.fft.rfft2(wx * psiy - wy * psix)

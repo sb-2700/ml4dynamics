@@ -54,6 +54,7 @@ def main():
   while j < case_num and i < patience:
     i = i + 1
     print('generating the {}-th trajectory...'.format(j))
+    model_fine.w_hat = jnp.zeros((model_fine.N, model_fine.N//2+1))
 
     # initialization scheme 1: random real-space initialization
     # model_fine.w = random.normal(
@@ -63,18 +64,24 @@ def main():
     # model_fine.w_hat = model_fine.w_hat.at[0, 0].set(0)
 
     # initialization scheme 2: random spectral-space initialization
-    model_fine.w_hat = jnp.zeros((model_fine.N, model_fine.N//2+1))
-    f0 = int(jnp.sqrt(n * 2)) # init frequency
-    f0 = 8
-    model_fine.w_hat = model_fine.w_hat.at[:f0, :f0].set(
-      random.normal(random.PRNGKey(0), (f0, f0)) * model_fine.init_scale
-    )
-    model_fine.w_hat = model_fine.w_hat.at[0, 0].set(0)
+    # f0 = int(jnp.sqrt(n * 2)) # init frequency
+    # f0 = 4
+    # model_fine.w_hat = model_fine.w_hat.at[:f0, :f0].set(
+    #   random.normal(random.PRNGKey(0), (f0, f0)) * model_fine.init_scale
+    # )
+    # model_fine.w_hat = model_fine.w_hat.at[0, 0].set(0)
 
-    # initialization scheme 3: Taylor-Green vortex
+    # initialization scheme 3: Gaussian-process initialization
+    # w_0 \sim N(0, 7^(2/3)(-\Delta + 49I)^{2.5})
+    # reference: https://arxiv.org/pdf/2010.08895
+    model_fine.w_hat = random.normal(
+      random.PRNGKey(0), (model_fine.N, model_fine.N//2+1)
+    ) * model_fine.init_scale / (-model_fine.laplacian_ + 49)**2.5 * n**0.5
+
+    # initialization scheme 4: Taylor-Green vortex
     # model_fine.w_hat = model_fine.w_hat.at[1, 1].set(n**2 / 2)
     # model_fine.w_hat = model_fine.w_hat.at[-1, 1].set(n**2 / 2)
-    
+
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
 
     kernel_x = kernel_y = r
