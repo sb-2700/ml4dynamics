@@ -1013,7 +1013,7 @@ class ns_hit(dynamics):
     # the forcing is consistent with the choice of 
     # https://arxiv.org/pdf/2010.08895
     forcing = jnp.zeros_like(w_hat)
-    # forcing = forcing.at[1, 1].set(n**2 / 2)
+    # forcing = forcing.at[1, 1].set(n**2 / 2) * jnp.sin(self.t)
     """implementation 1: expansion method"""
     w_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
     psi_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)

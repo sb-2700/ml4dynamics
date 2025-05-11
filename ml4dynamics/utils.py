@@ -233,6 +233,53 @@ def create_ns_hit_simulator(config_dict: ml_collections.ConfigDict):
   return model
 
 
+def hit_init_cond(type_: str, model):
+
+  if type_ == "real_random":
+    """initialization scheme 1: random real-space initialization
+    simulatoin from this initialization does not have PSD of -5/3 law
+
+    1. the velocity decays fast and the stress become ignorable
+    2. the discrepancy between the fine and coarse simulation is very big
+    while their energy spectra are similar
+    """
+    w = random.normal(random.PRNGKey(0), (model.N, model.N))
+    w_hat = jnp.fft.rfft2(w)
+    w_hat = w_hat.at[0, 0].set(0)
+  elif type_ == "spec_random":
+    """initialization scheme 2: random spectral-space initialization
+    simulatoin from this initialization follows PSD -5/3 law
+
+    the stress is a bit hard to learn
+    """
+    f0 = 8
+    w_hat = jnp.zeros((model.N, model.N // 2 + 1))
+    w_hat = w_hat.at[:f0, :f0].set(
+      random.normal(random.PRNGKey(0), (f0, f0)) * model.init_scale
+    )
+    w_hat = w_hat.at[0, 0].set(0)
+  elif type_ == "gaussian_process":
+    r"""initialization scheme 3: Gaussian-process initialization
+    w_0 \sim N(0, 7^(2/3)(-\Delta + 49I)^{-2.5})
+    reference: https://arxiv.org/pdf/2010.08895
+    
+    
+    """
+    w_hat = random.normal(
+      random.PRNGKey(0), (model.N, model.N//2+1)
+    ) * model.init_scale / (-model.laplacian_ + 49)**2.5 * model.N**1.75
+  elif type_ == "taylor_green":
+    """initialization scheme 4: Taylor-Green vortex
+    the stress is zero
+    """
+    w_hat = jnp.zeros((model.N, model.N // 2 + 1))
+    w_hat = w_hat.at[1, 1].set(model.N**2 / 2)
+    w_hat = w_hat.at[-1, 1].set(model.N**2 / 2)
+  else:
+    raise ValueError("Unknown initialization scheme")
+  return w_hat
+
+
 def prepare_unet_train_state(
   config_dict: ml_collections.ConfigDict,
   load_dict: str = None,
@@ -557,6 +604,12 @@ def eval_a_posteriori(
     plot_with_horizontal_colorbar(
       im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
     )
+    plot_stats_aux(
+      np.arange(inputs.shape[0]) * model.dt,
+      inputs[..., 0],
+      x_hist[..., 0],
+      f"results/fig/{fig_name}_stats.png",
+    )
   elif dim == 2:
     n_plot = 6
     index_array = np.arange(
@@ -571,12 +624,8 @@ def eval_a_posteriori(
       im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
     )
 
-  plot_stats_aux(
-    np.arange(inputs.shape[0]) * model.dt,
-    inputs[..., 0],
-    x_hist[..., 0],
-    f"results/fig/{fig_name}_stats.png",
-  )
+    if config.case == "ns_hit":
+      pass
 
 
 ###############################################################################

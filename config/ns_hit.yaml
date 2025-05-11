@@ -42,12 +42,13 @@ plot:
 
 train:
   lr: 0.1
-  sgs: filter
+  sgs: coarse_correction
   kernel_size: 3
-  input: global
+  input: u
+  batch_size: 7000000
   batch_size_unet: 200
   buffer_size: 10
-  epochs: 20
+  epochs: 2000
   decay: 500 # number of epochs to decay the learning rate
   save: 100
   vae:

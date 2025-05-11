@@ -45,6 +45,7 @@ plot:
 train:
   lr: 0.01
   input: global
+  kernel_size: 3
   batch_size_unet: 200
   buffer_size: 10
   epochs: 400

@@ -12,12 +12,10 @@ import jax.numpy as jnp
 import numpy as np
 import yaml
 from box import Box
-from jax import random
 from matplotlib import pyplot as plt
 from pyfoam.utils import calc_utils
 
-from ml4dynamics.utils import plot_with_horizontal_colorbar,\
-  create_fine_coarse_simulator
+from ml4dynamics import utils
 
 with open(f"config/ns_hit.yaml", "r") as file:
   config_dict = yaml.safe_load(file)
@@ -27,16 +25,11 @@ n = config.sim.n
 T = config.sim.T
 dt = config.sim.dt
 L = config.sim.L
-model_fine, model_coarse = create_fine_coarse_simulator(config)
+model_fine, model_coarse = utils.create_fine_coarse_simulator(config)
 case_num = config.sim.case_num
 writeInterval = 1
 
-model_fine.w_hat = jnp.zeros((model_fine.N, model_fine.N // 2 + 1))
-# f0 = int(jnp.sqrt(n/2)) # init frequency
-f0 = 8
-model_fine.w_hat = model_fine.w_hat.at[:f0, :f0].set(
-  random.normal(random.PRNGKey(0), (f0, f0)) * model_fine.init_scale
-)
+model_fine.w_hat = utils.hit_init_cond("real_random", model_fine)
 w_hat = jnp.roll(
   model_fine.w_hat, shift=model_fine.N // 2, axis=0
 )[model_fine.N // 2 - model_coarse.N // 2:
@@ -55,10 +48,10 @@ for i in range(n_plot**2):
   im_array2[i // 3, i % 3] = model_coarse.x_hist[i * plot_interval]
   title_array.append(f"t={i * plot_interval * dt:.2f}")
 
-plot_with_horizontal_colorbar(
+utils.plot_with_horizontal_colorbar(
   im_array1, (12, 12), title_array, "results/fig/ns_hit_fine.png"
 )
-plot_with_horizontal_colorbar(
+utils.plot_with_horizontal_colorbar(
   im_array2, (12, 12), title_array, "results/fig/ns_hit_coarse.png"
 )
 
@@ -68,7 +61,7 @@ title_array = [r"$\tau_{xx}$", r"$\tau_{xy}$", r"$\tau_{yx}$", r"$\tau_{yy}$"]
 for i in range(2):
   for j in range(2):
     im_array[i, j] = tau[:, :, 0, i, j]
-plot_with_horizontal_colorbar(
+utils.plot_with_horizontal_colorbar(
   im_array, (12, 12), title_array, "results/fig/ns_hit_reynolds.png"
 )
 
@@ -98,6 +91,7 @@ def power_spec_2d_over_t(U: jnp.array, dx: float, dy: float):
     hist = jnp.histogram(k_mag, bins=k_bins, weights=energy_spectral)[0]
     k_centers = 0.5 * (k_bins[1:] + k_bins[:-1])
     area = 2 * jnp.pi * k_centers * bin_width
+    area = 1
     E_k = hist / (area + 1e-12)
     return E_k
 
@@ -123,6 +117,7 @@ k_bins_coarse, E_k_avg_coarse = power_spec_2d_over_t(
   model_coarse.u_hist, model_coarse.dx, model_coarse.dx
 )
 plt.plot(k_bins_fine, E_k_avg_fine, label="fine")
+plt.plot(k_bins_fine, E_k_avg_fine[1] * (k_bins_fine / k_bins_fine[1])**(-5/3), label="-5/3 law")
 plt.plot(k_bins_coarse, E_k_avg_coarse, label="coarse")
 plt.xlabel("k")
 plt.ylabel("E(k)")
@@ -137,8 +132,8 @@ plt.close()
 
 breakpoint()
 
-calc_utils.power_spec(
-  model_fine.u_hist[..., None, :], y_grid, model_fine.dx, 1, (1, ), "results/fig/psd.png"
+calc_utils.power_spec_2d_over_t(
+  model_fine.u_hist[..., None, :], model_fine.dx, model_fine.dt
 )
 
 breakpoint()
