@@ -39,6 +39,7 @@ plot:
 train:
   stratify: False
   sgs: coarse_correction # filter, coarse_correction, fine_correction
+  kernel_size: 3
   bins: 50
   subsample: 200
   mode: regression # regression, gaussian, generative
@@ -50,7 +51,7 @@ train:
   batch_size: 600000
   batch_size_unet: 200
   buffer_size: 10
-  epochs: 10
+  epochs: 200
   epochs_ae: 200
   decay: 500 # number of epochs to decay the learning rate
   save: 100

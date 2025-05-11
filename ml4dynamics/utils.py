@@ -263,11 +263,11 @@ def hit_init_cond(type_: str, model):
     w_0 \sim N(0, 7^(2/3)(-\Delta + 49I)^{-2.5})
     reference: https://arxiv.org/pdf/2010.08895
     
-    
+    the spectra looks okay
     """
     w_hat = random.normal(
       random.PRNGKey(0), (model.N, model.N//2+1)
-    ) * model.init_scale / (-model.laplacian_ + 49)**2.5 * model.N**1.75
+    ) * model.init_scale / (-model.laplacian_ + 49)**2.5 * model.N**1.85
   elif type_ == "taylor_green":
     """initialization scheme 4: Taylor-Green vortex
     the stress is zero
@@ -530,7 +530,7 @@ def eval_a_posteriori(
 ):
 
   config = Box(config_dict)
-  beta = 0.0
+  beta = 1.0
   if config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
     run_simulation = partial(

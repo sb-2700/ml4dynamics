@@ -53,7 +53,7 @@ def main():
   while j < case_num and i < patience:
     i = i + 1
     print('generating the {}-th trajectory...'.format(j))
-    model_fine.w_hat = utils.hit_init_cond("gaussian_process", model_fine)
+    model_fine.w_hat = utils.hit_init_cond("spec_random", model_fine)
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
 
     kernel_x = kernel_y = r
@@ -85,6 +85,11 @@ def main():
     J_filter = conv(padded_J)
     # J_filter = jax.vmap(res_fn)(J[..., None])
     tau = (J_filter - J_coarse) / model_coarse.dx**2
+    x_hist = jax.vmap(res_fn)(model_fine.x_hist[..., None])
+    index = 100
+    x_next_coarse = model_coarse.CN_real(x_hist[index])
+    x_hist[index + 1] - x_next_coarse + tau[index] * model_coarse.dx**2 * dt
+    breakpoint()
 
     if not tau.shape[1] == tau.shape[2] == n:
       breakpoint()
