@@ -98,6 +98,8 @@ def main():
 
       return loss, train_state
 
+    if mode == "ae" and not _global:
+      return
     load_dict = f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl"
     if not os.path.exists(load_dict):
       """TODO: no architecture check for the models"""
@@ -191,7 +193,7 @@ def main():
       if config.sim.BC == "Dirichlet-Neumann":
         inputs_ = inputs[:, :-1]
         outputs_ = outputs[:, :-1]
-    one_traj_length = inputs.shape[0] // config.sim.case_num
+    one_traj_length = inputs.shape[0] // config.sim.case_num 
     train_state, schedule = utils.prepare_unet_train_state(
       config_dict, f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl", _global, False
     )
@@ -263,8 +265,8 @@ def main():
   if pde != "ns_channel":
     print(f"{config.train.sgs}")
   # modes_array = ["ae", "ols", "mols", "aols", "tr"]
-  # modes_array = ["ols"]
-  modes_array = ["ae", "ols"]
+  modes_array = ["ols"]
+  # modes_array = ["ols", "tr"]
 
   for _ in modes_array:
     print(f"Training {_}...")

@@ -38,14 +38,16 @@ def main():
   dt = config.sim.dt
   L = config.sim.L
   r = config.sim.r
+  sgs_model = config.train.sgs
   case_num = config.sim.case_num
   patience = 50
   writeInterval = 1
   model_fine, model_coarse = utils.create_fine_coarse_simulator(config)
   # model_fine.nu = 0
+  # model_coarse.nu = 0
   n = model_coarse.N
   u_ = np.zeros((case_num, int(T/dt), n, n, 1))
-  tau_ = np.zeros((case_num, int(T/dt), n, n, 1))
+  outputs = np.zeros((case_num, int(T/dt), n, n, 1))
   print('Generating NS HIT data with n = {}, Re = {} ...'.format(n, Re))
 
   j = 0
@@ -55,54 +57,61 @@ def main():
     print('generating the {}-th trajectory...'.format(j))
     model_fine.w_hat = utils.hit_init_cond("spec_random", model_fine)
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
-
-    kernel_x = kernel_y = r
-    kernel = jnp.ones((1, kernel_x, kernel_y, 1)) / kernel_x / kernel_y
-    conv = partial(
-      conv_general_dilated,
-      rhs=kernel,
-      window_strides=(r, r),
-      padding='VALID',
-      dimension_numbers=('NXYC', 'OXYI', 'NXYC'),
-    )
-    periodic_pad = partial(
-      jnp.pad, pad_width=(
-        (0, 0), (kernel_x//2, kernel_x//2 - 1), 
-        (kernel_y//2, kernel_y//2 - 1), (0, 0)
-      ),
-      mode='wrap'
-    )
-
-    padded_w = periodic_pad(model_fine.x_hist[..., None])
     res_fn, _ = dataset_utils.res_int_fn(config_dict)
-    w_coarse = conv(padded_w)
-    # w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
-    J = calc_J(model_fine.xhat_hist, model_fine)
-    J_coarse = calc_J(
-      jnp.fft.rfft2(w_coarse[..., 0], axes=(1, 2)), model_coarse
-    )[..., None]
-    padded_J = periodic_pad(J[..., None])
-    J_filter = conv(padded_J)
-    # J_filter = jax.vmap(res_fn)(J[..., None])
-    tau = (J_filter - J_coarse) / model_coarse.dx**2
-    x_hist = jax.vmap(res_fn)(model_fine.x_hist[..., None])
-    index = 100
-    x_next_coarse = model_coarse.CN_real(x_hist[index])
-    x_hist[index + 1] - x_next_coarse + tau[index] * model_coarse.dx**2 * dt
-    breakpoint()
 
-    if not tau.shape[1] == tau.shape[2] == n:
+    if sgs_model == "filter":
+      kernel_x = kernel_y = r
+      kernel = jnp.ones((1, kernel_x, kernel_y, 1)) / kernel_x / kernel_y
+      conv = partial(
+        conv_general_dilated,
+        rhs=kernel,
+        window_strides=(r, r),
+        padding='VALID',
+        dimension_numbers=('NXYC', 'OXYI', 'NXYC'),
+      )
+      periodic_pad = partial(
+        jnp.pad, pad_width=(
+          (0, 0), (kernel_x//2, kernel_x//2 - 1), 
+          (kernel_y//2, kernel_y//2 - 1), (0, 0)
+        ),
+        mode='wrap'
+      )
+
+      padded_w = periodic_pad(model_fine.x_hist[..., None])
+      w_coarse = conv(padded_w)
+      # w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
+      J = calc_J(model_fine.xhat_hist, model_fine)
+      J_coarse = calc_J(
+        jnp.fft.rfft2(w_coarse[..., 0], axes=(1, 2)), model_coarse
+      )[..., None]
+      padded_J = periodic_pad(J[..., None])
+      J_filter = conv(padded_J)
+      # J_filter = jax.vmap(res_fn)(J[..., None])
+      output = (J_filter - J_coarse) / model_coarse.dx**2
+      x_hist = jax.vmap(res_fn)(model_fine.x_hist[..., None])
+      index = 100
+      x_next_coarse = model_coarse.CN_real(x_hist[index])
+      x_hist[index + 1] - x_next_coarse + output[index] * model_coarse.dx**2 * dt
       breakpoint()
-      raise Exception("The shape of tau is wrong.")
+    elif sgs_model == "coarse_correction":
+      w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
+      output = np.zeros_like(w_coarse)
+      for k in range(model_fine.step_num):
+        next_step_fine = model_fine.CN_real(model_fine.x_hist[k][..., None])
+        next_step_coarse = model_coarse.CN_real(w_coarse[k])
+        output[k] = (res_fn(next_step_fine) - next_step_coarse) / dt
 
-    if not jnp.isnan(tau).any() and not jnp.isinf(w_coarse).any():
+    if not output.shape[1] == output.shape[2] == n:
+      breakpoint()
+      raise Exception("The shape of output is wrong.")
+
+    if not jnp.isnan(output).any() and not jnp.isinf(w_coarse).any():
       # successful generating traj
       u_[j] = w_coarse
-      tau_[j] = tau
+      outputs[j] = output
       j = j + 1
 
   inputs = w_coarse
-  outputs = tau
   n_plot = 4
   from matplotlib import cm
   from matplotlib import pyplot as plt
@@ -110,7 +119,7 @@ def main():
   pad = 0.001
   fig, axs = plt.subplots(2, n_plot, figsize=(12, 5))
   index_array = np.arange(
-    0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
+    0, n_plot * output.shape[0] // n_plot - 1, output.shape[0] // n_plot
   )
   for k in range(n_plot):
     im = axs[0, k].imshow(inputs[index_array[k]], cmap=cm.twilight)
@@ -118,7 +127,7 @@ def main():
       im, ax=axs[0, k], orientation='horizontal', fraction=fraction, pad=pad
     )
     axs[0, k].axis("off")
-    im = axs[1, k].imshow(outputs[index_array[k]], cmap=cm.twilight)
+    im = axs[1, k].imshow(output[index_array[k]], cmap=cm.twilight)
     _ = fig.colorbar(
       im, ax=axs[1, k], orientation='horizontal', fraction=fraction, pad=pad
     )
@@ -126,7 +135,7 @@ def main():
   fig.tight_layout(pad=0.0)
   plt.savefig("results/fig/dataset.png")
   plt.close()
-  plt.plot(jnp.sum(inputs**2 + outputs**2, axis=(1, 2)), label='e_kin')
+  plt.plot(jnp.sum(inputs**2 + outputs**2, axis=(0, 2, 3)), label='e_kin')
   plt.plot(
     jnp.sum(inputs**2 + outputs**2, axis=(1, 2))[0] *
     jnp.exp(-model_fine.nu * jnp.linspace(0, model_fine.T, int(T/dt)+1)), label='decay'
@@ -153,7 +162,7 @@ def main():
         "inputs":
         u_.reshape(-1, n, n, 1),  # shape [case_num * step_num // writeInterval, nx, ny, 1]
         "outputs":
-        tau_.reshape(-1, n, n, 1),  # shape [case_num * step_num // writeInterval, nx, ny, 1]
+        outputs.reshape(-1, n, n, 1),  # shape [case_num * step_num // writeInterval, nx, ny, 1]
       },
       "config":
       config_dict,
@@ -166,7 +175,7 @@ def main():
     }
 
     with h5py.File(
-      f"data/ns_hit/Re{Re}_nx{n}_n{case_num}.h5", "w"
+      f"data/ns_hit/Re{Re}_nx{n}_n{case_num}_{sgs_model}.h5", "w"
     ) as f:
       metadata_group = f.create_group("metadata")
       for key, value in data["metadata"].items():

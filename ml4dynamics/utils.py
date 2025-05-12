@@ -55,8 +55,9 @@ def load_data(
     dataset = f"{BC}_Re{Re}_nx{nx}_n{case_num}"
   elif pde_type == "ns_hit":
     Re = config.sim.Re
+    sgs_model = config.train.sgs
     n = config.sim.n // config.sim.r
-    dataset = f"Re{Re}_nx{n}_n{case_num}"
+    dataset = f"Re{Re}_nx{n}_n{case_num}_{sgs_model}"
   elif pde_type == "ks":
     c = config.sim.c
     T = config.sim.T
@@ -530,7 +531,7 @@ def eval_a_posteriori(
 ):
 
   config = Box(config_dict)
-  beta = 1.0
+  beta = 0.0
   if config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
     run_simulation = partial(
