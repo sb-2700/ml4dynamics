@@ -101,6 +101,12 @@ def main():
         next_step_coarse = model_coarse.CN_real(w_coarse[k])
         output[k] = (res_fn(next_step_fine) - next_step_coarse) / dt
 
+    # output_ = np.zeros_like(w_coarse)
+    # for k in range(model_fine.step_num):
+    #   next_step_fine = model_fine.CN_real(model_fine.x_hist[k][..., None])
+    #   next_step_coarse = model_coarse.CN_real(w_coarse[k])
+    #   output_[k] = (res_fn(next_step_fine) - next_step_coarse) / dt
+
     if not output.shape[1] == output.shape[2] == n:
       breakpoint()
       raise Exception("The shape of output is wrong.")
@@ -135,9 +141,12 @@ def main():
   fig.tight_layout(pad=0.0)
   plt.savefig("results/fig/dataset.png")
   plt.close()
+  psi_hat = -what_hist / model.laplacian_[None]
+  dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
+  dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
   plt.plot(jnp.sum(inputs**2 + outputs**2, axis=(0, 2, 3)), label='e_kin')
   plt.plot(
-    jnp.sum(inputs**2 + outputs**2, axis=(1, 2))[0] *
+    jnp.sum(inputs**2 + outputs**2, axis=(0, 2, 3))[0] *
     jnp.exp(-model_fine.nu * jnp.linspace(0, model_fine.T, int(T/dt)+1)), label='decay'
   )
   plt.legend()
