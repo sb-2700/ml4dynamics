@@ -65,7 +65,8 @@ def main():
     input = jax.vmap(res_fn)(ks_fine.x_hist)[..., 0]  # shape = [step_num, N2]
     output = np.zeros_like(outputs[0])
     if sgs_model == "filter":
-      output = (jax.vmap(res_fn)(ks_fine.x_hist**2)[..., 0] - input**2) / 2
+      output = (jax.vmap(res_fn)(ks_fine.x_hist**2)[..., 0] - input**2) / 2\
+        / ks_coarse.dx**2
     else:
       for j in range(ks_fine.step_num):
         next_step_fine = ks_fine.CN_FEM(ks_fine.x_hist[j])
@@ -87,23 +88,20 @@ def main():
     jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs)):
     raise Exception("The data contains Inf or NaN")
   
-  plot_ = False
+  plot_ = True
   if plot_:
-    plt.figure(figsize=(10, 8))
-    plt.subplot(311)
-    plt.imshow(inputs.T, cmap=cm.twilight)
-    plt.colorbar(orientation="horizontal")
-    plt.subplot(312)
-    plt.imshow(outputs.T, cmap=cm.twilight)
-    plt.colorbar(orientation="horizontal")
-    plt.subplot(313)
     inputs_hat = jnp.fft.fft(inputs, axis=-1)
     # inputs_hat = jnp.roll(inputs_hat, inputs_hat.shape[1] // 2, axis=-1)
     inputs_hat = jnp.fft.fftshift(inputs_hat, axes=-1)
-    plt.imshow(jnp.abs(inputs_hat).T, cmap=cm.twilight)
-    plt.colorbar(orientation="horizontal")
-    plt.savefig("ks.png")
-  breakpoint()
+    im_array = np.concatenate(
+      [inputs.T[None], outputs.T[None], jnp.abs(inputs_hat).T[None]], axis=0
+    )
+    utils.plot_with_horizontal_colorbar(
+      im_array[:, None], fig_size=(10, 4), title_array=None,
+      file_path="results/fig/ks.png", dpi=100
+    )
+    print(ks_coarse.dx**2)
+    plt.close()
   data = {
     "metadata": {
       "type": "ks",

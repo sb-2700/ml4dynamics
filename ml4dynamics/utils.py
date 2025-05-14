@@ -290,18 +290,13 @@ def prepare_unet_train_state(
 
   config = Box(config_dict)
   rng = random.PRNGKey(config.sim.seed)
+  epochs = config.train.epochs_global if config.train.input == "global"\
+    else config.train.epochs_local
   if config.case == "react_diff":
     input_features = 2
     output_features = 2
     nx = ny = config.sim.n
     n_sample = int(config.sim.T / config.sim.dt * 0.8)
-    DIM = 2
-  elif config.case == "ns_channel":
-    input_features = 2
-    output_features = 1
-    n_sample = int(config.sim.T / config.sim.dt * 0.8)
-    nx = config.sim.nx
-    ny = config.sim.ny
     DIM = 2
   elif config.case == "ns_hit":
     input_features = 1
@@ -327,8 +322,8 @@ def prepare_unet_train_state(
       boundaries_and_scales={
         int(b): 0.1
         for b in jnp.arange(
-          config.train.decay * step_per_epoch, config.train.epochs *
-          step_per_epoch, config.train.decay * step_per_epoch
+          config.train.decay * step_per_epoch, epochs * step_per_epoch,
+          config.train.decay * step_per_epoch
         )
       }
     )

@@ -88,11 +88,6 @@ def main():
       J_filter = conv(padded_J)
       # J_filter = jax.vmap(res_fn)(J[..., None])
       output = (J_filter - J_coarse) / model_coarse.dx**2
-      x_hist = jax.vmap(res_fn)(model_fine.x_hist[..., None])
-      index = 100
-      x_next_coarse = model_coarse.CN_real(x_hist[index])
-      x_hist[index + 1] - x_next_coarse + output[index] * model_coarse.dx**2 * dt
-      breakpoint()
     elif sgs_model == "coarse_correction":
       w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
       output = np.zeros_like(w_coarse)
@@ -141,12 +136,13 @@ def main():
   fig.tight_layout(pad=0.0)
   plt.savefig("results/fig/dataset.png")
   plt.close()
-  psi_hat = -what_hist / model.laplacian_[None]
-  dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
-  dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
-  plt.plot(jnp.sum(inputs**2 + outputs**2, axis=(0, 2, 3)), label='e_kin')
+  what_coarse = jnp.fft.rfft2(w_coarse, axes=(1, 2))
+  psi_hat = -what_coarse[..., 0] / model_coarse.laplacian_[None]
+  dpsidx = jnp.fft.irfft2(1j * psi_hat * model_coarse.kx[None], axes=(1, 2))
+  dpsidy = jnp.fft.irfft2(1j * psi_hat * model_coarse.ky[None], axes=(1, 2))
+  plt.plot(jnp.sum(dpsidx**2 + dpsidy**2, axis=(1, 2)), label='e_kin')
   plt.plot(
-    jnp.sum(inputs**2 + outputs**2, axis=(0, 2, 3))[0] *
+    jnp.sum(dpsidx**2 + dpsidy**2, axis=(1, 2))[0] *
     jnp.exp(-model_fine.nu * jnp.linspace(0, model_fine.T, int(T/dt)+1)), label='decay'
   )
   plt.legend()
