@@ -38,7 +38,7 @@ class CustomTrainState(TrainState):
 
 class MLP(nn.Module):
   output_dim: int
-  hidden_dim: int = 256
+  hidden_dim: int = 32
 
   def setup(self):
     self.dense1 = nn.Dense(self.hidden_dim)
@@ -47,11 +47,12 @@ class MLP(nn.Module):
     self.linear_residue = nn.Dense(self.output_dim)
 
   def __call__(self, inputs):
+    non_linear = nn.tanh
     x = inputs.reshape(inputs.shape[0], -1)
     x = self.dense1(x)
-    x = nn.relu(x)
+    x = non_linear(x)
     x = self.dense2(x)
-    x = nn.relu(x)
+    x = non_linear(x)
     x = self.dense3(x)
     return x + self.linear_residue(inputs.reshape(inputs.shape[0], -1))
 
