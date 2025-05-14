@@ -1,3 +1,4 @@
+import argparse
 from datetime import datetime
 from functools import partial
 
@@ -30,19 +31,31 @@ def main():
     )
     return dpsidy * dwdx - dpsidx * dwdy
 
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+    "-R", "--Re", default=None, help="Reynolds number."
+  )
+  parser.add_argument(
+    "-s", "--sgs", default=None, help="Subgrid-scale model."
+  )
+  args = parser.parse_args()
   with open(f"config/ns_hit.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
+  config_dict["sim"]["Re"] = config_dict["sim"]["Re"] if args.Re is None\
+    else int(args.Re)
+  config_dict["train"]["sgs"] = config_dict["train"]["sgs"] if args.sgs is None\
+    else args.sgs
   config = Box(config_dict)
-  Re = config.sim.Re
   T = config.sim.T
   dt = config.sim.dt
   L = config.sim.L
   r = config.sim.r
+  Re = config.sim.Re
   sgs_model = config.train.sgs
   case_num = config.sim.case_num
   patience = 50
   writeInterval = 1
-  model_fine, model_coarse = utils.create_fine_coarse_simulator(config)
+  model_fine, model_coarse = utils.create_fine_coarse_simulator(config_dict)
   # model_fine.nu = 0
   # model_coarse.nu = 0
   n = model_coarse.N
@@ -78,16 +91,18 @@ def main():
       )
 
       padded_w = periodic_pad(model_fine.x_hist[..., None])
-      w_coarse = conv(padded_w)
-      # w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
+      w_coarse_ = conv(model_fine.x_hist[..., None])
+      w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
+      assert np.linalg.norm(w_coarse_ - w_coarse) < 1e-14
       J = calc_J(model_fine.xhat_hist, model_fine)
       J_coarse = calc_J(
         jnp.fft.rfft2(w_coarse[..., 0], axes=(1, 2)), model_coarse
       )[..., None]
       padded_J = periodic_pad(J[..., None])
-      J_filter = conv(padded_J)
-      # J_filter = jax.vmap(res_fn)(J[..., None])
-      output = (J_filter - J_coarse) / model_coarse.dx**2
+      # J_filter = conv(padded_J)
+      J_filter = jax.vmap(res_fn)(J[..., None])
+      # NOTE: be careful with the sign here!!!
+      output = -(J_filter - J_coarse) / model_coarse.dx**2
     elif sgs_model == "coarse_correction":
       w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
       output = np.zeros_like(w_coarse)
@@ -148,7 +163,7 @@ def main():
   plt.legend()
   plt.savefig("results/fig/e_kin.png")
 
-  breakpoint()
+  # breakpoint()
   if j == case_num:
     data = {
       "metadata": {

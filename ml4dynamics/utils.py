@@ -1253,7 +1253,8 @@ def a_posteriori_analysis(
 
 
 def plot_with_horizontal_colorbar(
-  im_array, fig_size=(10, 4), title_array=None, file_path=None, dpi=100
+  im_array, fig_size=(10, 4), title_array=None,
+  file_path=None, dpi=100, cmap=cm.twilight
 ):
 
   if not isinstance(im_array, np.ndarray):
@@ -1267,7 +1268,7 @@ def plot_with_horizontal_colorbar(
   for i in range(im_array.shape[0]):
     for j in range(im_array.shape[1]):
       im = axs[i * im_array.shape[1] +
-               j].imshow(im_array[i, j], cmap=cm.twilight)
+               j].imshow(im_array[i, j], cmap=cmap)
       if title_array is not None and\
         title_array[i * im_array.shape[1] +j] is not None:
         axs[i * im_array.shape[1] +
