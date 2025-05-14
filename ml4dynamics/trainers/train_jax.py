@@ -173,6 +173,15 @@ def main():
             dict = train_state.params
           pickle.dump(dict, f)
 
+    with open(f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl", "wb") as f:
+      if _global:
+        dict = {
+          "params": train_state.params,
+          "batch_stats": train_state.batch_stats
+        }
+      else:
+        dict = train_state.params
+      pickle.dump(dict, f)
     val_loss = 0
     for batch_inputs, batch_outputs in test_dataloader:
       loss, train_state = train_step(
@@ -248,7 +257,7 @@ def main():
   config = Box(config_dict)
   pde = config.case
   _global = (config.train.input == "global")
-  epochs = config.train.epochs
+  epochs = config.train.epochs_global if _global else config.train.epochs_local
   print("start loading data...")
   start = time()
   if _global:

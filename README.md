@@ -64,5 +64,17 @@ python exp4.py
 python exp5.py
 ```
 
-## Reference
-[1] [Mitigating distribution shift in machine learning-augmented hybrid simulation]()
+## Citation
+If you find this codebase useful for your research, please consider citing:
+```bibtex
+@article{zhao2025mitigating,
+  title={Mitigating Distribution Shift in Machine Learning--Augmented Hybrid Simulation},
+  author={Zhao, Jiaxi and Li, Qianxiao},
+  journal={SIAM Journal on Scientific Computing},
+  volume={47},
+  number={2},
+  pages={C475--C500},
+  year={2025},
+  publisher={SIAM}
+}
+```
