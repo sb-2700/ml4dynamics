@@ -1,40 +1,77 @@
-import pickle
-
 import jax
+jax.config.update("jax_enable_x64", True)
 import ml_collections
-import optax
 import yaml
 from box import Box
 
-from ml4dynamics import utils
-from ml4dynamics.models.models_jax import CustomTrainState, UNet
-from ml4dynamics.types import PRNGKey
-
-jax.config.update("jax_enable_x64", True)
+from ml4dynamics.utils import utils
 
 
 def main(config_dict: ml_collections.ConfigDict):
   config = Box(config_dict)
-
-  with open("ckpts/react_diff/ols.pkl", 'rb') as f:
-    dict = pickle.load(f)
-  inputs, outputs, train_dataloader, test_dataloader = utils.load_data(
-    config_dict, config.train.batch_size_unet, mode="jax"
+  pde = config.case
+  _global = (config.train.input == "global")
+  if _global:
+    batch_size = config.train.batch_size_unet
+    arch = "unet"
+  else:
+    batch_size = config.train.batch_size
+    arch = "mlp"
+  inputs, outputs, train_dataloader, test_dataloader, dataset = utils.load_data(
+    config_dict, batch_size
   )
-  unet = UNet(2)
-  optimizer = optax.adam(0.001)
-  train_state = CustomTrainState.create(
-    apply_fn=unet.apply,
-    params=dict["params"],
-    tx=optimizer,
-    batch_stats=dict["batch_stats"]
-  )
+  one_traj_length = inputs.shape[0] // config.sim.case_num 
+  mode = "ols"
+  dim = 2
+  inputs_ = inputs
+  outputs_ = outputs
+  if pde == "ks":
+    dim = 1
+    if config.sim.BC == "Dirichlet-Neumann":
+      inputs_ = inputs[:, :-1]
+      outputs_ = outputs[:, :-1]
 
+  train_state, _ = utils.prepare_unet_train_state(
+    config_dict, f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl", _global, False
+  )
+  if _global:
+
+    @jax.jit
+    def forward_fn(x):
+      y_pred, _ = train_state.apply_fn_with_bn(
+        {
+          "params": train_state.params,
+          "batch_stats": train_state.batch_stats
+        },
+        x,
+        is_training=False
+      )
+      return y_pred
+  else:
+
+    @jax.jit
+    def forward_fn(x):
+      """forward function for the local model
+
+      The shape of the input and output is aligned with the
+      global model for the a-posteriori simulation
+      """
+      x_ = x.reshape(-1, x.shape[-1])
+      return train_state.apply_fn(train_state.params, x_).reshape(x.shape)
+
+  if mode == "ae":
+    utils.eval_a_priori(
+      forward_fn, train_dataloader, test_dataloader, inputs[:one_traj_length],
+      inputs[:one_traj_length], dim, f"reg_{fig_name}"
+    )
+    return
   utils.eval_a_priori(
-    train_state, train_dataloader, test_dataloader, inputs, outputs
+    forward_fn, train_dataloader, test_dataloader, inputs[:one_traj_length],
+    outputs[:one_traj_length], dim, f"reg_{fig_name}"
   )
   utils.eval_a_posteriori(
-    config_dict, train_state, inputs, outputs, "aposteriori"
+    config_dict, forward_fn, inputs_[:one_traj_length],
+    outputs_[:one_traj_length], dim, f"sim_{fig_name}"
   )
 
 

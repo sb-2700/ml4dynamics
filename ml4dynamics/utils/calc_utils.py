@@ -1,3 +1,5 @@
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -17,8 +19,26 @@ def corr(u):
   return corr
 
 
+@partial(jax.jit, static_argnums=(1, ))
+def calc_reynolds_stress(U: jnp.array, nt: int = 10):
+  """Reynolds stress
+
+  Args:
+  U (Float[Array, 'nt nx ny nz DIM']): velocity, nz = 1 for 2D case.
+  nt (int): number of time steps for averaging.
+
+  Returns:
+  tau (Float[Array, 'nx ny nz DIM**2']): Reynolds stresses.
+  """
+
+  u = U[-nt:] - jnp.mean(U[-nt:], axis=(0, ))[None]
+  tau = jnp.mean(u[..., None] * u[..., None, :], axis=(0, ))
+  return tau
+
+
 def power_spec_over_t(U: jnp.array, dx: list):
 
+  @jax.jit
   def power_spec(u):
     energy_spectral = 0
     for component in range(u.shape[-1]):
@@ -43,7 +63,8 @@ def power_spec_over_t(U: jnp.array, dx: list):
   k_bins = jnp.linspace(0, k_max, num=int(n // 2))
   bin_width = k_bins[1] - k_bins[0]
 
-  u = U - jnp.mean(U, axis=(0, ), keepdims=True)
+  interval = 1000
+  u = U[-interval:] - jnp.mean(U[-interval:], axis=(0, ), keepdims=True)
   E_k_all = jax.vmap(power_spec)(u)
   E_k_avg = jnp.mean(E_k_all, axis=0)
   return k_bins[:-1], E_k_avg

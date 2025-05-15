@@ -25,8 +25,7 @@ from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
 from ml4dynamics.models.models_jax import MLP, CustomTrainState, UNet
 from ml4dynamics.trainers import train_utils
 from ml4dynamics.types import PRNGKey
-from ml4dynamics.utils import calc_utils
-from ml4dynamics.visualize import plot_stats_aux
+from ml4dynamics.utils import viz_utils
 
 jax.config.update("jax_enable_x64", True)
 torch.set_default_dtype(torch.float64)
@@ -493,18 +492,18 @@ def eval_a_priori(
       im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
     )
 
-    im_array = np.zeros((2, n_plot, *(outputs[0, ..., 0].T).shape))
-    title_array1 = []
-    title_array2 = []
-    for j in range(n_plot):
-      im_array[0, j] = inputs[index_array[j], ..., 0].T
-      im_array[1, j] = outputs[index_array[j], ..., 0].T
-      title_array1.append(f"{inputs[index_array[j], ..., 0].max():.1e}")
-      title_array2.append(f"{outputs[index_array[j], ..., 0].max():.1e}")
-    plot_with_horizontal_colorbar(
-      im_array, (12, 6), title_array1 + title_array2,
-      f"results/fig/dataset1.png", 100
-    )
+    # im_array = np.zeros((2, n_plot, *(outputs[0, ..., 0].T).shape))
+    # title_array1 = []
+    # title_array2 = []
+    # for j in range(n_plot):
+    #   im_array[0, j] = inputs[index_array[j], ..., 0].T
+    #   im_array[1, j] = outputs[index_array[j], ..., 0].T
+    #   title_array1.append(f"{inputs[index_array[j], ..., 0].max():.1e}")
+    #   title_array2.append(f"{outputs[index_array[j], ..., 0].max():.1e}")
+    # plot_with_horizontal_colorbar(
+    #   im_array, (12, 6), title_array1 + title_array2,
+    #   f"results/fig/dataset1.png", 100
+    # )
   plt.hist(
     inputs.reshape(-1), bins=100, density=True, alpha=0.3, label="inputs"
   )
@@ -601,7 +600,7 @@ def eval_a_posteriori(
     plot_with_horizontal_colorbar(
       im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
     )
-    plot_stats_aux(
+    viz_utils.plot_stats_aux(
       np.arange(inputs.shape[0]) * model.dt,
       inputs[..., 0],
       x_hist[..., 0],
@@ -634,24 +633,9 @@ def eval_a_posteriori(
       )
       u_hist[..., 1] = -jnp.fft.irfft2(1j * psi * model.kx[None], axes=(1, 2))
       u_hist[..., 0] = jnp.fft.irfft2(1j * psi * model.ky[None], axes=(1, 2))
-      k_bins_true, E_k_avg_true = calc_utils.power_spec_over_t(
-        u_hist_true, [model.dx, model.dx]
+      viz_utils.plot_psd_cmp(
+        u_hist_true, u_hist, [model.dx, model.dx], [model.dx, model.dx], fig_name
       )
-      k_bins, E_k_avg = calc_utils.power_spec_over_t(u_hist, [model.dx, model.dx])
-      assert jnp.linalg.norm(k_bins - k_bins_true) < 1e-14
-      plt.plot(k_bins_true, E_k_avg_true, label="true")
-      plt.plot(k_bins, E_k_avg[1] * (k_bins / k_bins[1])**(-5/3), label="-5/3 law")
-      plt.plot(k_bins, E_k_avg, label="sim")
-      plt.xlabel("k")
-      plt.ylabel("E(k)")
-      plt.xscale("log")
-      plt.yscale("log")
-      plt.xticks(fontsize=10)
-      plt.yticks(fontsize=10)
-      plt.title("2D Power Spectrum")
-      plt.legend()
-      plt.savefig("results/fig/power_spec_2d.png")
-      plt.close()
 
 
 ###############################################################################
@@ -1250,8 +1234,7 @@ def a_posteriori_analysis(
     correction2 = ks_coarse.x_hist
 
   # compare the simulation statistics (A posteriori analysis)
-  from ml4dynamics.visualize import plot_stats
-  plot_stats(
+  viz_utils.plot_stats(
     np.arange(ks_fine.x_hist.shape[0]) * ks_fine.dt,
     ks_fine.x_hist,
     baseline,

@@ -4,6 +4,33 @@ import numpy as np
 from matplotlib import cm
 
 
+from ml4dynamics.utils import calc_utils
+
+
+def plot_psd_cmp(u1, u2, dx1, dx2, fig_name):
+  """Compare and plot the power spectrum density of the fluid field"""
+
+  k_bins_true, E_k_avg_true = calc_utils.power_spec_over_t(u1, dx1)
+  k_bins, E_k_avg = calc_utils.power_spec_over_t(u2, dx2)
+  # assert np.linalg.norm(k_bins - k_bins_true) < 1e-14
+  plt.plot(k_bins_true, E_k_avg_true, label="true")
+  plt.plot(
+    k_bins_true, E_k_avg_true[1] *
+      (k_bins_true / k_bins_true[1])**(-5/3), label="-5/3 law"
+  )
+  plt.plot(k_bins, E_k_avg, label="sim")
+  plt.xlabel("k")
+  plt.ylabel("E(k)")
+  plt.xscale("log")
+  plt.yscale("log")
+  plt.xticks(fontsize=10)
+  plt.yticks(fontsize=10)
+  plt.title("2D Power Spectrum")
+  plt.legend()
+  plt.savefig(f"results/fig/psd_{fig_name}.png")
+  plt.close()
+
+
 def plot_from_h5py(case: str):
   """Plot the fluid field from the h5py file"""
 

@@ -13,7 +13,7 @@ from box import Box
 from jax.lax import conv_general_dilated
 
 from ml4dynamics.dataset_utils import dataset_utils
-from ml4dynamics import utils
+from ml4dynamics.utils import utils
 
 
 def main():
