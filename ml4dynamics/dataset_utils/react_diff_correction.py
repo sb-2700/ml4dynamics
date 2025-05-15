@@ -9,8 +9,8 @@ import yaml
 from box import Box
 from jax import random as random
 
-from ml4dynamics import utils
 from ml4dynamics.dataset_utils import dataset_utils
+from ml4dynamics.utils import utils
 
 jax.config.update("jax_enable_x64", True)
 

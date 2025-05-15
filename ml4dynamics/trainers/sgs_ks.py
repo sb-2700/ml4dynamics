@@ -17,9 +17,9 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-from ml4dynamics import utils
 from ml4dynamics.models.models_jax import model
 from ml4dynamics.types import OptState, PRNGKey
+from ml4dynamics.utils import utils
 
 
 def main():

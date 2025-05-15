@@ -7,11 +7,10 @@ import jax.random as random
 import numpy as np
 import yaml
 from box import Box
-from matplotlib import cm
 from matplotlib import pyplot as plt
 
-from ml4dynamics import utils
 from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
+from ml4dynamics.utils import utils
 
 
 def main():

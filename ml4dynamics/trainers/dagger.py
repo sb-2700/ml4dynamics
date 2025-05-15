@@ -25,9 +25,9 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-from ml4dynamics import utils
 from ml4dynamics.dataset_utils import dataset_utils
 from ml4dynamics.trainers import train_utils
+from ml4dynamics.utils import utils
 
 jax.config.update("jax_enable_x64", True)
 

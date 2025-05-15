@@ -14,7 +14,7 @@ from flax import traverse_util
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-from ml4dynamics import utils
+from ml4dynamics.utils import utils
 
 
 def main():
@@ -156,11 +156,17 @@ def main():
         )
         total_loss += loss
         count += 1
-      total_loss /= count
-      lr = schedule(train_state.step)
-      desc_str = f"{lr=:.2e}|{total_loss=:.4e}"
-      iters.set_description_str(desc_str)
-      loss_hist.append(total_loss)
+        if not _global:
+          lr = schedule(train_state.step)
+          desc_str = f"{lr=:.2e}|{loss=:.4e}"
+          iters.set_description_str(desc_str)
+          loss_hist.append(loss)
+      if _global:
+        total_loss /= count
+        lr = schedule(train_state.step)
+        desc_str = f"{lr=:.2e}|{total_loss=:.4e}"
+        iters.set_description_str(desc_str)
+        loss_hist.append(total_loss)
 
       if (epoch + 1) % config.train.save == 0:
         with open(f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl", "wb") as f:

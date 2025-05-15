@@ -25,6 +25,7 @@ from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
 from ml4dynamics.models.models_jax import MLP, CustomTrainState, UNet
 from ml4dynamics.trainers import train_utils
 from ml4dynamics.types import PRNGKey
+from ml4dynamics.utils import calc_utils
 from ml4dynamics.visualize import plot_stats_aux
 
 jax.config.update("jax_enable_x64", True)
@@ -611,17 +612,46 @@ def eval_a_posteriori(
     index_array = np.arange(
       0, n_plot * step_num // n_plot - 1, step_num // n_plot
     )
-    im_array = np.zeros((3, n_plot, *(outputs[0, ..., 0].T).shape))
+    im_array = np.zeros((3, n_plot, *(outputs[0, ..., 0]).shape))
     for j in range(n_plot):
-      im_array[0, j] = inputs[index_array[j], ..., 0].T
-      im_array[1, j] = x_hist[index_array[j], ..., 0].T
-      im_array[2, j] = (inputs - x_hist)[index_array[j], ..., 0].T
+      im_array[0, j] = inputs[index_array[j], ..., 0]
+      im_array[1, j] = x_hist[index_array[j], ..., 0]
+      im_array[2, j] = (inputs - x_hist)[index_array[j], ..., 0]
     plot_with_horizontal_colorbar(
       im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
     )
 
     if config.case == "ns_hit":
-      pass
+      u_hist_true = np.zeros((*x_hist.shape[:-1], 2))
+      u_hist = np.zeros((*x_hist.shape[:-1], 2))
+      psi_true = jnp.fft.rfft2(inputs[..., 0], axes=(1, 2)) / model.laplacian_[None]
+      psi = jnp.fft.rfft2(x_hist[..., 0], axes=(1, 2)) / model.laplacian_[None]
+      u_hist_true[..., 1] = -jnp.fft.irfft2(
+        1j * psi_true * model.kx[None], axes=(1, 2)
+      )
+      u_hist_true[..., 0] = jnp.fft.irfft2(
+        1j * psi_true * model.ky[None], axes=(1, 2)
+      )
+      u_hist[..., 1] = -jnp.fft.irfft2(1j * psi * model.kx[None], axes=(1, 2))
+      u_hist[..., 0] = jnp.fft.irfft2(1j * psi * model.ky[None], axes=(1, 2))
+      k_bins_true, E_k_avg_true = calc_utils.power_spec_over_t(
+        u_hist_true, [model.dx, model.dx]
+      )
+      k_bins, E_k_avg = calc_utils.power_spec_over_t(u_hist, [model.dx, model.dx])
+      assert jnp.linalg.norm(k_bins - k_bins_true) < 1e-14
+      plt.plot(k_bins_true, E_k_avg_true, label="true")
+      plt.plot(k_bins, E_k_avg[1] * (k_bins / k_bins[1])**(-5/3), label="-5/3 law")
+      plt.plot(k_bins, E_k_avg, label="sim")
+      plt.xlabel("k")
+      plt.ylabel("E(k)")
+      plt.xscale("log")
+      plt.yscale("log")
+      plt.xticks(fontsize=10)
+      plt.yticks(fontsize=10)
+      plt.title("2D Power Spectrum")
+      plt.legend()
+      plt.savefig("results/fig/power_spec_2d.png")
+      plt.close()
 
 
 ###############################################################################

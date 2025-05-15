@@ -10,8 +10,8 @@ from box import Box
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 
-from ml4dynamics import utils
 from ml4dynamics.models.models_torch import Autoencoder, UNet
+from ml4dynamics.utils import utils
 
 np.set_printoptions(precision=15)
 torch.set_default_dtype(torch.float64)
