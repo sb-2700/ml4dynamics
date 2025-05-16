@@ -1,3 +1,4 @@
+import argparse
 from datetime import datetime
 
 import h5py
@@ -15,8 +16,20 @@ from ml4dynamics.utils import utils
 
 def main():
 
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+    "-c", "--c", default=None, help="constant velocity."
+  )
+  parser.add_argument(
+    "-s", "--sgs", default=None, help="Subgrid-scale model."
+  )
+  args = parser.parse_args()
   with open(f"config/ks.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
+  config_dict["sim"]["c"] = config_dict["sim"]["c"] if args.c is None\
+    else float(args.c)
+  config_dict["train"]["sgs"] = config_dict["train"]["sgs"] if args.sgs is None\
+    else args.sgs
   config = Box(config_dict)
   c = config.sim.c
   L = config.sim.L
@@ -99,7 +112,6 @@ def main():
       im_array[:, None], fig_size=(10, 4), title_array=None,
       file_path="results/fig/ks.png", dpi=100
     )
-    print(ks_coarse.dx**2)
     plt.close()
   data = {
     "metadata": {

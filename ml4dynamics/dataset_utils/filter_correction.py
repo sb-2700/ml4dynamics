@@ -2,15 +2,18 @@ import numpy as np
 import yaml
 from matplotlib import cm
 
-
 from ml4dynamics.utils import utils
 
 
 def main():
-  with open(f"config/ns_hit.yaml", "r") as file:
+  case = "ks"
+  with open(f"config/{case}.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
   
-  config_dict["sim"]["Re"] = 10000
+  if case == "ns_hit":
+    config_dict["sim"]["Re"] = 10000
+  elif case == "ks":
+    config_dict["sim"]["c"] = 0.8
   config_dict["train"]["sgs"] = "coarse_correction"
   inputs_correction, outputs_correction, _, _, _ = utils.load_data(
     config_dict, 100
@@ -22,9 +25,6 @@ def main():
   assert np.linalg.norm(
     inputs_correction - inputs_filter
   ) < 1e-14, "The input data should be the same"
-  n_plots = 2
-  im_array = np.zeros((4, n_plots, 64, 64 ))
-  index_array = [3500, 4500]
   dx = config_dict["sim"]["L"] * np.pi / config_dict["sim"]["n"] *\
     config_dict["sim"]["r"]
   outputs_correction /= dx**2
@@ -35,20 +35,45 @@ def main():
   # 1 - model.dt / 2 * model.nu * model.laplacian[None, ..., None]
   # )
 
-  for i in range(n_plots):
-    im_array[0, i] = inputs_filter[index_array[i], ..., 0]
-    im_array[1, i] = outputs_filter[index_array[i], ..., 0]
-    im_array[2, i] = outputs_correction[index_array[i], ..., 0]
-    ratio = outputs_filter[index_array[i], ..., 0].max() /\
-      outputs_correction[index_array[i], ..., 0].max()
+  if case == "ks":
+    # calculate the derivative of the filtering via finite difference
+    tmp = (np.roll(outputs_filter[..., 0], -1, axis=1) -\
+      np.roll(outputs_filter[..., 0], 1, axis=1)) / 2 / dx
+    tmp[:, 0] = outputs_filter[:, 1, 0] / 2 / dx
+    tmp[:, -1] = -outputs_filter[:, -2, 0] / 2 / dx
+    outputs_filter[..., 0] = -tmp
+
+    shape = outputs_filter.shape
+    im_array = np.zeros((4, 1, shape[1], shape[0]))
+    im_array[0, 0] = inputs_filter[..., 0].T
+    im_array[1, 0] = outputs_filter[..., 0].T
+    im_array[2, 0] = outputs_correction[..., 0].T
+    ratio = outputs_filter.max() / outputs_correction.max()
     print(ratio)
-    im_array[3, i] = outputs_filter[index_array[i], ..., 0] -\
-      outputs_correction[index_array[i], ..., 0] * ratio
-  utils.plot_with_horizontal_colorbar(
-    im_array, fig_size=(n_plots * 3, 12), title_array=None,
-    file_path="results/fig/cmp_Re.png",
-    dpi=100, cmap=cm.coolwarm,
-  )
+    im_array[3, 0] = outputs_filter[..., 0].T - outputs_correction[..., 0].T * ratio
+    utils.plot_with_horizontal_colorbar(
+      im_array, fig_size=(12, 4), title_array=None,
+      file_path="results/fig/cmp_ks.png",
+      dpi=100, cmap=cm.coolwarm,
+    )
+  else:
+    n_plots = 2
+    index_array = [3500, 4500]
+    im_array = np.zeros((4, n_plots, *(outputs_filter.shape[1:3])))
+    for i in range(n_plots):
+      im_array[0, i] = inputs_filter[index_array[i], ..., 0]
+      im_array[1, i] = outputs_filter[index_array[i], ..., 0]
+      im_array[2, i] = outputs_correction[index_array[i], ..., 0]
+      ratio = outputs_filter[index_array[i]].max() /\
+        outputs_correction[index_array[i]].max()
+      print(ratio)
+      im_array[3, i] = outputs_filter[index_array[i], ..., 0] -\
+        outputs_correction[index_array[i], ..., 0] * ratio
+    utils.plot_with_horizontal_colorbar(
+      im_array, fig_size=(n_plots * 3, 12), title_array=None,
+      file_path="results/fig/cmp_Re.png",
+      dpi=100, cmap=cm.coolwarm,
+    )
   breakpoint()
 
 

@@ -4,19 +4,18 @@ Codebase for mitigating distribution shift in MLHS using tangent-space reegulari
 
 
 ## Installing & Getting Started
-1. Environment setup: if the device is not prepared for GPU programming, please comment out the package related to cuda.
+Install the package and set the environment
 
 ```bash
-conda create -n TR python=3.9.18
-conda activate TR
+git clone git@github.com:jiaxi98/ml4dynamics.git
+mkdir venv
+mkdir venv/ml4dynamics
+python3 -m venv venv/ml4dynamics
+source venv/ml4dynamics/bin/activate
+pip install -U "jax[cuda12]==0.4.29"
+pip install flax==0.9.0
 python -m pip install -r requirements.txt
-```
-
-2. Clone the repository.
-   
-```bash
-git clone https://github.com/jiaxi98/TR.git
-cd TR
+pip install -e .
 ```
 
 ## Reproduce the results
