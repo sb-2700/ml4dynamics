@@ -38,36 +38,37 @@ def load_data(
 ):
 
   config = Box(config_dict)
-  pde_type = config.case
+  pde = config.case
   case_num = config.sim.case_num
-  if pde_type == "react_diff":
-    alpha = config.sim.alpha
-    beta = config.sim.beta
-    gamma = config.sim.gamma
-    sgs = config.train.sgs
-    dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}_{}".format(
-      alpha, beta, gamma, case_num, sgs
-    )
-  elif pde_type == "ns_channel":
+  if pde == "ns_channel":
     Re = config.sim.Re
     nx = config.sim.nx
     BC = config.sim.BC
     dataset = f"{BC}_Re{Re}_nx{nx}_n{case_num}"
-  elif pde_type == "ns_hit":
-    Re = config.sim.Re
-    sgs_model = config.train.sgs
-    n = config.sim.n // config.sim.r
-    dataset = f"Re{Re}_nx{n}_n{case_num}_{sgs_model}"
-  elif pde_type == "ks":
-    c = config.sim.c
-    T = config.sim.T
-    sgs_model = config.train.sgs
-    dataset = f"c{c:.1f}_T{T}_n{case_num}_{sgs_model}"
-  h5_filename = f"data/{pde_type}/{dataset}.h5"
+  else:
+    sgs = config.train.sgs
+    if pde == "react_diff":
+      alpha = config.sim.alpha
+      beta = config.sim.beta
+      gamma = config.sim.gamma
+      dataset = "alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}".format(
+        alpha, beta, gamma, case_num
+      )
+    elif pde == "ns_hit":
+      Re = config.sim.Re
+      n = config.sim.n // config.sim.r
+      dataset = f"Re{Re}_n{case_num}"
+    elif pde == "ks":
+      c = config.sim.c
+      T = config.sim.T
+      dataset = f"c{c:.1f}_n{case_num}"
+  h5_filename = f"data/{pde}/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
     inputs = h5f["data"]["inputs"][()]
-    outputs = h5f["data"]["outputs"][()]
+    outputs = h5f["data"][f"outputs_{sgs}"][()]
+    if pde == "ks" or pde == "ns_hit":
+      _, model = create_fine_coarse_simulator(config_dict)
     # if mode == "torch":
     #   inputs = inputs.transpose(0, 3, 1, 2)
     #   outputs = outputs.transpose(0, 3, 1, 2)
@@ -78,7 +79,7 @@ def load_data(
     #   inputs = torch.from_numpy(inputs).to(device)
     #   outputs = torch.from_numpy(outputs).to(device)
   if config.train.input == "global":
-    if pde_type == "ks" and config.sim.BC == "Dirichlet-Neumann":
+    if pde == "ks" and config.sim.BC == "Dirichlet-Neumann":
       padding = np.zeros((inputs.shape[0], 1, 1))
       inputs = np.concatenate([inputs, padding], axis=1)
       outputs = np.concatenate([outputs, padding], axis=1)
@@ -111,7 +112,7 @@ def load_data(
   if config.train.input != "global":
     inputs = inputs.reshape(inputs_shape)
     outputs = outputs.reshape(outputs_shape)
-    if pde_type == "ks" and config.sim.BC == "Dirichlet-Neumann":
+    if pde == "ks" and config.sim.BC == "Dirichlet-Neumann":
       padding = np.zeros((inputs.shape[0], 1, 1))
       inputs = np.concatenate([inputs, padding], axis=1)
       outputs = np.concatenate([outputs, padding], axis=1)
@@ -1131,7 +1132,6 @@ def a_posteriori_analysis(
       u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
           dx**4
-      # local model: [1] to [1]
       if config.train.input == "u":
         return partial(correction_nn.apply,
                        params)(input.reshape(-1, 1)).reshape(-1)
@@ -1170,7 +1170,6 @@ def a_posteriori_analysis(
       u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
           dx**4
-      # local model: [1] to [1]
       if config.train.input == "u":
         tmp = partial(correction_nn.apply, params)(input.reshape(-1, 1))
       elif config.train.input == "ux":
@@ -1194,7 +1193,6 @@ def a_posteriori_analysis(
       u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
           dx**4
-      # local model: [1] to [1]
       if config.train.input == "u":
         tmp = partial(correction_nn.apply, params)(input.reshape(-1, 1))
       elif config.train.input == "ux":

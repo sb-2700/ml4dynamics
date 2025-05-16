@@ -11,6 +11,7 @@ import numpy as np
 import yaml
 from box import Box
 from jax.lax import conv_general_dilated
+from matplotlib import pyplot as plt
 
 from ml4dynamics.dataset_utils import dataset_utils
 from ml4dynamics.utils import utils
@@ -35,23 +36,17 @@ def main():
   parser.add_argument(
     "-R", "--Re", default=None, help="Reynolds number."
   )
-  parser.add_argument(
-    "-s", "--sgs", default=None, help="Subgrid-scale model."
-  )
   args = parser.parse_args()
   with open(f"config/ns_hit.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
   config_dict["sim"]["Re"] = config_dict["sim"]["Re"] if args.Re is None\
     else int(args.Re)
-  config_dict["train"]["sgs"] = config_dict["train"]["sgs"] if args.sgs is None\
-    else args.sgs
   config = Box(config_dict)
   T = config.sim.T
   dt = config.sim.dt
   L = config.sim.L
   r = config.sim.r
   Re = config.sim.Re
-  sgs_model = config.train.sgs
   case_num = config.sim.case_num
   patience = 50
   writeInterval = 1
@@ -59,8 +54,9 @@ def main():
   # model_fine.nu = 0
   # model_coarse.nu = 0
   n = model_coarse.N
-  u_ = np.zeros((case_num, int(T/dt), n, n, 1))
-  outputs = np.zeros((case_num, int(T/dt), n, n, 1))
+  inputs = np.zeros((case_num, int(T/dt), n, n, 1))
+  outputs_filter = np.zeros((case_num, int(T/dt), n, n, 1))
+  outputs_correction = np.zeros((case_num, int(T/dt), n, n, 1))
   print('Generating NS HIT data with n = {}, Re = {} ...'.format(n, Re))
 
   j = 0
@@ -72,44 +68,42 @@ def main():
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
     res_fn, _ = dataset_utils.res_int_fn(config_dict)
 
-    if sgs_model == "filter":
-      kernel_x = kernel_y = r
-      kernel = jnp.ones((1, kernel_x, kernel_y, 1)) / kernel_x / kernel_y
-      conv = partial(
-        conv_general_dilated,
-        rhs=kernel,
-        window_strides=(r, r),
-        padding='VALID',
-        dimension_numbers=('NXYC', 'OXYI', 'NXYC'),
-      )
-      periodic_pad = partial(
-        jnp.pad, pad_width=(
-          (0, 0), (kernel_x//2, kernel_x//2 - 1), 
-          (kernel_y//2, kernel_y//2 - 1), (0, 0)
-        ),
-        mode='wrap'
-      )
+    kernel_x = kernel_y = r
+    kernel = jnp.ones((1, kernel_x, kernel_y, 1)) / kernel_x / kernel_y
+    conv = partial(
+      conv_general_dilated,
+      rhs=kernel,
+      window_strides=(r, r),
+      padding='VALID',
+      dimension_numbers=('NXYC', 'OXYI', 'NXYC'),
+    )
+    periodic_pad = partial(
+      jnp.pad, pad_width=(
+        (0, 0), (kernel_x//2, kernel_x//2 - 1), 
+        (kernel_y//2, kernel_y//2 - 1), (0, 0)
+      ),
+      mode='wrap'
+    )
 
-      padded_w = periodic_pad(model_fine.x_hist[..., None])
-      w_coarse_ = conv(model_fine.x_hist[..., None])
-      w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
-      assert np.linalg.norm(w_coarse_ - w_coarse) < 1e-14
-      J = calc_J(model_fine.xhat_hist, model_fine)
-      J_coarse = calc_J(
-        jnp.fft.rfft2(w_coarse[..., 0], axes=(1, 2)), model_coarse
-      )[..., None]
-      padded_J = periodic_pad(J[..., None])
-      # J_filter = conv(padded_J)
-      J_filter = jax.vmap(res_fn)(J[..., None])
-      # NOTE: be careful with the sign here!!!
-      output = -(J_filter - J_coarse) / model_coarse.dx**2
-    elif sgs_model == "coarse_correction":
-      w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
-      output = np.zeros_like(w_coarse)
-      for k in range(model_fine.step_num):
-        next_step_fine = model_fine.CN_real(model_fine.x_hist[k][..., None])
-        next_step_coarse = model_coarse.CN_real(w_coarse[k])
-        output[k] = (res_fn(next_step_fine) - next_step_coarse) / dt
+    padded_w = periodic_pad(model_fine.x_hist[..., None])
+    w_coarse_ = conv(model_fine.x_hist[..., None])
+    w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
+    assert np.linalg.norm(w_coarse_ - w_coarse) < 1e-14
+    J = calc_J(model_fine.xhat_hist, model_fine)
+    J_coarse = calc_J(
+      jnp.fft.rfft2(w_coarse[..., 0], axes=(1, 2)), model_coarse
+    )[..., None]
+    padded_J = periodic_pad(J[..., None])
+    # J_filter = conv(padded_J)
+    J_filter = jax.vmap(res_fn)(J[..., None])
+    # NOTE: be careful with the sign here!!!
+    output_filter = -(J_filter - J_coarse) / model_coarse.dx**2
+
+    output_correction = np.zeros_like(w_coarse)
+    for k in range(model_fine.step_num):
+      next_step_fine = model_fine.CN_real(model_fine.x_hist[k][..., None])
+      next_step_coarse = model_coarse.CN_real(w_coarse[k])
+      output_correction[k] = (res_fn(next_step_fine) - next_step_coarse) / dt
 
     # output_ = np.zeros_like(w_coarse)
     # for k in range(model_fine.step_num):
@@ -117,51 +111,16 @@ def main():
     #   next_step_coarse = model_coarse.CN_real(w_coarse[k])
     #   output_[k] = (res_fn(next_step_fine) - next_step_coarse) / dt
 
-    if not output.shape[1] == output.shape[2] == n:
+    if not output_filter.shape[1] == output_filter.shape[2] == n:
       breakpoint()
       raise Exception("The shape of output is wrong.")
 
-    if not jnp.isnan(output).any() and not jnp.isinf(w_coarse).any():
+    if not jnp.isnan(outputs_correction).any() and not jnp.isinf(w_coarse).any():
       # successful generating traj
-      u_[j] = w_coarse
-      outputs[j] = output
+      inputs[j] = w_coarse
+      outputs_filter[j] = output_filter
+      outputs_correction[j] = output_correction
       j = j + 1
-
-  inputs = w_coarse
-  n_plot = 4
-  from matplotlib import cm
-  from matplotlib import pyplot as plt
-  fraction = 0.05
-  pad = 0.001
-  fig, axs = plt.subplots(2, n_plot, figsize=(12, 5))
-  index_array = np.arange(
-    0, n_plot * output.shape[0] // n_plot - 1, output.shape[0] // n_plot
-  )
-  for k in range(n_plot):
-    im = axs[0, k].imshow(inputs[index_array[k]], cmap=cm.twilight)
-    _ = fig.colorbar(
-      im, ax=axs[0, k], orientation='horizontal', fraction=fraction, pad=pad
-    )
-    axs[0, k].axis("off")
-    im = axs[1, k].imshow(output[index_array[k]], cmap=cm.twilight)
-    _ = fig.colorbar(
-      im, ax=axs[1, k], orientation='horizontal', fraction=fraction, pad=pad
-    )
-    axs[1, k].axis("off")
-  fig.tight_layout(pad=0.0)
-  plt.savefig("results/fig/dataset.png")
-  plt.close()
-  what_coarse = jnp.fft.rfft2(w_coarse, axes=(1, 2))
-  psi_hat = -what_coarse[..., 0] / model_coarse.laplacian_[None]
-  dpsidx = jnp.fft.irfft2(1j * psi_hat * model_coarse.kx[None], axes=(1, 2))
-  dpsidy = jnp.fft.irfft2(1j * psi_hat * model_coarse.ky[None], axes=(1, 2))
-  plt.plot(jnp.sum(dpsidx**2 + dpsidy**2, axis=(1, 2)), label='e_kin')
-  plt.plot(
-    jnp.sum(dpsidx**2 + dpsidy**2, axis=(1, 2))[0] *
-    jnp.exp(-model_fine.nu * jnp.linspace(0, model_fine.T, int(T/dt)+1)), label='decay'
-  )
-  plt.legend()
-  plt.savefig("results/fig/e_kin.png")
 
   # breakpoint()
   if j == case_num:
@@ -180,22 +139,22 @@ def main():
       },
       "data": {
         "inputs":
-        u_.reshape(-1, n, n, 1),  # shape [case_num * step_num // writeInterval, nx, ny, 1]
-        "outputs":
-        outputs.reshape(-1, n, n, 1),  # shape [case_num * step_num // writeInterval, nx, ny, 1]
+        inputs.reshape(-1, n, n, 1),
+        "outputs_filter":
+        outputs_filter.reshape(-1, n, n, 1),
+        "outputs_correction":
+        outputs_correction.reshape(-1, n, n, 1),
       },
       "config":
       config_dict,
       "readme":
-      "This dataset contains the results of solving an incompressible"
-      "Navier-Stokes equation using a pseudo-spectral method over a periodic"
-      "2D box domain. "
+      "This dataset contains the results of a Kuramoto–Sivashinsky PDE solver. "
       "The 'input' field represents the velocity, and the 'output' "
-      "field represents the nonlinear RHS."
+      "field represents the correction from the coarse grid simulation."
     }
 
     with h5py.File(
-      f"data/ns_hit/Re{Re}_nx{n}_n{case_num}_{sgs_model}.h5", "w"
+      f"data/ns_hit/Re{Re}_n{case_num}.h5", "w"
     ) as f:
       metadata_group = f.create_group("metadata")
       for key, value in data["metadata"].items():
@@ -203,13 +162,10 @@ def main():
 
       data_group = f.create_group("data")
       data_group.create_dataset("inputs", data=data["data"]["inputs"])
-      data_group.create_dataset("outputs", data=data["data"]["outputs"])
-      # data_group.create_dataset(
-      #   "input_coarse", data=data["data"]["input_coarse"]
-      # )
-      # data_group.create_dataset(
-      #   "output_coarse", data=data["data"]["output_coarse"]
-      # )
+      data_group.create_dataset("outputs", data=data["data"]["outputs_filter"])
+      data_group.create_dataset(
+        "outputs_correction", data=data["data"]["outputs_correction"]
+      )
 
       config_group = f.create_group("config")
       config_yaml = yaml.dump(data["config"])
@@ -217,6 +173,30 @@ def main():
 
       f.attrs["readme"] = data["readme"]
 
+  n_plot = 4
+  index_array = np.arange(
+    0, n_plot * w_coarse.shape[0] // n_plot - 1, w_coarse.shape[0] // n_plot
+  )
+  im_array = np.zeros((3, n_plot, *(w_coarse.shape[1:3])))
+  for k in range(n_plot):
+    im_array[0, k] = w_coarse[index_array[k], ..., 0]
+    im_array[1, k] = output_filter[index_array[k], ..., 0]
+    im_array[2, k] = output_correction[index_array[k], ..., 0]
+  utils.plot_with_horizontal_colorbar(
+    im_array, fig_size=(12, 8), title_array=None,
+    file_path="results/fig/dataset.png", dpi=100
+  )
+  what_coarse = jnp.fft.rfft2(w_coarse, axes=(1, 2))
+  psi_hat = -what_coarse[..., 0] / model_coarse.laplacian_[None]
+  dpsidx = jnp.fft.irfft2(1j * psi_hat * model_coarse.kx[None], axes=(1, 2))
+  dpsidy = jnp.fft.irfft2(1j * psi_hat * model_coarse.ky[None], axes=(1, 2))
+  plt.plot(jnp.sum(dpsidx**2 + dpsidy**2, axis=(1, 2)), label='e_kin')
+  plt.plot(
+    jnp.sum(dpsidx**2 + dpsidy**2, axis=(1, 2))[0] *
+    jnp.exp(-model_fine.nu * jnp.linspace(0, model_fine.T, int(T/dt)+1)), label='decay'
+  )
+  plt.legend()
+  plt.savefig("results/fig/e_kin.png")
 
 if __name__ == "__main__":
   main()

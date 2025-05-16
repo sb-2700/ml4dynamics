@@ -26,7 +26,7 @@ sim:
   init_scale: 1.
   BC: Dirichlet-Neumann
   seed: 123
-  case_num: 1       # number of simulations to perform
+  case_num: 10       # number of simulations to perform
   warm_up: 200      # warm up step for simulation
   patience: 5       # patience for NaN simulation
   writeInterval: 2
@@ -39,16 +39,15 @@ plot:
 train:
   stratify: False
   # sgs: filter
-  sgs: coarse_correction
+  sgs: correction
   kernel_size: 3
-  input: local
-  # input: global
+  # input: ["u", "u_x", "u_xx"]
+  input: global
   bins: 50
   subsample: 200
   mode: regression # regression, gaussian, generative
   linear: True # whether add a linear residue layer
   n_g: 1 # number of gaussian mixture components
-  input: u # global, u, ux, uxx, uxxxx
   lambda_: 1
   lr: 0.01
   epochs_global: 2000

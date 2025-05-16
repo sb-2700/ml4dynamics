@@ -20,16 +20,11 @@ def main():
   parser.add_argument(
     "-c", "--c", default=None, help="constant velocity."
   )
-  parser.add_argument(
-    "-s", "--sgs", default=None, help="Subgrid-scale model."
-  )
   args = parser.parse_args()
   with open(f"config/ks.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
   config_dict["sim"]["c"] = config_dict["sim"]["c"] if args.c is None\
     else float(args.c)
-  config_dict["train"]["sgs"] = config_dict["train"]["sgs"] if args.sgs is None\
-    else args.sgs
   config = Box(config_dict)
   c = config.sim.c
   L = config.sim.L
@@ -41,19 +36,20 @@ def main():
   elif BC == "Dirichlet-Neumann":
     N1 = config.sim.n - 1
   r = config.sim.r
-  sgs_model = config.train.sgs
   N2 = N1 // r
   rng = random.PRNGKey(config.sim.seed)
   case_num = config.sim.case_num
   ks_fine, ks_coarse = utils.create_fine_coarse_simulator(config)
-  res_fn, int_fn = res_int_fn(config_dict)
+  res_fn, _ = res_int_fn(config_dict)
     
-  if sgs_model == "fine_correction":
-    N = N1
-  else:
-    N = N2
+  # if sgs_model == "fine_correction":
+  #   N = N1
+  # else:
+  #   N = N2
+  N = N2
   inputs = np.zeros((case_num, ks_fine.step_num, N))
-  outputs = np.zeros((case_num, ks_fine.step_num, N))
+  outputs_filter = np.zeros((case_num, ks_fine.step_num, N))
+  outputs_correction = np.zeros((case_num, ks_fine.step_num, N))
   for i in range(case_num):
     print(i)
     rng, key = random.split(rng)
@@ -75,44 +71,30 @@ def main():
       u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
     ks_fine.run_simulation(u0, ks_fine.CN_FEM)
     input = jax.vmap(res_fn)(ks_fine.x_hist)[..., 0]  # shape = [step_num, N2]
-    output = np.zeros_like(outputs[0])
-    if sgs_model == "filter":
-      output = -(jax.vmap(res_fn)(ks_fine.x_hist**2)[..., 0] - input**2) / 2\
-        / ks_coarse.dx**2
-    else:
-      for j in range(ks_fine.step_num):
-        next_step_fine = ks_fine.CN_FEM(ks_fine.x_hist[j])
-        next_step_coarse = ks_coarse.CN_FEM(input[j])
-        if sgs_model == "coarse_correction":
-          output[j] = (res_fn(next_step_fine)[:, 0] - next_step_coarse) / dt
-        elif sgs_model == "fine_correction":
-          output[j] = (next_step_fine - int_fn(next_step_coarse)[:, 0]) / dt
+    output_correction =  np.zeros_like(outputs_correction[0])
+    output_filter = -(jax.vmap(res_fn)(ks_fine.x_hist**2)[..., 0] - input**2) / 2\
+      / ks_coarse.dx**2
+    for j in range(ks_fine.step_num):
+      next_step_fine = ks_fine.CN_FEM(ks_fine.x_hist[j])
+      next_step_coarse = ks_coarse.CN_FEM(input[j])
+      output_correction[j] = (res_fn(next_step_fine)[:, 0] - next_step_coarse) / dt
+      # elif sgs_model == "fine_correction":
+      #   output[j] = (next_step_fine - int_fn(next_step_coarse)[:, 0]) / dt
 
-    if sgs_model == "fine_correction":
-      inputs[i] = ks_fine.x_hist
-    else:
-      inputs[i] = input
-    outputs[i] = output
+    # if sgs_model == "fine_correction":
+    #   inputs[i] = ks_fine.x_hist
+    inputs[i] = input
+    outputs_filter[i] = output_filter
+    outputs_correction[i] = output_correction
 
   inputs = inputs.reshape(-1, N)
-  outputs = outputs.reshape(-1, N)
-  if jnp.any(jnp.isnan(inputs)) or jnp.any(jnp.isnan(outputs)) or\
-    jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs)):
+  outputs_correction = outputs_correction.reshape(-1, N)
+  outputs_filter = outputs_filter.reshape(-1, N)
+  if jnp.any(jnp.isnan(inputs)) or jnp.any(jnp.isnan(outputs_filter)) or\
+    jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs_filter)) or\
+    jnp.any(jnp.isnan(outputs_correction)) or jnp.any(jnp.isinf(outputs_correction)):
     raise Exception("The data contains Inf or NaN")
   
-  plot_ = True
-  if plot_:
-    inputs_hat = jnp.fft.fft(inputs, axis=-1)
-    # inputs_hat = jnp.roll(inputs_hat, inputs_hat.shape[1] // 2, axis=-1)
-    inputs_hat = jnp.fft.fftshift(inputs_hat, axes=-1)
-    im_array = np.concatenate(
-      [inputs.T[None], outputs.T[None], jnp.abs(inputs_hat).T[None]], axis=0
-    )
-    utils.plot_with_horizontal_colorbar(
-      im_array[:, None], fig_size=(10, 4), title_array=None,
-      file_path="results/fig/ks.png", dpi=100
-    )
-    plt.close()
   data = {
     "metadata": {
       "type": "ks",
@@ -128,8 +110,10 @@ def main():
     "data": {
       "inputs":
       inputs[..., None],
-      "outputs":
-      outputs[..., None],
+      "outputs_filter":
+      outputs_filter[..., None],
+      "outputs_correction":
+      outputs_correction[..., None],
     },
     "config":
     config_dict,
@@ -140,7 +124,7 @@ def main():
   }
 
   with h5py.File(
-    f"data/ks/c{c:.1f}_T{T}_n{case_num}_{sgs_model}.h5", "w"
+    f"data/ks/c{c:.1f}_n{case_num}.h5", "w"
   ) as f:
     metadata_group = f.create_group("metadata")
     for key, value in data["metadata"].items():
@@ -148,13 +132,27 @@ def main():
 
     data_group = f.create_group("data")
     data_group.create_dataset("inputs", data=data["data"]["inputs"])
-    data_group.create_dataset("outputs", data=data["data"]["outputs"])
+    data_group.create_dataset("outputs", data=data["data"]["outputs_filter"])
+    data_group.create_dataset(
+      "outputs_correction", data=data["data"]["outputs_correction"]
+    )
 
     config_group = f.create_group("config")
     config_yaml = yaml.dump(data["config"])
     config_group.attrs["config"] = config_yaml
 
     f.attrs["readme"] = data["readme"]
+
+  plot_ = True
+  if plot_:
+    im_array = np.concatenate(
+      [inputs.T[None], outputs_filter.T[None], outputs_correction.T[None]], axis=0
+    )
+    utils.plot_with_horizontal_colorbar(
+      im_array[:, None], fig_size=(10, 4), title_array=["u", r"$\tau^f$", r"$\tau^c$"],
+      file_path="results/fig/ks.png", dpi=100
+    )
+    plt.close()
 
 
 if __name__ == "__main__":

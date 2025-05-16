@@ -24,7 +24,7 @@ case: ns_hit
 sim:
   n: 256
   L: 2
-  Re: 1000
+  Re: 10000
   dim: 2
   T: 500
   dt: .1
@@ -41,18 +41,19 @@ plot:
   channel_idx: 0    # Index of the variable to be plotted
 
 train:
-  lr: 0.1
+  lr: 0.01
   # sgs: filter
-  sgs: coarse_correction
+  sgs: correction
   kernel_size: 3
   # input: local
   input: global
-  batch_size: 100000
-  batch_size_unet: 200
   buffer_size: 10
-  epochs_global: 80
+  epochs_global: 1000
+  decay_global: 500 # number of epochs to decay the learning rate
+  batch_size_global: 200
   epochs_local: 1
-  decay: 500 # number of epochs to decay the learning rate
+  decay_local: 5
+  batch_size_local: 100000
   save: 100
   vae:
     latents: 128
