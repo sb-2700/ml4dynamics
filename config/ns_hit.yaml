@@ -24,7 +24,7 @@ case: ns_hit
 sim:
   n: 256
   L: 2
-  Re: 10000
+  Re: 1000
   dim: 2
   T: 500
   dt: .1
@@ -42,13 +42,16 @@ plot:
 
 train:
   lr: 0.1
+  # sgs: filter
   sgs: coarse_correction
   kernel_size: 3
+  # input: local
   input: global
-  batch_size: 1000000
+  batch_size: 100000
   batch_size_unet: 200
   buffer_size: 10
-  epochs: 20
+  epochs_global: 80
+  epochs_local: 1
   decay: 500 # number of epochs to decay the learning rate
   save: 100
   vae:

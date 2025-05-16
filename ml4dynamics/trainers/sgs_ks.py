@@ -47,7 +47,7 @@ def main():
   case_num = config.sim.case_num
   ks_fine, ks_coarse = utils.create_fine_coarse_simulator(config)
   inputs, outputs, train_dataloader, test_dataloader = utils.load_data(
-    config_dict, config.train.batch_size_unet, mode="jax"
+    config_dict, config.train.batch_size_global, mode="jax"
   )
   inputs = inputs[:, :-1]
   outputs = outputs[:, :-1]
@@ -368,7 +368,7 @@ def main():
     plt.ylabel("error")
   elif train_mode == "regression" or train_mode == "gaussian":
     # if case_num == 1:
-    #   from ml4dynamics.visualize import plot_error_cloudmap
+    #   from ml4dynamics.utils.viz_utils import plot_error_cloudmap
     #   err = correction_nn.apply(params, inputs) - outputs
     #   err = err[:, 0]
     #   plot_error_cloudmap(

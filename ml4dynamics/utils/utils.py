@@ -290,44 +290,47 @@ def prepare_unet_train_state(
 
   config = Box(config_dict)
   rng = random.PRNGKey(config.sim.seed)
-  epochs = config.train.epochs_global if config.train.input == "global"\
-    else config.train.epochs_local
+  n_sample = int(config.sim.T / config.sim.dt * 0.8)
+  nx = ny = config.sim.n // config.sim.r
+  if config.train.input == "global":
+    epochs = config.train.epochs_global
+    decay = config.train.decay_global
+    batch_size = config.train.batch_size_global
+  else:
+    epochs = config.train.epochs_local
+    decay = config.train.decay_local
+    batch_size = config.train.batch_size_local
+    n_sample *= nx * ny
+    if config.case == "ks":
+      n_sample = n_sample // nx
   if config.case == "react_diff":
     input_features = 2
     output_features = 2
-    nx = ny = config.sim.n
-    n_sample = int(config.sim.T / config.sim.dt * 0.8)
     DIM = 2
   elif config.case == "ns_hit":
     input_features = 1
     output_features = 1
-    n_sample = int(config.sim.T / config.sim.dt * 0.8)
-    nx = ny = config.sim.n
     DIM = 2
   elif config.case == "ks":
     input_features = 1
     output_features = 1
-    n_sample = int(config.sim.T / config.sim.dt * 0.8)
-    nx = config.sim.n
     DIM = 1
   if load_dict:
     with open(f"{load_dict}", "rb") as f:
       params = pickle.load(f)
+  step_per_epoch = n_sample * config.sim.case_num // batch_size
+  schedule = optax.piecewise_constant_schedule(
+    init_value=config.train.lr,
+    boundaries_and_scales={
+      int(b): 0.1
+      for b in jnp.arange(
+        decay * step_per_epoch, epochs * step_per_epoch,
+        decay * step_per_epoch
+      )
+    }
+  )
+  optimizer = optax.adam(schedule)
   if is_global:
-    step_per_epoch = n_sample * config.sim.case_num //\
-      config.train.batch_size_unet
-    # TODO: need to specify the scheduler here for different training
-    schedule = optax.piecewise_constant_schedule(
-      init_value=config.train.lr,
-      boundaries_and_scales={
-        int(b): 0.1
-        for b in jnp.arange(
-          config.train.decay * step_per_epoch, epochs * step_per_epoch,
-          config.train.decay * step_per_epoch
-        )
-      }
-    )
-    optimizer = optax.adam(schedule)
     unet = UNet(
       input_features=input_features,
       output_features=output_features,
@@ -352,10 +355,6 @@ def prepare_unet_train_state(
       batch_stats=params["batch_stats"]
     )
   else:
-    schedule = optax.piecewise_constant_schedule(
-      init_value=config.train.lr, boundaries_and_scales={}
-    )
-    optimizer = optax.adam(schedule)
     mlp = MLP(output_features)
     rng = jax.random.PRNGKey(0)
     if not load_dict:

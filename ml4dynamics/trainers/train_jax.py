@@ -267,10 +267,10 @@ def main():
   print("start loading data...")
   start = time()
   if _global:
-    batch_size = config.train.batch_size_unet
+    batch_size = config.train.batch_size_global
     arch = "unet"
   else:
-    batch_size = config.train.batch_size
+    batch_size = config.train.batch_size_local
     arch = "mlp"
   inputs, outputs, train_dataloader, test_dataloader, dataset = utils.load_data(
     config_dict, batch_size

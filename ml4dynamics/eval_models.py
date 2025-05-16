@@ -12,7 +12,7 @@ def main(config_dict: ml_collections.ConfigDict):
   pde = config.case
   _global = (config.train.input == "global")
   if _global:
-    batch_size = config.train.batch_size_unet
+    batch_size = config.train.batch_size_global
     arch = "unet"
   else:
     batch_size = config.train.batch_size

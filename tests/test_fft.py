@@ -105,3 +105,8 @@ def test_convection_ns():
   # assert jnp.allclose(w_hat, w_hat_true)
   # assert jnp.allclose(psi_hat2, psi_hat2_true)
   assert jnp.allclose(convect, convect_true)
+
+"""
+TODO: test the curl and vorticity to velocity mapping are inverse of each other.
+reference: https://github.com/google/jax-cfd/blob/main/jax_cfd/spectral/utils_test.py
+"""

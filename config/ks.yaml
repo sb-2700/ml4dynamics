@@ -38,8 +38,11 @@ plot:
 
 train:
   stratify: False
-  sgs: coarse_correction # filter, coarse_correction, fine_correction
+  # sgs: filter
+  sgs: coarse_correction
   kernel_size: 3
+  input: local
+  # input: global
   bins: 50
   subsample: 200
   mode: regression # regression, gaussian, generative
@@ -48,12 +51,12 @@ train:
   input: u # global, u, ux, uxx, uxxxx
   lambda_: 1
   lr: 0.01
-  batch_size: 600000
-  batch_size_unet: 200
-  buffer_size: 10
-  epochs: 200
-  epochs_ae: 200
-  decay: 500 # number of epochs to decay the learning rate
+  epochs_global: 2000
+  decay_global: 500 # number of epochs to decay the learning rate
+  batch_size_global: 200
+  epochs_local: 20
+  decay_local: 5
+  batch_size_local: 100000
   save: 100
   vae:
     latents: 128

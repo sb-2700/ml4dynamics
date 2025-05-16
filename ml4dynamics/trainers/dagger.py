@@ -49,7 +49,7 @@ def main(config_dict: ml_collections.ConfigDict):
   np.random.seed(rng)
 
   inputs, outputs, train_dataloader, test_dataloader = utils.load_data(
-    config_dict, config.train.batch_size_unet, mode="jax"
+    config_dict, config.train.batch_size_global, mode="jax"
   )
   train_state, schedule = utils.prepare_unet_train_state(config_dict)
 
@@ -198,7 +198,7 @@ def main(config_dict: ml_collections.ConfigDict):
     )
     train_dataloader = DataLoader(
       train_dataset,
-      batch_size=config.train.batch_size_unet,
+      batch_size=config.train.batch_size_global,
       shuffle=True  # , num_workers=num_workers
     )
     test_dataset = TensorDataset(
@@ -207,7 +207,7 @@ def main(config_dict: ml_collections.ConfigDict):
     )
     test_dataloader = DataLoader(
       test_dataset,
-      batch_size=config.train.batch_size_unet,
+      batch_size=config.train.batch_size_global,
       shuffle=True  # , num_workers=num_workers
     )
 

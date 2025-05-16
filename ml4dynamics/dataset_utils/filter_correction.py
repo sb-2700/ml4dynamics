@@ -1,6 +1,7 @@
 import numpy as np
 import yaml
 from matplotlib import cm
+from matplotlib import pyplot as plt
 
 from ml4dynamics.utils import utils
 
@@ -41,7 +42,7 @@ def main():
       np.roll(outputs_filter[..., 0], 1, axis=1)) / 2 / dx
     tmp[:, 0] = outputs_filter[:, 1, 0] / 2 / dx
     tmp[:, -1] = -outputs_filter[:, -2, 0] / 2 / dx
-    outputs_filter[..., 0] = -tmp
+    outputs_filter[..., 0] = tmp
 
     shape = outputs_filter.shape
     im_array = np.zeros((4, 1, shape[1], shape[0]))
@@ -51,11 +52,26 @@ def main():
     ratio = outputs_filter.max() / outputs_correction.max()
     print(ratio)
     im_array[3, 0] = outputs_filter[..., 0].T - outputs_correction[..., 0].T * ratio
-    utils.plot_with_horizontal_colorbar(
-      im_array, fig_size=(12, 4), title_array=None,
-      file_path="results/fig/cmp_ks.png",
-      dpi=100, cmap=cm.coolwarm,
-    )
+    # utils.plot_with_horizontal_colorbar(
+    #   im_array, fig_size=(12, 4), title_array=None,
+    #   file_path="results/fig/cmp_ks.png",
+    #   dpi=100, cmap=cm.coolwarm,
+    # )
+    
+    _, axs = plt.subplots(2, 2, figsize=(12, 8))
+    axs = axs.flatten()
+    index_array = [500, 1500, 2500, 3500]
+    for i in range(len(index_array)):
+      axs[i].set_title(f"t = {index_array[i] * config_dict['sim']['dt']:.2f}")
+      axs[i].plot(outputs_filter[index_array[i], :, 0], label=r"$\tau^f$")
+      axs[i].plot(outputs_correction[index_array[i], :, 0], label=r"$\tau^c$")
+      # axs[i].plot(outputs_filter[index_array[i], :, 0] -\
+      #   outputs_correction[index_array[i], :, 0] * ratio, label=r"$\tau^f - \tau^c$")
+      axs[i].legend()
+    c = config_dict["sim"]["c"]
+    plt.savefig(f"results/fig/cmp_c{c:.1f}.png", dpi=300)
+    plt.close()
+
   else:
     n_plots = 2
     index_array = [3500, 4500]
