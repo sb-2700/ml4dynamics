@@ -115,6 +115,10 @@ def main():
       jax.tree_util.tree_map(lambda x: x.size, flat_params).values()
     )
     print(f"total parameters for {mode}_{arch}:", total_params)
+    if pde == "ns_channel":
+        sim_model = utils.create_ns_channel_simulator(config_dict)
+    else:
+      _, sim_model = utils.create_fine_coarse_simulator(config_dict)
     if pde != "ns_channel":
       fig_name = f"{pde}_{config.train.sgs}_{mode}_{arch}"
     else:
@@ -136,11 +140,6 @@ def main():
         loss = jnp.linalg.norm(x - x_pred, axis=-1)
         # loss = jnp.sum((x - x_pred)**2, axis=-1)
         return jnp.sum(loss)
-
-      if pde == "ns_channel":
-        sim_model = utils.create_ns_channel_simulator(config_dict)
-      else:
-        _, sim_model = utils.create_fine_coarse_simulator(config_dict)
 
       @jax.jit
       def tangent_vector(x):
@@ -249,16 +248,37 @@ def main():
         )
         return y_pred
     else:
-
-      @jax.jit
-      def forward_fn(x):
+      @partial(jax.jit, static_argnums=(1, ))
+      def forward_fn(x, is_aug):
         """forward function for the local model
 
         The shape of the input and output is aligned with the
         global model for the a-posteriori simulation
         """
-        x_ = x.reshape(-1, x.shape[-1])
-        return train_state.apply_fn(train_state.params, x_).reshape(x.shape)
+        tmp = []
+        if not is_aug:
+          """a-posteriori evaluation"""
+          if "u" in input_labels:
+            tmp.append(x[:, :-1])
+          if "u_x" in input_labels:
+            tmp.append(jnp.einsum("ij, ajk -> aik", sim_model.L1, x[:, :-1]))
+          if "u_xx" in input_labels:
+            tmp.append(jnp.einsum("ij, ajk -> aik", sim_model.L2, x[:, :-1]))
+          if "u_xxxx" in input_labels:
+            tmp.append(jnp.einsum("ij, ajk -> aik", sim_model.L4, x[:, :-1]))
+          x_ = jnp.concatenate(tmp, axis=-1)
+          x_ = jnp.concatenate([x_, jnp.zeros((x_.shape[0], 1, x_.shape[-1]))], axis=1)
+          x_ = x_.reshape(-1, x_.shape[-1])
+          breakpoint()
+          return train_state.apply_fn(train_state.params, x_).reshape(x.shape)
+        else:
+          """a-priori evaluation"""
+          x_ = x.reshape(-1, x.shape[-1])
+          return train_state.apply_fn(
+            train_state.params, x_
+          ).reshape(*(x.shape[:2]), -1)
+        
+      inputs_ = inputs_[..., 0:1]
 
     if mode == "ae":
       utils.eval_a_priori(
@@ -267,11 +287,11 @@ def main():
       )
       return
     utils.eval_a_priori(
-      forward_fn, train_dataloader, test_dataloader, inputs[:one_traj_length],
-      outputs[:one_traj_length], dim, f"reg_{fig_name}"
+      partial(forward_fn, is_aug=True), train_dataloader, test_dataloader,
+      inputs[:one_traj_length], outputs[:one_traj_length], dim, f"reg_{fig_name}"
     )
     utils.eval_a_posteriori(
-      config_dict, forward_fn, inputs_[:one_traj_length],
+      config_dict, partial(forward_fn, is_aug=False), inputs_[:one_traj_length],
       outputs_[:one_traj_length], dim, f"sim_{fig_name}"
     )
 
@@ -285,7 +305,8 @@ def main():
 
   config = Box(config_dict)
   pde = config.case
-  _global = (config.train.input == "global")
+  input_labels = config.train.input
+  _global = (input_labels == "global")
   epochs = config.train.epochs_global if _global else config.train.epochs_local
   print("start loading data...")
   start = time()
