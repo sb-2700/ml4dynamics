@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm
 
-
 from ml4dynamics.utils import calc_utils
 
 
@@ -15,8 +14,9 @@ def plot_psd_cmp(u1, u2, dx1, dx2, fig_name):
   # assert np.linalg.norm(k_bins - k_bins_true) < 1e-14
   plt.plot(k_bins_true, E_k_avg_true, label="true")
   plt.plot(
-    k_bins_true, E_k_avg_true[1] *
-      (k_bins_true / k_bins_true[1])**(-5/3), label="-5/3 law"
+    k_bins_true,
+    E_k_avg_true[1] * (k_bins_true / k_bins_true[1])**(-5 / 3),
+    label="-5/3 law"
   )
   plt.plot(k_bins, E_k_avg, label="sim")
   plt.xlabel("k")

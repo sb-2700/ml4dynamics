@@ -54,7 +54,7 @@ def main():
         if expand:
           u_hat = jnp.hstack(
             [u_hat[:nx // 2],
-            jnp.zeros_like(u_hat), u_hat[nx // 2:]]
+             jnp.zeros_like(u_hat), u_hat[nx // 2:]]
           ) * 2
         u_hat = jnp.fft.ifftshift(u_hat)
         u = jnp.fft.ifft(u_hat)
@@ -72,10 +72,10 @@ def main():
         return -1j * k * nonlinear_hat
 
       k1 = rhs(u_hat)
-      k2 = rhs(u_hat + 0.5*dt*k1)
-      k3 = rhs(u_hat + 0.5*dt*k2)
-      k4 = rhs(u_hat + dt*k3)
-      return u_hat + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
+      k2 = rhs(u_hat + 0.5 * dt * k1)
+      k3 = rhs(u_hat + 0.5 * dt * k2)
+      k4 = rhs(u_hat + dt * k3)
+      return u_hat + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
 
     nx = u0.shape[0]
     dealias = False

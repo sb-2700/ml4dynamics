@@ -38,9 +38,10 @@ def main():
             is_training=is_training
           )
         else:
-          y_pred = train_state.apply_fn(
-            params, x.reshape(-1, x.shape[-1])
-          ).reshape(y.shape)
+          y_pred = train_state.apply_fn(params, x.reshape(-1,
+                                                          x.shape[-1])).reshape(
+                                                            y.shape
+                                                          )
           batch_stats = None
         loss = jnp.mean((y - y_pred)**2)
 
@@ -116,7 +117,7 @@ def main():
     )
     print(f"total parameters for {mode}_{arch}:", total_params)
     if pde == "ns_channel":
-        sim_model = utils.create_ns_channel_simulator(config_dict)
+      sim_model = utils.create_ns_channel_simulator(config_dict)
     else:
       _, sim_model = utils.create_fine_coarse_simulator(config_dict)
     if pde != "ns_channel":
@@ -153,10 +154,12 @@ def main():
           psi_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
           w_hat2 = w_hat2.at[:n // 2, :n // 2 + 1].set(w_hat[:n // 2] * 4)
           w_hat2 = w_hat2.at[-n // 2:, :n // 2 + 1].set(w_hat[n // 2:] * 4)
-          psi_hat2 = psi_hat2.at[:n // 2, :n // 2 +
-                                1].set(-(w_hat / sim_model.laplacian_)[:n // 2] * 4)
-          psi_hat2 = psi_hat2.at[-n // 2:, :n // 2 +
-                                1].set(-(w_hat / sim_model.laplacian_)[n // 2:] * 4)
+          psi_hat2 = psi_hat2.at[:n // 2, :n // 2 + 1].set(
+            -(w_hat / sim_model.laplacian_)[:n // 2] * 4
+          )
+          psi_hat2 = psi_hat2.at[-n // 2:, :n // 2 + 1].set(
+            -(w_hat / sim_model.laplacian_)[n // 2:] * 4
+          )
           wx2 = jnp.fft.irfft2(1j * w_hat2 * sim_model.k2x)
           wy2 = jnp.fft.irfft2(1j * w_hat2 * sim_model.k2y)
           psix2 = jnp.fft.irfft2(1j * psi_hat2 * sim_model.k2x)
@@ -165,7 +168,9 @@ def main():
           tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)
           tmp = tmp.at[:n // 2].set(tmp_[:n // 2, :n // 2 + 1] / 4)
           tmp = tmp.at[n // 2:].set(tmp_[-n // 2:, :n // 2 + 1] / 4)
-          return jnp.fft.irfft2(-tmp + sim_model.nu * sim_model.laplacian * w_hat)
+          return jnp.fft.irfft2(
+            -tmp + sim_model.nu * sim_model.laplacian * w_hat
+          )
 
     iters = tqdm(range(epochs))
     loss_hist = []
@@ -230,7 +235,7 @@ def main():
       if config.sim.BC == "Dirichlet-Neumann":
         inputs_ = inputs[:, :-1]
         outputs_ = outputs[:, :-1]
-    one_traj_length = inputs.shape[0] // config.sim.case_num 
+    one_traj_length = inputs.shape[0] // config.sim.case_num
     train_state, schedule = utils.prepare_unet_train_state(
       config_dict, f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl", _global, False
     )
@@ -248,6 +253,7 @@ def main():
         )
         return y_pred
     else:
+
       @partial(jax.jit, static_argnums=(1, ))
       def forward_fn(x, is_aug):
         """forward function for the local model
@@ -267,17 +273,18 @@ def main():
           if "u_xxxx" in input_labels:
             tmp.append(jnp.einsum("ij, ajk -> aik", sim_model.L4, x[:, :-1]))
           x_ = jnp.concatenate(tmp, axis=-1)
-          x_ = jnp.concatenate([x_, jnp.zeros((x_.shape[0], 1, x_.shape[-1]))], axis=1)
+          x_ = jnp.concatenate(
+            [x_, jnp.zeros((x_.shape[0], 1, x_.shape[-1]))], axis=1
+          )
           x_ = x_.reshape(-1, x_.shape[-1])
           breakpoint()
           return train_state.apply_fn(train_state.params, x_).reshape(x.shape)
         else:
           """a-priori evaluation"""
           x_ = x.reshape(-1, x.shape[-1])
-          return train_state.apply_fn(
-            train_state.params, x_
-          ).reshape(*(x.shape[:2]), -1)
-        
+          return train_state.apply_fn(train_state.params,
+                                      x_).reshape(*(x.shape[:2]), -1)
+
       inputs_ = inputs_[..., 0:1]
 
     if mode == "ae":
@@ -288,7 +295,8 @@ def main():
       return
     utils.eval_a_priori(
       partial(forward_fn, is_aug=True), train_dataloader, test_dataloader,
-      inputs[:one_traj_length], outputs[:one_traj_length], dim, f"reg_{fig_name}"
+      inputs[:one_traj_length], outputs[:one_traj_length], dim,
+      f"reg_{fig_name}"
     )
     utils.eval_a_posteriori(
       config_dict, partial(forward_fn, is_aug=False), inputs_[:one_traj_length],

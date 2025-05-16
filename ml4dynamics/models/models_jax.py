@@ -140,33 +140,33 @@ class Encoder1D(nn.Module):
   @nn.compact
   def __call__(self, x):
     # Block 1
-    z1 = nn.Conv(self.features, kernel_size=(self.kernel_size,))(x)
+    z1 = nn.Conv(self.features, kernel_size=(self.kernel_size, ))(x)
     z1 = nn.relu(z1)
-    z1 = nn.Conv(self.features, kernel_size=(self.kernel_size,))(z1)
+    z1 = nn.Conv(self.features, kernel_size=(self.kernel_size, ))(z1)
     z1 = nn.BatchNorm(use_running_average=not self.training)(z1)
     z1 = nn.relu(z1)
     z1_pool = nn.max_pool(z1, window_shape=(2, ), strides=(2, ))
 
     # Block 2
-    z2 = nn.Conv(self.features * 2, kernel_size=(self.kernel_size,))(z1_pool)
+    z2 = nn.Conv(self.features * 2, kernel_size=(self.kernel_size, ))(z1_pool)
     z2 = nn.relu(z2)
-    z2 = nn.Conv(self.features * 2, kernel_size=(self.kernel_size,))(z2)
+    z2 = nn.Conv(self.features * 2, kernel_size=(self.kernel_size, ))(z2)
     z2 = nn.BatchNorm(use_running_average=not self.training)(z2)
     z2 = nn.relu(z2)
     z2_pool = nn.max_pool(z2, window_shape=(2, ), strides=(2, ))
 
     # Block 3
-    z3 = nn.Conv(self.features * 4, kernel_size=(self.kernel_size,))(z2_pool)
+    z3 = nn.Conv(self.features * 4, kernel_size=(self.kernel_size, ))(z2_pool)
     z3 = nn.relu(z3)
-    z3 = nn.Conv(self.features * 4, kernel_size=(self.kernel_size,))(z3)
+    z3 = nn.Conv(self.features * 4, kernel_size=(self.kernel_size, ))(z3)
     z3 = nn.BatchNorm(use_running_average=not self.training)(z3)
     z3 = nn.relu(z3)
     z3_pool = nn.max_pool(z3, window_shape=(2, ), strides=(2, ))
 
     # Block 4
-    z4 = nn.Conv(self.features * 8, kernel_size=(self.kernel_size,))(z3_pool)
+    z4 = nn.Conv(self.features * 8, kernel_size=(self.kernel_size, ))(z3_pool)
     z4 = nn.relu(z4)
-    z4 = nn.Conv(self.features * 8, kernel_size=(self.kernel_size,))(z4)
+    z4 = nn.Conv(self.features * 8, kernel_size=(self.kernel_size, ))(z4)
     z4 = nn.BatchNorm(use_running_average=not self.training)(z4)
     z4 = nn.relu(z4)
     z4_dropout = nn.Dropout(0.5, deterministic=not self.training)(z4)
@@ -175,7 +175,7 @@ class Encoder1D(nn.Module):
     # Block 5 (bottleneck)
     z5 = nn.Conv(self.features * 16, kernel_size=(self.kernel_size, ))(z4_pool)
     z5 = nn.relu(z5)
-    z5 = nn.Conv(self.features * 16, kernel_size=(self.kernel_size,))(z5)
+    z5 = nn.Conv(self.features * 16, kernel_size=(self.kernel_size, ))(z5)
     z5 = nn.BatchNorm(use_running_average=not self.training)(z5)
     z5 = nn.relu(z5)
     z5_dropout = nn.Dropout(0.5, deterministic=not self.training)(z5)
@@ -195,12 +195,12 @@ class Decoder1D(nn.Module):
     z6_up = jax.image.resize(
       z5, shape=(z5.shape[0], z5.shape[1] * 2, z5.shape[2]), method='nearest'
     )
-    z6 = nn.Conv(self.features * 8, kernel_size=(2,))(z6_up)
+    z6 = nn.Conv(self.features * 8, kernel_size=(2, ))(z6_up)
     z6 = nn.relu(z6)
     z6 = jnp.concatenate([z4, z6], axis=-1)
-    z6 = nn.Conv(self.features * 8, kernel_size=(self.kernel_size,))(z6)
+    z6 = nn.Conv(self.features * 8, kernel_size=(self.kernel_size, ))(z6)
     z6 = nn.relu(z6)
-    z6 = nn.Conv(self.features * 8, kernel_size=(self.kernel_size,))(z6)
+    z6 = nn.Conv(self.features * 8, kernel_size=(self.kernel_size, ))(z6)
     z6 = nn.BatchNorm(use_running_average=not self.training)(z6)
     z6 = nn.relu(z6)
 
@@ -208,12 +208,12 @@ class Decoder1D(nn.Module):
     z7_up = jax.image.resize(
       z6, shape=(z6.shape[0], z6.shape[1] * 2, z6.shape[2]), method='nearest'
     )
-    z7 = nn.Conv(self.features * 4, kernel_size=(2,))(z7_up)
+    z7 = nn.Conv(self.features * 4, kernel_size=(2, ))(z7_up)
     z7 = nn.relu(z7)
     z7 = jnp.concatenate([z3, z7], axis=-1)
-    z7 = nn.Conv(self.features * 4, kernel_size=(self.kernel_size,))(z7)
+    z7 = nn.Conv(self.features * 4, kernel_size=(self.kernel_size, ))(z7)
     z7 = nn.relu(z7)
-    z7 = nn.Conv(self.features * 4, kernel_size=(self.kernel_size,))(z7)
+    z7 = nn.Conv(self.features * 4, kernel_size=(self.kernel_size, ))(z7)
     z7 = nn.BatchNorm(use_running_average=not self.training)(z7)
     z7 = nn.relu(z7)
 
@@ -221,12 +221,12 @@ class Decoder1D(nn.Module):
     z8_up = jax.image.resize(
       z7, shape=(z7.shape[0], z7.shape[1] * 2, z7.shape[2]), method='nearest'
     )
-    z8 = nn.Conv(self.features * 2, kernel_size=(2,))(z8_up)
+    z8 = nn.Conv(self.features * 2, kernel_size=(2, ))(z8_up)
     z8 = nn.relu(z8)
     z8 = jnp.concatenate([z2, z8], axis=-1)
-    z8 = nn.Conv(self.features * 2, kernel_size=(self.kernel_size,))(z8)
+    z8 = nn.Conv(self.features * 2, kernel_size=(self.kernel_size, ))(z8)
     z8 = nn.relu(z8)
-    z8 = nn.Conv(self.features * 2, kernel_size=(self.kernel_size,))(z8)
+    z8 = nn.Conv(self.features * 2, kernel_size=(self.kernel_size, ))(z8)
     z8 = nn.BatchNorm(use_running_average=not self.training)(z8)
     z8 = nn.relu(z8)
 
@@ -234,12 +234,12 @@ class Decoder1D(nn.Module):
     z9_up = jax.image.resize(
       z8, shape=(z8.shape[0], z8.shape[1] * 2, z8.shape[2]), method='nearest'
     )
-    z9 = nn.Conv(self.features, kernel_size=(2,))(z9_up)
+    z9 = nn.Conv(self.features, kernel_size=(2, ))(z9_up)
     z9 = nn.relu(z9)
     z9 = jnp.concatenate([z1, z9], axis=-1)
-    z9 = nn.Conv(self.features, kernel_size=(self.kernel_size,))(z9)
+    z9 = nn.Conv(self.features, kernel_size=(self.kernel_size, ))(z9)
     z9 = nn.relu(z9)
-    z9 = nn.Conv(self.features, kernel_size=(self.kernel_size,))(z9)
+    z9 = nn.Conv(self.features, kernel_size=(self.kernel_size, ))(z9)
     z9 = nn.BatchNorm(use_running_average=not self.training)(z9)
     z9 = nn.relu(z9)
 
@@ -255,38 +255,58 @@ class Encoder2D(nn.Module):
 
   @nn.compact
   def __call__(self, x):
-    z1 = nn.Conv(self.features, kernel_size=(self.kernel_size, self.kernel_size))(x)
+    z1 = nn.Conv(
+      self.features, kernel_size=(self.kernel_size, self.kernel_size)
+    )(x)
     z1 = nn.relu(z1)
-    z1 = nn.Conv(self.features, kernel_size=(self.kernel_size, self.kernel_size))(z1)
+    z1 = nn.Conv(
+      self.features, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z1)
     z1 = nn.BatchNorm(use_running_average=not self.training)(z1)
     z1 = nn.relu(z1)
     z1_pool = nn.max_pool(z1, window_shape=(2, 2), strides=(2, 2))
 
-    z2 = nn.Conv(self.features * 2, kernel_size=(self.kernel_size, self.kernel_size))(z1_pool)
+    z2 = nn.Conv(
+      self.features * 2, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z1_pool)
     z2 = nn.relu(z2)
-    z2 = nn.Conv(self.features * 2, kernel_size=(self.kernel_size, self.kernel_size))(z2)
+    z2 = nn.Conv(
+      self.features * 2, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z2)
     z2 = nn.BatchNorm(use_running_average=not self.training)(z2)
     z2 = nn.relu(z2)
     z2_pool = nn.max_pool(z2, window_shape=(2, 2), strides=(2, 2))
 
-    z3 = nn.Conv(self.features * 4, kernel_size=(self.kernel_size, self.kernel_size))(z2_pool)
+    z3 = nn.Conv(
+      self.features * 4, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z2_pool)
     z3 = nn.relu(z3)
-    z3 = nn.Conv(self.features * 4, kernel_size=(self.kernel_size, self.kernel_size))(z3)
+    z3 = nn.Conv(
+      self.features * 4, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z3)
     z3 = nn.BatchNorm(use_running_average=not self.training)(z3)
     z3 = nn.relu(z3)
     z3_pool = nn.max_pool(z3, window_shape=(2, 2), strides=(2, 2))
 
-    z4 = nn.Conv(self.features * 8, kernel_size=(self.kernel_size, self.kernel_size))(z3_pool)
+    z4 = nn.Conv(
+      self.features * 8, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z3_pool)
     z4 = nn.relu(z4)
-    z4 = nn.Conv(self.features * 8, kernel_size=(self.kernel_size, self.kernel_size))(z4)
+    z4 = nn.Conv(
+      self.features * 8, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z4)
     z4 = nn.BatchNorm(use_running_average=not self.training)(z4)
     z4 = nn.relu(z4)
     z4_dropout = nn.Dropout(0.5, deterministic=False)(z4)
     z4_pool = nn.max_pool(z4_dropout, window_shape=(2, 2), strides=(2, 2))
 
-    z5 = nn.Conv(self.features * 16, kernel_size=(self.kernel_size, self.kernel_size))(z4_pool)
+    z5 = nn.Conv(
+      self.features * 16, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z4_pool)
     z5 = nn.relu(z5)
-    z5 = nn.Conv(self.features * 16, kernel_size=(self.kernel_size, self.kernel_size))(z5)
+    z5 = nn.Conv(
+      self.features * 16, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z5)
     z5 = nn.BatchNorm(use_running_average=not self.training)(z5)
     z5 = nn.relu(z5)
     z5_dropout = nn.Dropout(0.5, deterministic=False)(z5)
@@ -313,9 +333,13 @@ class Decoder2D(nn.Module):
     z6 = nn.Conv(self.features * 8, kernel_size=(2, 2))(z6_up)
     z6 = nn.relu(z6)
     z6 = jnp.concatenate([z4_dropout, z6], axis=3)
-    z6 = nn.Conv(self.features * 8, kernel_size=(self.kernel_size, self.kernel_size))(z6)
+    z6 = nn.Conv(
+      self.features * 8, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z6)
     z6 = nn.relu(z6)
-    z6 = nn.Conv(self.features * 8, kernel_size=(self.kernel_size, self.kernel_size))(z6)
+    z6 = nn.Conv(
+      self.features * 8, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z6)
     z6 = nn.BatchNorm(use_running_average=not self.training)(z6)
     z6 = nn.relu(z6)
 
@@ -327,9 +351,13 @@ class Decoder2D(nn.Module):
     z7 = nn.Conv(self.features * 4, kernel_size=(2, 2))(z7_up)
     z7 = nn.relu(z7)
     z7 = jnp.concatenate([z3, z7], axis=3)
-    z7 = nn.Conv(self.features * 4, kernel_size=(self.kernel_size, self.kernel_size))(z7)
+    z7 = nn.Conv(
+      self.features * 4, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z7)
     z7 = nn.relu(z7)
-    z7 = nn.Conv(self.features * 4, kernel_size=(self.kernel_size, self.kernel_size))(z7)
+    z7 = nn.Conv(
+      self.features * 4, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z7)
     z7 = nn.BatchNorm(use_running_average=not self.training)(z7)
     z7 = nn.relu(z7)
 
@@ -341,9 +369,13 @@ class Decoder2D(nn.Module):
     z8 = nn.Conv(self.features * 2, kernel_size=(2, 2))(z8_up)
     z8 = nn.relu(z8)
     z8 = jnp.concatenate([z2, z8], axis=3)
-    z8 = nn.Conv(self.features * 2, kernel_size=(self.kernel_size, self.kernel_size))(z8)
+    z8 = nn.Conv(
+      self.features * 2, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z8)
     z8 = nn.relu(z8)
-    z8 = nn.Conv(self.features * 2, kernel_size=(self.kernel_size, self.kernel_size))(z8)
+    z8 = nn.Conv(
+      self.features * 2, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z8)
     z8 = nn.BatchNorm(use_running_average=not self.training)(z8)
     z8 = nn.relu(z8)
 
@@ -355,9 +387,13 @@ class Decoder2D(nn.Module):
     z9 = nn.Conv(self.features, kernel_size=(2, 2))(z9_up)
     z9 = nn.relu(z9)
     z9 = jnp.concatenate([z1, z9], axis=3)
-    z9 = nn.Conv(self.features, kernel_size=(self.kernel_size, self.kernel_size))(z9)
+    z9 = nn.Conv(
+      self.features, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z9)
     z9 = nn.relu(z9)
-    z9 = nn.Conv(self.features, kernel_size=(self.kernel_size, self.kernel_size))(z9)
+    z9 = nn.Conv(
+      self.features, kernel_size=(self.kernel_size, self.kernel_size)
+    )(z9)
     z9 = nn.BatchNorm(use_running_average=not self.training)(z9)
     z9 = nn.relu(z9)
 
@@ -377,17 +413,27 @@ class UNet(nn.Module):
   def __call__(self, x):
     if self.DIM == 2:
       z1, z2, z3, z4_dropout, z5_dropout = Encoder2D(
-        self.input_features * 4, kernel_size=self.kernel_size, training=self.training
+        self.input_features * 4,
+        kernel_size=self.kernel_size,
+        training=self.training
       )(x)
       y = Decoder2D(
-        self.input_features * 4, self.output_features, kernel_size=self.kernel_size, training=self.training
+        self.input_features * 4,
+        self.output_features,
+        kernel_size=self.kernel_size,
+        training=self.training
       )(z1, z2, z3, z4_dropout, z5_dropout)
     elif self.DIM == 1:
       z1, z2, z3, z4, z5 = Encoder1D(
-        self.input_features * 8, kernel_size=self.kernel_size, training=self.training
+        self.input_features * 8,
+        kernel_size=self.kernel_size,
+        training=self.training
       )(x)
       y = Decoder1D(
-        self.input_features * 8, self.output_features, kernel_size=self.kernel_size, training=self.training
+        self.input_features * 8,
+        self.output_features,
+        kernel_size=self.kernel_size,
+        training=self.training
       )(z1, z2, z3, z4, z5)
       # y = nn.softplus(y)
 

@@ -1010,7 +1010,7 @@ class ns_hit(dynamics):
     dt = self.dt
     nu = self.nu
     n = w_hat.shape[0]
-    # the forcing is consistent with the choice of 
+    # the forcing is consistent with the choice of
     # https://arxiv.org/pdf/2010.08895
     forcing = jnp.zeros_like(w_hat)
     # forcing = forcing.at[1, 1].set(n**2 / 2) * jnp.sin(self.t)

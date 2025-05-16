@@ -283,7 +283,7 @@ def hit_init_cond(type_: str, model):
     the spectra looks okay
     """
     w_hat = random.normal(
-      random.PRNGKey(0), (model.N, model.N//2+1)
+      random.PRNGKey(0), (model.N, model.N // 2 + 1)
     ) * model.init_scale / (-model.laplacian_ + 49)**2.5 * model.N**1.85
   elif type_ == "taylor_green":
     """initialization scheme 4: Taylor-Green vortex
@@ -346,8 +346,7 @@ def prepare_unet_train_state(
     boundaries_and_scales={
       int(b): 0.1
       for b in jnp.arange(
-        decay * step_per_epoch, epochs * step_per_epoch,
-        decay * step_per_epoch
+        decay * step_per_epoch, epochs * step_per_epoch, decay * step_per_epoch
       )
     }
   )
@@ -367,9 +366,7 @@ def prepare_unet_train_state(
         # init 1D UNet
         params = unet.init(init_rngs, jnp.ones([1, nx, input_features]))
       else:
-        params = unet.init(
-          init_rngs, jnp.ones([1, nx, ny, input_features])
-        )
+        params = unet.init(init_rngs, jnp.ones([1, nx, ny, input_features]))
     train_state = CustomTrainState.create(
       apply_fn=unet.apply,
       params=params["params"],
@@ -644,18 +641,18 @@ def eval_a_posteriori(
     if config.case == "ns_hit":
       u_hist_true = np.zeros((*x_hist.shape[:-1], 2))
       u_hist = np.zeros((*x_hist.shape[:-1], 2))
-      psi_true = jnp.fft.rfft2(inputs[..., 0], axes=(1, 2)) / model.laplacian_[None]
+      psi_true = jnp.fft.rfft2(inputs[..., 0],
+                               axes=(1, 2)) / model.laplacian_[None]
       psi = jnp.fft.rfft2(x_hist[..., 0], axes=(1, 2)) / model.laplacian_[None]
-      u_hist_true[..., 1] = -jnp.fft.irfft2(
-        1j * psi_true * model.kx[None], axes=(1, 2)
-      )
-      u_hist_true[..., 0] = jnp.fft.irfft2(
-        1j * psi_true * model.ky[None], axes=(1, 2)
-      )
+      u_hist_true[
+        ..., 1] = -jnp.fft.irfft2(1j * psi_true * model.kx[None], axes=(1, 2))
+      u_hist_true[
+        ..., 0] = jnp.fft.irfft2(1j * psi_true * model.ky[None], axes=(1, 2))
       u_hist[..., 1] = -jnp.fft.irfft2(1j * psi * model.kx[None], axes=(1, 2))
       u_hist[..., 0] = jnp.fft.irfft2(1j * psi * model.ky[None], axes=(1, 2))
       viz_utils.plot_psd_cmp(
-        u_hist_true, u_hist, [model.dx, model.dx], [model.dx, model.dx], fig_name
+        u_hist_true, u_hist, [model.dx, model.dx], [model.dx, model.dx],
+        fig_name
       )
 
 
@@ -1284,8 +1281,12 @@ def a_posteriori_analysis(
 
 
 def plot_with_horizontal_colorbar(
-  im_array, fig_size=(10, 4), title_array=None,
-  file_path=None, dpi=100, cmap=cm.twilight
+  im_array,
+  fig_size=(10, 4),
+  title_array=None,
+  file_path=None,
+  dpi=100,
+  cmap=cm.twilight
 ):
 
   if not isinstance(im_array, np.ndarray):
@@ -1298,8 +1299,7 @@ def plot_with_horizontal_colorbar(
   pad = 0.001
   for i in range(im_array.shape[0]):
     for j in range(im_array.shape[1]):
-      im = axs[i * im_array.shape[1] +
-               j].imshow(im_array[i, j], cmap=cmap)
+      im = axs[i * im_array.shape[1] + j].imshow(im_array[i, j], cmap=cmap)
       if title_array is not None and\
         title_array[i * im_array.shape[1] +j] is not None:
         axs[i * im_array.shape[1] +

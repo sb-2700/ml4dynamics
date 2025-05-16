@@ -174,6 +174,12 @@ def main():
       f.attrs["readme"] = data["readme"]
 
   n_plot = 4
+  delta = conv(
+    jnp.fft.irfft2(model_fine.xhat_hist * model_fine.laplacian[None])) -\
+    jnp.fft.irfft2(
+      jnp.fft.rfft2(w_coarse, axis=(1, 2)) * model_coarse.laplacian[None]
+    )
+  breakpoint()
   index_array = np.arange(
     0, n_plot * w_coarse.shape[0] // n_plot - 1, w_coarse.shape[0] // n_plot
   )
@@ -182,8 +188,9 @@ def main():
     im_array[0, k] = w_coarse[index_array[k], ..., 0]
     im_array[1, k] = output_filter[index_array[k], ..., 0]
     im_array[2, k] = output_correction[index_array[k], ..., 0]
+    im_array[3, k] = delta[index_array[k], ..., 0]
   utils.plot_with_horizontal_colorbar(
-    im_array, fig_size=(12, 8), title_array=None,
+    im_array, fig_size=(12, 12), title_array=None,
     file_path="results/fig/dataset.png", dpi=100
   )
   what_coarse = jnp.fft.rfft2(w_coarse, axes=(1, 2))

@@ -8,14 +8,14 @@ r = 2 (N_fine = 256, N_coarse = 128)
 """
 
 import jax
+
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import numpy as np
 import yaml
 from box import Box
 
-from ml4dynamics.utils import utils, calc_utils, viz_utils
-
+from ml4dynamics.utils import calc_utils, utils, viz_utils
 
 with open(f"config/ns_hit.yaml", "r") as file:
   config_dict = yaml.safe_load(file)
@@ -30,10 +30,10 @@ case_num = config.sim.case_num
 writeInterval = 1
 
 model_fine.w_hat = utils.hit_init_cond("spec_random", model_fine)
-w_hat = jnp.roll(
-  model_fine.w_hat, shift=model_fine.N // 2, axis=0
-)[model_fine.N // 2 - model_coarse.N // 2:
-  model_fine.N // 2 + model_coarse.N // 2, : model_coarse.N // 2 + 1]
+w_hat = jnp.roll(model_fine.w_hat, shift=model_fine.N // 2,
+                 axis=0)[model_fine.N // 2 -
+                         model_coarse.N // 2:model_fine.N // 2 +
+                         model_coarse.N // 2, :model_coarse.N // 2 + 1]
 w_hat = jnp.roll(w_hat, shift=-model_coarse.N // 2, axis=0)
 model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
 model_coarse.set_x_hist(w_hat, model_coarse.CN)
