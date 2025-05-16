@@ -38,7 +38,9 @@ def main():
             is_training=is_training
           )
         else:
-          y_pred = train_state.apply_fn(params, x)
+          y_pred = train_state.apply_fn(
+            params, x.reshape(-1, x.shape[-1])
+          ).reshape(y.shape)
           batch_stats = None
         loss = jnp.mean((y - y_pred)**2)
 
@@ -100,10 +102,11 @@ def main():
 
     if mode == "ae" and not _global:
       return
-    load_dict = f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl"
-    if not os.path.exists(load_dict):
-      """TODO: no architecture check for the models"""
-      load_dict = None
+    # load_dict = f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl"
+    # if not os.path.exists(load_dict):
+    #   """TODO: no architecture check for the models"""
+    #   load_dict = None
+    load_dict = None
     train_state, schedule = utils.prepare_unet_train_state(
       config_dict, load_dict, _global
     )
@@ -141,9 +144,29 @@ def main():
 
       @jax.jit
       def tangent_vector(x):
-        """TODO: only support ks for now"""
-        return jnp.einsum("ij, ajb -> aib", sim_model.L1, (x[:, :-1]**2)/2) +\
-          jnp.einsum("ij, ajb -> aib", 2 * sim_model.L, x[:, :-1])
+        if pde == "ks":
+          return jnp.einsum("ij, ajb -> aib", sim_model.L1, (x[:, :-1]**2)/2) +\
+            jnp.einsum("ij, ajb -> aib", 2 * sim_model.L, x[:, :-1])
+        elif pde == "ns_hit":
+          w_hat = jnp.fft.rfft2(x[..., 0])
+          n = x.shape[0]
+          w_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
+          psi_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
+          w_hat2 = w_hat2.at[:n // 2, :n // 2 + 1].set(w_hat[:n // 2] * 4)
+          w_hat2 = w_hat2.at[-n // 2:, :n // 2 + 1].set(w_hat[n // 2:] * 4)
+          psi_hat2 = psi_hat2.at[:n // 2, :n // 2 +
+                                1].set(-(w_hat / sim_model.laplacian_)[:n // 2] * 4)
+          psi_hat2 = psi_hat2.at[-n // 2:, :n // 2 +
+                                1].set(-(w_hat / sim_model.laplacian_)[n // 2:] * 4)
+          wx2 = jnp.fft.irfft2(1j * w_hat2 * sim_model.k2x)
+          wy2 = jnp.fft.irfft2(1j * w_hat2 * sim_model.k2y)
+          psix2 = jnp.fft.irfft2(1j * psi_hat2 * sim_model.k2x)
+          psiy2 = jnp.fft.irfft2(1j * psi_hat2 * sim_model.k2y)
+          tmp = jnp.zeros_like(w_hat)
+          tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)
+          tmp = tmp.at[:n // 2].set(tmp_[:n // 2, :n // 2 + 1] / 4)
+          tmp = tmp.at[n // 2:].set(tmp_[-n // 2:, :n // 2 + 1] / 4)
+          return jnp.fft.irfft2(-tmp + sim_model.nu * sim_model.laplacian * w_hat)
 
     iters = tqdm(range(epochs))
     loss_hist = []
@@ -280,8 +303,11 @@ def main():
   if pde != "ns_channel":
     print(f"{config.train.sgs}")
   # modes_array = ["ae", "ols", "mols", "aols", "tr"]
-  modes_array = ["ols"]
-  # modes_array = ["ols", "tr"]
+  if pde == "ks":
+    modes_array = ["ols"]
+  elif pde == "ns_hit":
+    modes_array = ["ae"]
+  # modes_array = ["ae"]
 
   for _ in modes_array:
     print(f"Training {_}...")

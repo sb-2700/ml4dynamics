@@ -56,19 +56,41 @@ def load_data(
       )
     elif pde == "ns_hit":
       Re = config.sim.Re
-      n = config.sim.n // config.sim.r
       dataset = f"Re{Re}_n{case_num}"
     elif pde == "ks":
       c = config.sim.c
-      T = config.sim.T
       dataset = f"c{c:.1f}_n{case_num}"
   h5_filename = f"data/{pde}/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
     inputs = h5f["data"]["inputs"][()]
     outputs = h5f["data"][f"outputs_{sgs}"][()]
-    if pde == "ks" or pde == "ns_hit":
+    input_labels = config.train.input
+    if pde == "ks":
       _, model = create_fine_coarse_simulator(config_dict)
+      tmp = []
+      if "u" in input_labels:
+        tmp.append(inputs)
+      if "u_x" in input_labels:
+        tmp.append(jnp.einsum("ij, ajk -> aik", model.L1, inputs))
+      if "u_xx" in input_labels:
+        tmp.append(jnp.einsum("ij, ajk -> aik", model.L2, inputs))
+      if "u_xxxx" in input_labels:
+        tmp.append(jnp.einsum("ij, ajk -> aik", model.L4, inputs))
+      inputs = np.concatenate(tmp, axis=-1)
+    elif pde == "ns_hit":
+      _, model = create_fine_coarse_simulator(config_dict)
+      tmp = []
+      if "u" in input_labels:
+        tmp.append(inputs)
+      if "u_x" in input_labels:
+        what = jnp.fft.rfft2(inputs, axes=(1, 2))
+        psi_hat = -what[..., 0] / model.laplacian_[None]
+        dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
+        dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
+        tmp.append(dpsidy)
+        tmp.append(-dpsidx)
+      inputs = np.hstack(tmp)
     # if mode == "torch":
     #   inputs = inputs.transpose(0, 3, 1, 2)
     #   outputs = outputs.transpose(0, 3, 1, 2)
@@ -78,16 +100,12 @@ def load_data(
     #   )
     #   inputs = torch.from_numpy(inputs).to(device)
     #   outputs = torch.from_numpy(outputs).to(device)
-  if config.train.input == "global":
-    if pde == "ks" and config.sim.BC == "Dirichlet-Neumann":
-      padding = np.zeros((inputs.shape[0], 1, 1))
-      inputs = np.concatenate([inputs, padding], axis=1)
-      outputs = np.concatenate([outputs, padding], axis=1)
-  if config.train.input != "global":
-    inputs_shape = inputs.shape
-    outputs_shape = outputs.shape
-    inputs = inputs.reshape(-1, inputs.shape[-1])
-    outputs = outputs.reshape(-1, outputs.shape[-1])
+  if pde == "ks" and config.sim.BC == "Dirichlet-Neumann":
+    # NOTE: the zero-padding is only physically correct for the u and u_x
+    inputs_padding = np.zeros((inputs.shape[0], 1, inputs.shape[-1]))
+    outputs_padding = np.zeros((outputs.shape[0], 1, outputs.shape[-1]))
+    inputs = np.concatenate([inputs, inputs_padding], axis=1)
+    outputs = np.concatenate([outputs, outputs_padding], axis=1)
   train_x, test_x, train_y, test_y = train_test_split(
     inputs, outputs, test_size=0.2, random_state=config.sim.seed
   )
@@ -109,13 +127,6 @@ def load_data(
     batch_size=batch_size,
     shuffle=True  # , num_workers=num_workers
   )
-  if config.train.input != "global":
-    inputs = inputs.reshape(inputs_shape)
-    outputs = outputs.reshape(outputs_shape)
-    if pde == "ks" and config.sim.BC == "Dirichlet-Neumann":
-      padding = np.zeros((inputs.shape[0], 1, 1))
-      inputs = np.concatenate([inputs, padding], axis=1)
-      outputs = np.concatenate([outputs, padding], axis=1)
   return inputs, outputs, train_dataloader, test_dataloader, dataset
 
 
@@ -309,11 +320,17 @@ def prepare_unet_train_state(
     output_features = 2
     DIM = 2
   elif config.case == "ns_hit":
-    input_features = 1
+    if is_global:
+      input_features = 1
+    else:
+      input_features = len(config.train.input)
     output_features = 1
     DIM = 2
   elif config.case == "ks":
-    input_features = 1
+    if is_global:
+      input_features = 1
+    else:
+      input_features = len(config.train.input)
     output_features = 1
     DIM = 1
   if load_dict:
@@ -558,7 +575,7 @@ def eval_a_posteriori(
         train_utils.run_simulation_sgs, forward_fn, model, iter_, outputs, beta,
         type_
       )
-    elif config.train.sgs == "coarse_correction":
+    elif config.train.sgs == "correction":
       run_simulation = partial(
         train_utils.run_simulation_coarse_grid_correction, forward_fn, model,
         iter_, outputs, beta, type_

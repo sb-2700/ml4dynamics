@@ -39,7 +39,7 @@ def main():
   N2 = N1 // r
   rng = random.PRNGKey(config.sim.seed)
   case_num = config.sim.case_num
-  ks_fine, ks_coarse = utils.create_fine_coarse_simulator(config)
+  model_fine, model_coarse = utils.create_fine_coarse_simulator(config)
   res_fn, _ = res_int_fn(config_dict)
     
   # if sgs_model == "fine_correction":
@@ -47,42 +47,42 @@ def main():
   # else:
   #   N = N2
   N = N2
-  inputs = np.zeros((case_num, ks_fine.step_num, N))
-  outputs_filter = np.zeros((case_num, ks_fine.step_num, N))
-  outputs_correction = np.zeros((case_num, ks_fine.step_num, N))
+  inputs = np.zeros((case_num, model_fine.step_num, N))
+  outputs_filter = np.zeros((case_num, model_fine.step_num, N))
+  outputs_correction = np.zeros((case_num, model_fine.step_num, N))
   for i in range(case_num):
     print(i)
     rng, key = random.split(rng)
     # NOTE: the initialization here is important, DO NOT use the random
     # i.i.d. Gaussian noise as the initial condition
     if BC == "periodic":
-      dx = ks_fine.L / N1
-      u0 = ks_fine.attractor + ks_fine.init_scale * random.normal(key) *\
+      dx = model_fine.L / N1
+      u0 = model_fine.attractor + model_fine.init_scale * random.normal(key) *\
         jnp.sin(10 * jnp.pi * jnp.linspace(0, L - L/N1, N1) / L)
     elif BC == "Dirichlet-Neumann":
       dx = L / (N1 + 1)
       x = jnp.linspace(dx, L - dx, N1)
       # different choices of initial conditions
-      # u0 = ks_fine.attractor + init_scale * random.normal(key) *\
+      # u0 = model_fine.attractor + init_scale * random.normal(key) *\
       #   jnp.sin(10 * jnp.pi * x / L)
       # u0 = random.uniform(key) * jnp.sin(8 * jnp.pi * x / 128) +\
       #   random.uniform(rng) * jnp.sin(16 * jnp.pi * x / 128)
       r0 = random.uniform(key) * 20 + 44
       u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
-    ks_fine.run_simulation(u0, ks_fine.CN_FEM)
-    input = jax.vmap(res_fn)(ks_fine.x_hist)[..., 0]  # shape = [step_num, N2]
+    model_fine.run_simulation(u0, model_fine.CN_FEM)
+    input = jax.vmap(res_fn)(model_fine.x_hist)[..., 0]  # shape = [step_num, N2]
     output_correction =  np.zeros_like(outputs_correction[0])
-    output_filter = -(jax.vmap(res_fn)(ks_fine.x_hist**2)[..., 0] - input**2) / 2\
-      / ks_coarse.dx**2
-    for j in range(ks_fine.step_num):
-      next_step_fine = ks_fine.CN_FEM(ks_fine.x_hist[j])
-      next_step_coarse = ks_coarse.CN_FEM(input[j])
+    output_filter = -(jax.vmap(res_fn)(model_fine.x_hist**2)[..., 0] - input**2) / 2\
+      / model_coarse.dx**2
+    for j in range(model_fine.step_num):
+      next_step_fine = model_fine.CN_FEM(model_fine.x_hist[j])
+      next_step_coarse = model_coarse.CN_FEM(input[j])
       output_correction[j] = (res_fn(next_step_fine)[:, 0] - next_step_coarse) / dt
       # elif sgs_model == "fine_correction":
       #   output[j] = (next_step_fine - int_fn(next_step_coarse)[:, 0]) / dt
 
     # if sgs_model == "fine_correction":
-    #   inputs[i] = ks_fine.x_hist
+    #   inputs[i] = model_fine.x_hist
     inputs[i] = input
     outputs_filter[i] = output_filter
     outputs_correction[i] = output_correction
@@ -144,14 +144,44 @@ def main():
     f.attrs["readme"] = data["readme"]
 
   plot_ = True
-  if plot_:
+  if plot_ and case_num == 1:
+    """calculate the commutator of derivative and filter operator"""
+    delta1 = jax.vmap(res_fn)(
+      jnp.einsum("ij, aj -> ai", model_fine.L1, model_fine.x_hist)
+    )[..., 0] - jnp.einsum("ij, aj -> ai", model_coarse.L1, inputs)
+    delta2 = jax.vmap(res_fn)(
+      jnp.einsum("ij, aj -> ai", model_fine.L2, model_fine.x_hist)
+    )[..., 0] - jnp.einsum("ij, aj -> ai", model_coarse.L2, inputs)
+    delta4 = jax.vmap(res_fn)(
+      jnp.einsum("ij, aj -> ai", model_fine.L4, model_fine.x_hist)
+    )[..., 0] - jnp.einsum("ij, aj -> ai", model_coarse.L4, inputs)
+
     im_array = np.concatenate(
-      [inputs.T[None], outputs_filter.T[None], outputs_correction.T[None]], axis=0
+      [inputs.T[None], outputs_filter.T[None], outputs_correction.T[None],
+      delta1.T[None], delta2.T[None], delta4.T[None]], axis=0
     )
     utils.plot_with_horizontal_colorbar(
-      im_array[:, None], fig_size=(10, 4), title_array=["u", r"$\tau^f$", r"$\tau^c$"],
+      im_array[:, None], fig_size=(20, 10),
+      title_array=["u", r"$\tau^f$", r"$\tau^c$",
+                    r"$[R, D_x]$", r"$[R, D_x^2]$", r"$[R, D_x^4]$"],
       file_path="results/fig/ks.png", dpi=100
     )
+
+    _, axs = plt.subplots(2, 2, figsize=(12, 8))
+    axs = axs.flatten()
+    index_array = [500, 1500, 2500, 3500]
+    for i in range(len(index_array)):
+      axs[i].set_title(f"t = {index_array[i] * config_dict['sim']['dt']:.2f}")
+      axs[i].plot(outputs_filter[index_array[i]], label=r"$\tau^f$")
+      axs[i].plot(outputs_correction[index_array[i]], label=r"$\tau^c$")
+      axs[i].plot(delta1[index_array[i]], label=r"$[R, D_x]$")
+      axs[i].plot(delta2[index_array[i]], label=r"$[R, D_x^2]$")
+      axs[i].plot(delta4[index_array[i]], label=r"$[R, D_x^4]$")
+      # axs[i].plot(outputs_filter[index_array[i], :, 0] -\
+      #   outputs_correction[index_array[i], :, 0] * ratio, label=r"$\tau^f - \tau^c$")
+      axs[i].legend()
+    c = config_dict["sim"]["c"]
+    plt.savefig(f"results/fig/cmp_c{c:.1f}.png", dpi=300)
     plt.close()
 
 
