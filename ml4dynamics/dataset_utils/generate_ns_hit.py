@@ -162,7 +162,7 @@ def main():
 
       data_group = f.create_group("data")
       data_group.create_dataset("inputs", data=data["data"]["inputs"])
-      data_group.create_dataset("outputs", data=data["data"]["outputs_filter"])
+      data_group.create_dataset("outputs_filter", data=data["data"]["outputs_filter"])
       data_group.create_dataset(
         "outputs_correction", data=data["data"]["outputs_correction"]
       )
@@ -173,37 +173,41 @@ def main():
 
       f.attrs["readme"] = data["readme"]
 
-  n_plot = 4
-  delta = conv(
-    jnp.fft.irfft2(model_fine.xhat_hist * model_fine.laplacian[None])) -\
-    jnp.fft.irfft2(
-      jnp.fft.rfft2(w_coarse, axis=(1, 2)) * model_coarse.laplacian[None]
+  if case_num == 1:
+    n_plot = 4
+    delta = conv(
+      jnp.fft.irfft2(
+        model_fine.xhat_hist * model_fine.laplacian[None], axes=(1, 2)
+      )[..., None]
+    ) -\
+      jnp.fft.irfft2(
+        jnp.fft.rfft2(w_coarse, axes=(1, 2)) * model_coarse.laplacian[None, ..., None],
+        axes=(1, 2)
+      )
+    index_array = np.arange(
+      0, n_plot * w_coarse.shape[0] // n_plot - 1, w_coarse.shape[0] // n_plot
     )
-  breakpoint()
-  index_array = np.arange(
-    0, n_plot * w_coarse.shape[0] // n_plot - 1, w_coarse.shape[0] // n_plot
-  )
-  im_array = np.zeros((3, n_plot, *(w_coarse.shape[1:3])))
-  for k in range(n_plot):
-    im_array[0, k] = w_coarse[index_array[k], ..., 0]
-    im_array[1, k] = output_filter[index_array[k], ..., 0]
-    im_array[2, k] = output_correction[index_array[k], ..., 0]
-    im_array[3, k] = delta[index_array[k], ..., 0]
-  utils.plot_with_horizontal_colorbar(
-    im_array, fig_size=(12, 12), title_array=None,
-    file_path="results/fig/dataset.png", dpi=100
-  )
-  what_coarse = jnp.fft.rfft2(w_coarse, axes=(1, 2))
-  psi_hat = -what_coarse[..., 0] / model_coarse.laplacian_[None]
-  dpsidx = jnp.fft.irfft2(1j * psi_hat * model_coarse.kx[None], axes=(1, 2))
-  dpsidy = jnp.fft.irfft2(1j * psi_hat * model_coarse.ky[None], axes=(1, 2))
-  plt.plot(jnp.sum(dpsidx**2 + dpsidy**2, axis=(1, 2)), label='e_kin')
-  plt.plot(
-    jnp.sum(dpsidx**2 + dpsidy**2, axis=(1, 2))[0] *
-    jnp.exp(-model_fine.nu * jnp.linspace(0, model_fine.T, int(T/dt)+1)), label='decay'
-  )
-  plt.legend()
-  plt.savefig("results/fig/e_kin.png")
+    im_array = np.zeros((4, n_plot, *(w_coarse.shape[1:3])))
+    for k in range(n_plot):
+      im_array[0, k] = w_coarse[index_array[k], ..., 0]
+      im_array[1, k] = output_filter[index_array[k], ..., 0]
+      im_array[2, k] = output_correction[index_array[k], ..., 0]
+      im_array[3, k] = delta[index_array[k], ..., 0]
+    utils.plot_with_horizontal_colorbar(
+      im_array, fig_size=(12, 12), title_array=None,
+      file_path="results/fig/dataset.png", dpi=100
+    )
+    what_coarse = jnp.fft.rfft2(w_coarse, axes=(1, 2))
+    psi_hat = -what_coarse[..., 0] / model_coarse.laplacian_[None]
+    dpsidx = jnp.fft.irfft2(1j * psi_hat * model_coarse.kx[None], axes=(1, 2))
+    dpsidy = jnp.fft.irfft2(1j * psi_hat * model_coarse.ky[None], axes=(1, 2))
+    plt.plot(jnp.sum(dpsidx**2 + dpsidy**2, axis=(1, 2)), label='e_kin')
+    plt.plot(
+      jnp.sum(dpsidx**2 + dpsidy**2, axis=(1, 2))[0] *
+      jnp.exp(-model_fine.nu * jnp.linspace(0, model_fine.T, int(T/dt)+1)), label='decay'
+    )
+    plt.legend()
+    plt.savefig("results/fig/e_kin.png")
 
 if __name__ == "__main__":
   main()

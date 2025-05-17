@@ -132,7 +132,7 @@ def main():
 
     data_group = f.create_group("data")
     data_group.create_dataset("inputs", data=data["data"]["inputs"])
-    data_group.create_dataset("outputs", data=data["data"]["outputs_filter"])
+    data_group.create_dataset("outputs_filter", data=data["data"]["outputs_filter"])
     data_group.create_dataset(
       "outputs_correction", data=data["data"]["outputs_correction"]
     )
@@ -143,7 +143,7 @@ def main():
 
     f.attrs["readme"] = data["readme"]
 
-  plot_ = True
+  plot_ = False
   if plot_ and case_num == 1:
     """calculate the commutator of derivative and filter operator"""
     delta1 = jax.vmap(res_fn)(

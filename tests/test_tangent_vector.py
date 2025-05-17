@@ -7,10 +7,12 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 import yaml
+from matplotlib import pyplot as plt
 
-from ml4dynamics import utils
+from ml4dynamics.utils import utils
 
 
 jax.config.update('jax_enable_x64', True)
@@ -70,17 +72,19 @@ def test_ks_tangent_space():
   x = jnp.array(inputs)
   normal_vector = jax.grad(ae_loss_fn)(x)[:, :-1]
   tangent_vector_ = tangent_vector(x)
-  cos1 = jnp.sum(
-    jnp.abs(jnp.sum(normal_vector * tangent_vector_, axis=(-2, -1))) /
-    jnp.linalg.norm(normal_vector, axis=(-2, -1)) /
+  cos1 = jnp.abs(jnp.sum(normal_vector * tangent_vector_, axis=(-2, -1))) /\
+    jnp.linalg.norm(normal_vector, axis=(-2, -1)) /\
     jnp.linalg.norm(tangent_vector_, axis=(-2, -1)) 
-  )
   tangent_vector_ = tangent_vector(x) + outputs[:, :-1]
-  cos2 = jnp.sum(
-    jnp.abs(jnp.sum(normal_vector * tangent_vector_, axis=(-2, -1))) /
-    jnp.linalg.norm(normal_vector, axis=(-2, -1)) /
+  cos2 = jnp.abs(jnp.sum(normal_vector * tangent_vector_, axis=(-2, -1))) /\
+    jnp.linalg.norm(normal_vector, axis=(-2, -1)) /\
     jnp.linalg.norm(tangent_vector_, axis=(-2, -1)) 
-  )
+  t = np.arange(0, inputs.shape[0]) * 0.1
+  plt.plot(t, cos1, label="cos1")
+  plt.plot(t, cos1, label="cos2")
+  plt.yscale("log")
+  plt.savefig(f"results/fig/ks_cos.png")
+  plt.close()
   print("cos1", cos1)
   print("cos2", cos2)
   breakpoint()

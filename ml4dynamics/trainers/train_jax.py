@@ -277,7 +277,6 @@ def main():
             [x_, jnp.zeros((x_.shape[0], 1, x_.shape[-1]))], axis=1
           )
           x_ = x_.reshape(-1, x_.shape[-1])
-          breakpoint()
           return train_state.apply_fn(train_state.params, x_).reshape(x.shape)
         else:
           """a-priori evaluation"""
@@ -289,18 +288,33 @@ def main():
 
     if mode == "ae":
       utils.eval_a_priori(
-        forward_fn, train_dataloader, test_dataloader, inputs[:one_traj_length],
-        inputs[:one_traj_length], dim, f"reg_{fig_name}"
+        forward_fn=forward_fn,
+        train_dataloader=train_dataloader,
+        test_dataloader=test_dataloader,
+        inputs=inputs,
+        outputs=outputs,
+        dim=dim,
+        fig_name=f"reg_{fig_name}",
       )
       return
     utils.eval_a_priori(
-      partial(forward_fn, is_aug=True), train_dataloader, test_dataloader,
-      inputs[:one_traj_length], outputs[:one_traj_length], dim,
-      f"reg_{fig_name}"
+      forward_fn=partial(forward_fn, is_aug=True),
+      train_dataloader=train_dataloader,
+      test_dataloader=test_dataloader,
+      inputs=inputs,
+      outputs=outputs,
+      dim=dim,
+      fig_name=f"reg_{fig_name}",
     )
     utils.eval_a_posteriori(
-      config_dict, partial(forward_fn, is_aug=False), inputs_[:one_traj_length],
-      outputs_[:one_traj_length], dim, f"sim_{fig_name}"
+      config_dict=config_dict,
+      forward_fn=partial(forward_fn, is_aug=False),
+      inputs=inputs_[:one_traj_length],
+      outputs=outputs_[:one_traj_length],
+      dim=dim,
+      beta=0.0,
+      fig_name=f"sim_{fig_name}",
+      _plot=True,
     )
 
   parser = argparse.ArgumentParser()

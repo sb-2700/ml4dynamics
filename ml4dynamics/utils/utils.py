@@ -316,9 +316,6 @@ def prepare_unet_train_state(
     epochs = config.train.epochs_local
     decay = config.train.decay_local
     batch_size = config.train.batch_size_local
-    n_sample *= nx * ny
-    if config.case == "ks":
-      n_sample = n_sample // nx
   if config.case == "react_diff":
     input_features = 2
     output_features = 2
@@ -340,7 +337,7 @@ def prepare_unet_train_state(
   if load_dict:
     with open(f"{load_dict}", "rb") as f:
       params = pickle.load(f)
-  step_per_epoch = n_sample * config.sim.case_num // batch_size
+  step_per_epoch = n_sample * config.sim.case_num // batch_size + 1
   schedule = optax.piecewise_constant_schedule(
     init_value=config.train.lr,
     boundaries_and_scales={
@@ -540,11 +537,12 @@ def eval_a_posteriori(
   inputs: jnp.ndarray,
   outputs: jnp.ndarray,
   dim: int = 2,
+  beta: float = 0.0,
   fig_name: str = None,
+  _plot: bool = True,
 ):
 
   config = Box(config_dict)
-  beta = 0.0
   if config.case == "ns_channel":
     model = create_ns_channel_simulator(config)
     run_simulation = partial(
@@ -596,21 +594,20 @@ def eval_a_posteriori(
   print(f"simulation takes {time() - start:.2f}s...")
   if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
     print("similation contains NaN!")
-  # print(
-  #   "L2 error: x{:.4e}".format(
-  #     np.sum(
-  #       np.linalg.norm(
-  #         x_hist.reshape(step_num, -1) -
-  #         (inputs.transpose(0, 3, 1, 2)).reshape(step_num, -1),
-  #         axis=1
-  #       )
-  #     )
-  #   )
-  # )
+  print(
+    "L2 error: {:.4e}".format(
+      np.mean(
+        np.mean(
+          (x_hist.reshape(step_num, -1) - inputs.reshape(step_num, -1))**2,
+          axis=-1
+        )**2
+      )
+    )
+  )
   x_hist = jnp.where(jnp.abs(x_hist) < 5, x_hist, 5)
 
   # visualization
-  if dim == 1:
+  if dim == 1 and _plot:
     im_array = np.zeros((3, 1, *(outputs[..., 0].T).shape))
     im_array[0, 0] = inputs[..., 0].T
     im_array[1, 0] = x_hist[..., 0].T
@@ -624,7 +621,7 @@ def eval_a_posteriori(
       x_hist[..., 0],
       f"results/fig/{fig_name}_stats.png",
     )
-  elif dim == 2:
+  elif dim == 2 and _plot:
     n_plot = 6
     index_array = np.arange(
       0, n_plot * step_num // n_plot - 1, step_num // n_plot
@@ -655,6 +652,7 @@ def eval_a_posteriori(
         fig_name
       )
 
+  return x_hist
 
 ###############################################################################
 #                   Numerical solver of the reaction-diffusion equation:
