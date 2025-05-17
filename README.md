@@ -10,13 +10,20 @@ Install the package and set the environment
 git clone git@github.com:jiaxi98/ml4dynamics.git
 mkdir venv
 mkdir venv/ml4dynamics
-python3 -m venv venv/ml4dynamics
+python -m venv venv/ml4dynamics
 source venv/ml4dynamics/bin/activate
 cd ml4dynamics
 pip install --upgrade pip
-python -m pip install -r requirements.txt
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+pip install -r requirements.txt
 pip install -e .
 ```
+
+For discussion related to compatibility of jax and torch, please refer to:
+[link1](https://github.com/google-deepmind/magiclens/issues/4),
+[link2](https://github.com/jax-ml/jax/issues/18281),
+[link3](https://github.com/jax-ml/jax/issues/18032)
 
 ## Reproduce the results
 In the following we will provide the detailed procedure to reproduce the full experiments in the paper. All the estimated execution times are based on 4 GPUs (NVIDIA GeForce RTX 3090). All the checkpoints of network models are provided and can be used to directly generate the plots in `demo.ipynb` notebook without training the models.
