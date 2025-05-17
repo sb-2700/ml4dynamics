@@ -12,8 +12,8 @@ mkdir venv
 mkdir venv/ml4dynamics
 python3 -m venv venv/ml4dynamics
 source venv/ml4dynamics/bin/activate
-pip install -U "jax[cuda12]==0.4.29"
-pip install flax==0.9.0
+cd ml4dynamics
+pip install --upgrade pip
 python -m pip install -r requirements.txt
 pip install -e .
 ```
