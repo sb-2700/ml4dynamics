@@ -9,6 +9,7 @@ import yaml
 from box import Box
 from matplotlib import pyplot as plt
 
+from ml4dynamics.dataset_utils import dataset_utils
 from ml4dynamics.utils import utils
 
 
@@ -83,7 +84,10 @@ def main(config_dict: ml_collections.ConfigDict):
       model = utils.create_ns_channel_simulator(config_dict)
     else:
       model_fine, model_coarse = utils.create_fine_coarse_simulator(config_dict)
-      
+      res_fn, _ = dataset_utils.res_int_fn(config_dict)
+
+      model_fine.set_x_hist(np.fft.rfft(inputs[0]), model_fine.CN)
+      model_coarse.set_x_hist(np.fft.rfft(res_fn(inputs[0])), model_coarse.CN)
 
     if False:
       """visualizing the sensitivity analysis of the map"""
