@@ -1,8 +1,13 @@
+import argparse
+
 import jax
+
 jax.config.update("jax_enable_x64", True)
 import ml_collections
+import numpy as np
 import yaml
 from box import Box
+from matplotlib import pyplot as plt
 
 from ml4dynamics.utils import utils
 
@@ -17,10 +22,8 @@ def main(config_dict: ml_collections.ConfigDict):
   else:
     batch_size = config.train.batch_size
     arch = "mlp"
-  inputs, outputs, train_dataloader, test_dataloader, dataset = utils.load_data(
-    config_dict, batch_size
-  )
-  one_traj_length = inputs.shape[0] // config.sim.case_num 
+  inputs, outputs, _, _, dataset = utils.load_data(config_dict, batch_size)
+  one_traj_length = inputs.shape[0] // config.sim.case_num
   mode = "ols"
   dim = 2
   inputs_ = inputs
@@ -43,10 +46,10 @@ def main(config_dict: ml_collections.ConfigDict):
           "params": train_state.params,
           "batch_stats": train_state.batch_stats
         },
-        x,
+        x[None, ..., None],
         is_training=False
       )
-      return y_pred
+      return y_pred[0, ..., 0]
   else:
 
     @jax.jit
@@ -60,22 +63,48 @@ def main(config_dict: ml_collections.ConfigDict):
       return train_state.apply_fn(train_state.params, x_).reshape(x.shape)
 
   if mode == "ae":
-    utils.eval_a_priori(
-      forward_fn, train_dataloader, test_dataloader, inputs[:one_traj_length],
-      inputs[:one_traj_length], dim, f"reg_{fig_name}"
-    )
-    return
-  utils.eval_a_priori(
-    forward_fn, train_dataloader, test_dataloader, inputs[:one_traj_length],
-    outputs[:one_traj_length], dim, f"reg_{fig_name}"
-  )
-  utils.eval_a_posteriori(
-    config_dict, forward_fn, inputs_[:one_traj_length],
-    outputs_[:one_traj_length], dim, f"sim_{fig_name}"
-  )
+    """visualizing the distribution shift"""
+
+    def ae_loss_fn(x):
+      x_pred = forward_fn(x)
+      return np.sum(np.linalg.norm(x - x_pred, axis=-2))
+
+    ds = np.zeros(one_traj_length)
+    for i in range(one_traj_length):
+      ds[i] = ae_loss_fn(inputs[i:i + 1])
+    t = np.arange(0, inputs.shape[0]) * config.sim.dt
+    print(ds.min(), ds.max())
+    plt.plot(t, ds, label="distribution shift")
+    plt.savefig(f"results/fig/{pde}_ds.png")
+    plt.close()
+
+  elif mode == "ols" and _global:
+    if pde == "ns_channel":
+      model = utils.create_ns_channel_simulator(config_dict)
+    else:
+      model_fine, model_coarse = utils.create_fine_coarse_simulator(config_dict)
+      
+
+    if False:
+      """visualizing the sensitivity analysis of the map"""
+      jacobian = jax.vmap(jax.jacfwd(forward_fn))
+      batch_size = 200
+      jac = np.zeros((inputs.shape[1], inputs.shape[1]))
+      for i in range(0, inputs.shape[0], batch_size):
+        jac += np.sum(jacobian(inputs[i:i + batch_size, ..., 0]), axis=0)
+      jac /= inputs.shape[0]
+      plt.imshow(jac)
+      plt.colorbar()
+      plt.savefig(f"results/fig/{pde}_jacobian.png")
+      plt.close()
 
 
 if __name__ == "__main__":
-  with open("config/simulation.yaml", "r") as file:
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+    "-c", "--config", default=None, help="Set the configuration file path."
+  )
+  args = parser.parse_args()
+  with open(f"config/{args.config}.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
   main(config_dict)
