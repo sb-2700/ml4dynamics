@@ -21,11 +21,15 @@ def main(config_dict: ml_collections.ConfigDict):
     batch_size = config.train.batch_size_global
     arch = "unet"
   else:
-    batch_size = config.train.batch_size
+    batch_size = config.train.batch_size_local
     arch = "mlp"
   inputs, outputs, _, _, dataset = utils.load_data(config_dict, batch_size)
   one_traj_length = inputs.shape[0] // config.sim.case_num
   mode = "ols"
+  if mode == "ae":
+    ckpt_path = f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl"
+  else:
+    ckpt_path = f"ckpts/{pde}/{dataset}_{config.train.sgs}_{mode}_{arch}.pkl"
   dim = 2
   inputs_ = inputs
   outputs_ = outputs
@@ -36,7 +40,7 @@ def main(config_dict: ml_collections.ConfigDict):
       outputs_ = outputs[:, :-1]
 
   train_state, _ = utils.prepare_unet_train_state(
-    config_dict, f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl", _global, False
+    config_dict, ckpt_path, _global, False
   )
   if _global:
 
@@ -86,6 +90,7 @@ def main(config_dict: ml_collections.ConfigDict):
       model_fine, model_coarse = utils.create_fine_coarse_simulator(config_dict)
       res_fn, _ = dataset_utils.res_int_fn(config_dict)
 
+      breakpoint()
       model_fine.set_x_hist(np.fft.rfft(inputs[0]), model_fine.CN)
       model_coarse.set_x_hist(np.fft.rfft(res_fn(inputs[0])), model_coarse.CN)
 

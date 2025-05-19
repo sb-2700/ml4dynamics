@@ -103,7 +103,11 @@ def main():
 
     if mode == "ae" and not _global:
       return
-    # load_dict = f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl"
+    elif mode == "ae":
+      ckpt_path = f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl"
+    else:
+      ckpt_path = f"ckpts/{pde}/{dataset}_{config.train.sgs}_{mode}_{arch}.pkl"
+    # load_dict = ckpt_path
     # if not os.path.exists(load_dict):
     #   """TODO: no architecture check for the models"""
     #   load_dict = None
@@ -196,7 +200,7 @@ def main():
         loss_hist.append(total_loss)
 
       if (epoch + 1) % config.train.save == 0:
-        with open(f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl", "wb") as f:
+        with open(ckpt_path, "wb") as f:
           if _global:
             dict = {
               "params": train_state.params,
@@ -206,7 +210,7 @@ def main():
             dict = train_state.params
           pickle.dump(dict, f)
 
-    with open(f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl", "wb") as f:
+    with open(ckpt_path, "wb") as f:
       if _global:
         dict = {
           "params": train_state.params,
@@ -237,7 +241,7 @@ def main():
         outputs_ = outputs[:, :-1]
     one_traj_length = inputs.shape[0] // config.sim.case_num
     train_state, schedule = utils.prepare_unet_train_state(
-      config_dict, f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl", _global, False
+      config_dict, ckpt_path, _global, False
     )
     if _global:
 
@@ -350,7 +354,7 @@ def main():
     modes_array = ["ols"]
   elif pde == "ns_hit":
     modes_array = ["ae"]
-  # modes_array = ["ae"]
+  modes_array = ["ae"]
 
   for _ in modes_array:
     print(f"Training {_}...")
