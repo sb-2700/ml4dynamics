@@ -16,7 +16,6 @@ cd ml4dynamics
 pip install --upgrade pip
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-pip install -r requirements.txt
 pip install -e .
 ```
 

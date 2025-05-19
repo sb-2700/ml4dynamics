@@ -64,7 +64,10 @@ def load_data(
 
   with h5py.File(h5_filename, "r") as h5f:
     inputs = h5f["data"]["inputs"][()]
-    outputs = h5f["data"][f"outputs_{sgs}"][()]
+    if pde == "ns_channel":
+      outputs = h5f["data"]["outputs"][()]
+    else:
+      outputs = h5f["data"][f"outputs_{sgs}"][()]
     input_labels = config.train.input
     if input_labels != "global":
       if pde == "ks":
@@ -307,7 +310,6 @@ def prepare_unet_train_state(
   config = Box(config_dict)
   rng = random.PRNGKey(config.sim.seed)
   n_sample = int(config.sim.T / config.sim.dt * 0.8)
-  nx = ny = config.sim.n // config.sim.r
   if config.train.input == "global":
     epochs = config.train.epochs_global
     decay = config.train.decay_global
@@ -316,24 +318,32 @@ def prepare_unet_train_state(
     epochs = config.train.epochs_local
     decay = config.train.decay_local
     batch_size = config.train.batch_size_local
-  if config.case == "react_diff":
+  if config.case == "ns_channel":
+    nx = config.sim.nx
+    ny = config.sim.ny
     input_features = 2
-    output_features = 2
-    DIM = 2
-  elif config.case == "ns_hit":
-    if is_global:
-      input_features = 1
-    else:
-      input_features = len(config.train.input)
     output_features = 1
     DIM = 2
-  elif config.case == "ks":
-    if is_global:
-      input_features = 1
-    else:
-      input_features = len(config.train.input)
-    output_features = 1
-    DIM = 1
+  else:
+    nx = ny = config.sim.n // config.sim.r
+    if config.case == "react_diff":
+      input_features = 2
+      output_features = 2
+      DIM = 2
+    elif config.case == "ns_hit":
+      if is_global:
+        input_features = 1
+      else:
+        input_features = len(config.train.input)
+      output_features = 1
+      DIM = 2
+    elif config.case == "ks":
+      if is_global:
+        input_features = 1
+      else:
+        input_features = len(config.train.input)
+      output_features = 1
+      DIM = 1
   if load_dict:
     with open(f"{load_dict}", "rb") as f:
       params = pickle.load(f)
