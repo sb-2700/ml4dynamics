@@ -259,7 +259,7 @@ def main():
     else:
 
       @partial(jax.jit, static_argnums=(1, ))
-      def forward_fn(x, is_aug):
+      def _forward_fn(x, is_aug):
         """forward function for the local model
 
         The shape of the input and output is aligned with the
@@ -301,8 +301,10 @@ def main():
         fig_name=f"reg_{fig_name}",
       )
       return
+    if not _global: 
+      forward_fn = partial(_forward_fn, is_aug=True)
     utils.eval_a_priori(
-      forward_fn=partial(forward_fn, is_aug=True),
+      forward_fn=forward_fn,
       train_dataloader=train_dataloader,
       test_dataloader=test_dataloader,
       inputs=inputs,
@@ -310,9 +312,11 @@ def main():
       dim=dim,
       fig_name=f"reg_{fig_name}",
     )
+    if not _global: 
+      forward_fn = partial(_forward_fn, is_aug=False)
     utils.eval_a_posteriori(
       config_dict=config_dict,
-      forward_fn=partial(forward_fn, is_aug=False),
+      forward_fn=forward_fn,
       inputs=inputs_[:one_traj_length],
       outputs=outputs_[:one_traj_length],
       dim=dim,
@@ -354,7 +358,7 @@ def main():
     modes_array = ["ols"]
   elif pde == "ns_hit":
     modes_array = ["ae"]
-  modes_array = ["ae"]
+  modes_array = ["ols"]
 
   for _ in modes_array:
     print(f"Training {_}...")
