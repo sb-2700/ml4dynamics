@@ -228,6 +228,7 @@ def main():
     print(f"val loss: {val_loss:.4e}")
     plt.plot(loss_hist)
     plt.yscale("log")
+    plt.title(f"loss = {loss_hist[-1]:.3e}")
     plt.savefig(f"results/fig/losshist_{fig_name}.png")
     plt.close()
 
@@ -354,10 +355,6 @@ def main():
   if pde != "ns_channel":
     print(f"{config.train.sgs}")
   # modes_array = ["ae", "ols", "mols", "aols", "tr"]
-  if pde == "ks":
-    modes_array = ["ols"]
-  elif pde == "ns_hit":
-    modes_array = ["ae"]
   modes_array = ["ols"]
 
   for _ in modes_array:

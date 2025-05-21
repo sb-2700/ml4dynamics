@@ -94,6 +94,16 @@ def main(config_dict: ml_collections.ConfigDict):
         x_ = x.reshape(-1, x.shape[-1])
         return train_state.apply_fn(train_state.params,
                                     x_).reshape(*(x.shape[:2]), -1)
+      
+  def smagorinsky(x):
+    """smagorinsky model"""
+    Cs = 0.17
+    u_x = jnp.einsum("ij, ajk -> aik", model_coarse.L1, x[:, :-1])
+    breakpoint()
+    return jnp.concatenate(
+      [Cs * model_coarse.dx**2 * jnp.abs(u_x) * u_x,
+      jnp.zeros((x.shape[0], 1, x.shape[-1]))], axis=1
+    )
 
   if mode == "ae":
     """visualizing the distribution shift"""

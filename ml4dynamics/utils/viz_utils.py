@@ -217,7 +217,7 @@ def plot_stats_aux(
     raise ValueError(
       "The length of data_list and title_list must be the same."
     )
-  avg_length = 500
+  avg_length = 1000
   plt.figure(figsize=(6, 6))
   plt.subplot(211)
   truth = data_list[0]
