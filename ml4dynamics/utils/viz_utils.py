@@ -207,36 +207,42 @@ def plot_stats(
 
 def plot_stats_aux(
   t_array: np.array,
-  ground_truth: np.ndarray,
-  correction: np.ndarray,
+  data_list: list,
+  title_list: list,
   fig_name: str,
 ):
 
+  if len(data_list) != len(title_list):
+    breakpoint()
+    raise ValueError(
+      "The length of data_list and title_list must be the same."
+    )
   avg_length = 500
   plt.figure(figsize=(6, 6))
   plt.subplot(211)
-  plt.plot(t_array, np.mean(ground_truth, axis=1), label="truth")
-  plt.plot(
-    t_array,
-    np.mean(correction, axis=1),
-    label="stat_err={:.3e}|MSE={:.3e}".format(
-      np.mean(ground_truth[-avg_length:]) - np.mean(correction[-avg_length:]),
-      np.mean((ground_truth - correction)**2)
+  truth = data_list[0]
+  plt.plot(t_array, np.mean(truth, axis=1), label=title_list[0])
+  for i in range(1, len(data_list)):
+    plt.plot(
+      t_array, np.mean(data_list[i], axis=1),
+      label="{}: stat_err={:.3e}".format(
+        title_list[i],
+        np.mean(truth[-avg_length:]) - np.mean(data_list[i][-avg_length:]),
+      )
     )
-  )
   plt.legend()
   plt.xlabel(r"$T$")
   plt.ylabel(r"$\overline{u}$")
   plt.subplot(212)
-  plt.plot(t_array, np.mean(ground_truth**2, axis=1), label="truth")
-  plt.plot(
-    t_array,
-    np.mean(correction**2, axis=1),
-    label="stat_err={:.3e}".format(
-      np.mean(ground_truth[-avg_length:]**2) -
-      np.mean(correction[-avg_length:]**2),
+  plt.plot(t_array, np.mean(truth**2, axis=1), label=title_list[0])
+  for i in range(1, len(data_list)):
+    plt.plot(
+      t_array, np.mean(data_list[i]**2, axis=1),
+      label="{}: stat_err={:.3e}".format(
+        title_list[i],
+        np.mean(truth[-avg_length:]**2) - np.mean(data_list[i][-avg_length:]**2),
+      )
     )
-  )
   plt.legend()
   plt.xlabel(r"$T$")
   plt.ylabel(r"$\overline{u^2}$")

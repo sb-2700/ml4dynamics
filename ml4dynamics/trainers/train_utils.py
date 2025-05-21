@@ -127,10 +127,11 @@ def run_simulation_sgs(
     correction = forward_fn(x.reshape(1, *x.shape))
     if type_ == "pad":
       correction = correction[:, :-1]
-    # tmp = correction[0] * dx**2
-    tmp = (jnp.roll(correction[0], -1) - jnp.roll(correction[0], 1)) / 2 * dx
-    tmp = tmp.at[0].set(correction[0, 1] / 2 * dx)
-    tmp = tmp.at[-1].set(-correction[0, -2] / 2 * dx)
+    tmp = correction[0] * dx**2
+    if model.model_type == "KS":
+      tmp = (jnp.roll(correction[0], -1) - jnp.roll(correction[0], 1)) / 2 / dx
+      tmp = tmp.at[0].set(correction[0, 1] / 2 / dx)
+      tmp = tmp.at[-1].set(-correction[0, -2] / 2 / dx)
     return x_next + (tmp * (1 - beta) + beta * expert) * dt
 
   dt = model.dt

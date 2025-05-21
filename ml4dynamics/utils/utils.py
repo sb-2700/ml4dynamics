@@ -607,16 +607,23 @@ def eval_a_posteriori(
   print(f"simulation takes {time() - start:.2f}s...")
   if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
     print("similation contains NaN!")
-  print(
-    "L2 error: {:.4e}".format(
-      np.mean(
-        np.mean(
-          (x_hist.reshape(step_num, -1) - inputs.reshape(step_num, -1))**2,
-          axis=-1
-        )**2
-      )
-    )
-  )
+  print("baseline:", jnp.mean(
+    jnp.linalg.norm(inputs - model.x_hist[..., None], axis = (1, 2))
+  ))
+  print("ours:", jnp.mean(jnp.linalg.norm(inputs - x_hist, axis = (1, 2))))
+  # print(jnp.mean(
+  #   jnp.linalg.norm(
+  #     jax.vmap(res_fn)(model_fine.x_hist[..., None]) 
+  #     - model_coarse.x_hist[..., None],
+  #     axis = (1, 2)
+  #   )
+  # ))
+  # print(jnp.mean(
+  #   jnp.linalg.norm(
+  #     jax.vmap(res_fn)(model_fine.x_hist[..., None]) - x_hist,
+  #     axis = (1, 2)
+  #   )
+  # ))
   x_hist = jnp.where(jnp.abs(x_hist) < 5, x_hist, 5)
 
   # visualization
@@ -631,8 +638,8 @@ def eval_a_posteriori(
     )
     viz_utils.plot_stats_aux(
       np.arange(inputs.shape[0]) * model.dt,
-      inputs[..., 0],
-      x_hist[..., 0],
+      [inputs[..., 0], model.x_hist, x_hist[..., 0]],
+      ["truth", "baseline", "ours"],
       f"results/fig/{fig_name}_stats.png",
     )
   elif dim == 2 and _plot:
@@ -665,23 +672,6 @@ def eval_a_posteriori(
     plot_with_horizontal_colorbar(
       im_list, None, [5, n_plot], None, f"results/fig/{fig_name}.png", 100
     )
-    print(jnp.mean(
-      jnp.linalg.norm(inputs - model.x_hist[..., None], axis = (1, 2))
-    ))
-    print(jnp.mean(jnp.linalg.norm(inputs - x_hist, axis = (1, 2))))
-    # print(jnp.mean(
-    #   jnp.linalg.norm(
-    #     jax.vmap(res_fn)(model_fine.x_hist[..., None]) 
-    #     - model_coarse.x_hist[..., None],
-    #     axis = (1, 2)
-    #   )
-    # ))
-    # print(jnp.mean(
-    #   jnp.linalg.norm(
-    #     jax.vmap(res_fn)(model_fine.x_hist[..., None]) - x_hist,
-    #     axis = (1, 2)
-    #   )
-    # ))
 
     if config.case == "ns_hit":
       u_hist_true = np.zeros((*x_hist.shape[:-1], 2))
@@ -700,6 +690,7 @@ def eval_a_posteriori(
         fig_name
       )
 
+  breakpoint()
   return x_hist
 
 ###############################################################################
@@ -1343,7 +1334,6 @@ def plot_with_horizontal_colorbar(
     width = math.ceil(18 * shape[0] / shape[1] * im_list[0].shape[0] /
                 im_list[0].shape[1])
     fig_size = (12, width)
-  print(width)
   fig, axs = plt.subplots(shape[0], shape[1], figsize=fig_size)
   axs = axs.flatten()
   fraction = 0.05
