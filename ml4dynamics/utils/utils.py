@@ -7,6 +7,7 @@ import h5py
 import jax
 import jax.numpy as jnp
 import jax.scipy.sparse.linalg as jsla
+import math
 import ml_collections
 import numpy as np
 import optax
@@ -287,7 +288,7 @@ def hit_init_cond(type_: str, model):
     """
     w_hat = random.normal(
       random.PRNGKey(0), (model.N, model.N // 2 + 1)
-    ) * model.init_scale / (-model.laplacian_ + 49)**2.5 * model.N**1.85
+    ) * model.init_scale / (-model.laplacian_ + 49)**2.5 * model.N**1.5
   elif type_ == "taylor_green":
     """initialization scheme 4: Taylor-Green vortex
     the stress is zero
@@ -492,12 +493,11 @@ def eval_a_priori(
 
   if dim == 1:
     predicts = forward_fn(jnp.array(inputs))
-    im_array = np.zeros((3, 1, *(outputs[..., 0].T).shape))
-    im_array[0, 0] = outputs[..., 0].T
-    im_array[1, 0] = predicts[..., 0].T
-    im_array[2, 0] = (outputs - predicts)[..., 0].T
+    im_list = [
+      outputs[..., 0].T, predicts[..., 0].T, (outputs - predicts)[..., 0].T
+    ]
     plot_with_horizontal_colorbar(
-      im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
+      im_list, None, [len(im_list), 1], None, f"results/fig/{fig_name}.png", 100
     )
   elif dim == 2:
     # visualization
@@ -505,16 +505,19 @@ def eval_a_priori(
     index_array = np.arange(
       0, n_plot * outputs.shape[0] // n_plot - 1, outputs.shape[0] // n_plot
     )
-    im_array = np.zeros((3, n_plot, *(outputs[0, ..., 0].T).shape))
+    im_array = np.zeros((3, n_plot, *(outputs[0, ..., 0]).shape))
     for j in range(n_plot):
       predicts = forward_fn(
         jnp.array(inputs[index_array[j]:index_array[j] + 1])
       )
-      im_array[0, j] = outputs[index_array[j], ..., 0].T
-      im_array[1, j] = predicts[index_array[j], ..., 0].T
-      im_array[2, j] = (outputs - predicts)[index_array[j], ..., 0].T
+      im_array[0, j] = outputs[index_array[j], ..., 0]
+      im_array[1, j] = predicts[index_array[j], ..., 0]
+      im_array[2, j] = (outputs - predicts)[index_array[j], ..., 0]
+    im_list = []
+    for j in range(im_array.shape[0] * im_array.shape[1]):
+      im_list.append(im_array[j // n_plot, j % n_plot])
     plot_with_horizontal_colorbar(
-      im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
+      im_list, None, [3, n_plot], None, f"results/fig/{fig_name}.png", 100
     )
 
     # im_array = np.zeros((2, n_plot, *(outputs[0, ..., 0].T).shape))
@@ -566,34 +569,34 @@ def eval_a_posteriori(
       iter_ = model.adi
     elif config.case == "ns_hit":
       iter_ = model.CN_real
-      run_simulation = partial(
-        train_utils.run_simulation_sgs, forward_fn, model, model.CN_real,
-        outputs, beta, None
-      )
     elif config.case == "ks":
       iter_ = model.CN_FEM
       type_ = "pad"
     if config.train.sgs == "fine_correction":
       res_fn, int_fn = res_int_fn(config)
       run_simulation = partial(
-        train_utils.run_simulation_fine_grid_correction, forward_fn, model,
-        iter_, outputs, beta, res_fn, int_fn, type_
+        train_utils.run_simulation_fine_grid_correction, forward_fn,
+        model, iter_, outputs, beta, res_fn, int_fn, type_
       )
     elif config.train.sgs == "filter":
       run_simulation = partial(
-        train_utils.run_simulation_sgs, forward_fn, model, iter_, outputs, beta,
-        type_
+        train_utils.run_simulation_sgs, forward_fn,
+        model, iter_, outputs, beta, type_
       )
     elif config.train.sgs == "correction":
       run_simulation = partial(
-        train_utils.run_simulation_coarse_grid_correction, forward_fn, model,
-        iter_, outputs, beta, type_
+        train_utils.run_simulation_coarse_grid_correction, forward_fn,
+        model, iter_, outputs, beta, type_
       )
 
   start = time()
   step_num = model.step_num
   inputs = inputs[:step_num]
   outputs = outputs[:step_num]
+  if config.case == "ns_hit":
+    model.set_x_hist(np.fft.rfft2(inputs[0, ..., 0]), model.CN)
+  else:
+    model.run_simulation(inputs[0, ..., 0], iter_)
   x_hist = run_simulation(inputs[0])
   # NOTE: for general a-posteriori test
   # u_fft = jnp.zeros((2, nx, nx))
@@ -618,12 +621,13 @@ def eval_a_posteriori(
 
   # visualization
   if dim == 1 and _plot:
-    im_array = np.zeros((3, 1, *(outputs[..., 0].T).shape))
-    im_array[0, 0] = inputs[..., 0].T
-    im_array[1, 0] = x_hist[..., 0].T
-    im_array[2, 0] = (inputs - x_hist)[..., 0].T
+
+    im_list = [
+      inputs[..., 0].T, model.x_hist.T, (inputs[..., 0] - model.x_hist).T,
+      x_hist[..., 0].T, (inputs - x_hist)[..., 0].T
+    ]
     plot_with_horizontal_colorbar(
-      im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
+      im_list, None, [len(im_list), 1], None, f"results/fig/{fig_name}.png", 100
     )
     viz_utils.plot_stats_aux(
       np.arange(inputs.shape[0]) * model.dt,
@@ -633,17 +637,51 @@ def eval_a_posteriori(
     )
   elif dim == 2 and _plot:
     n_plot = 6
+    step_num = inputs.shape[0]
     index_array = np.arange(
       0, n_plot * step_num // n_plot - 1, step_num // n_plot
     )
-    im_array = np.zeros((3, n_plot, *(outputs[0, ..., 0]).shape))
+    im_array = np.zeros((5, n_plot, *(outputs[0, ..., 0]).shape))
     for j in range(n_plot):
       im_array[0, j] = inputs[index_array[j], ..., 0]
-      im_array[1, j] = x_hist[index_array[j], ..., 0]
-      im_array[2, j] = (inputs - x_hist)[index_array[j], ..., 0]
+      im_array[1, j] = model.x_hist[index_array[j]]
+      im_array[3, j] = x_hist[index_array[j], ..., 0]
+      im_array[2, j] = inputs[index_array[j], ..., 0] -\
+        model.x_hist[index_array[j]]
+      im_array[4, j] = inputs[index_array[j], ..., 0] -\
+        x_hist[index_array[j], ..., 0]
+      # im_array[0, j] = res_fn(
+      #   model_fine.x_hist[index_array[j], ..., None]
+      # )[..., 0]
+      # im_array[2, j] = res_fn(
+      #   model_fine.x_hist[index_array[j], ..., None]
+      # )[..., 0] - model_coarse.x_hist[index_array[j]]
+      # im_array[4, j] = res_fn(
+      #   model_fine.x_hist[index_array[j], ..., None]
+      # )[..., 0] - x_hist[index_array[j], ..., 0]
+    im_list = []
+    for j in range(im_array.shape[0] * im_array.shape[1]):
+      im_list.append(im_array[j // n_plot, j % n_plot])
     plot_with_horizontal_colorbar(
-      im_array, (12, 6), None, f"results/fig/{fig_name}.png", 100
+      im_list, None, [5, n_plot], None, f"results/fig/{fig_name}.png", 100
     )
+    print(jnp.mean(
+      jnp.linalg.norm(inputs - model.x_hist[..., None], axis = (1, 2))
+    ))
+    print(jnp.mean(jnp.linalg.norm(inputs - x_hist, axis = (1, 2))))
+    # print(jnp.mean(
+    #   jnp.linalg.norm(
+    #     jax.vmap(res_fn)(model_fine.x_hist[..., None]) 
+    #     - model_coarse.x_hist[..., None],
+    #     axis = (1, 2)
+    #   )
+    # ))
+    # print(jnp.mean(
+    #   jnp.linalg.norm(
+    #     jax.vmap(res_fn)(model_fine.x_hist[..., None]) - x_hist,
+    #     axis = (1, 2)
+    #   )
+    # ))
 
     if config.case == "ns_hit":
       u_hist_true = np.zeros((*x_hist.shape[:-1], 2))
@@ -1289,37 +1327,36 @@ def a_posteriori_analysis(
 
 
 def plot_with_horizontal_colorbar(
-  im_array,
-  fig_size=(10, 4),
-  title_array=None,
-  file_path=None,
-  dpi=100,
+  im_list: list,
+  title_array: list = None,
+  shape: list = None,
+  fig_size: tuple = None,
+  file_path: list = None,
+  dpi: int = 100,
   cmap=cm.twilight
 ):
 
-  if not isinstance(im_array, np.ndarray):
-    im_array = np.array(im_array)
-  fig, axs = plt.subplots(
-    im_array.shape[0], im_array.shape[1], figsize=fig_size
-  )
+  if np.prod(shape) != len(im_list):
+    breakpoint()
+    raise Exception("the number of images does not match the shape!s")
+  if fig_size is None:
+    width = math.ceil(18 * shape[0] / shape[1] * im_list[0].shape[0] /
+                im_list[0].shape[1])
+    fig_size = (12, width)
+  print(width)
+  fig, axs = plt.subplots(shape[0], shape[1], figsize=fig_size)
   axs = axs.flatten()
   fraction = 0.05
   pad = 0.001
-  for i in range(im_array.shape[0]):
-    for j in range(im_array.shape[1]):
-      im = axs[i * im_array.shape[1] + j].imshow(im_array[i, j], cmap=cmap)
-      if title_array is not None and\
-        title_array[i * im_array.shape[1] +j] is not None:
-        axs[i * im_array.shape[1] +
-            j].set_title(title_array[i * im_array.shape[1] + j])
-      axs[i * im_array.shape[1] + j].axis("off")
-      fig.colorbar(
-        im,
-        ax=axs[i * im_array.shape[1] + j],
-        fraction=fraction,
-        pad=pad,
-        orientation="horizontal"
-      )
+  for i in range(len(im_list)):
+    im = axs[i].imshow(im_list[i], cmap=cmap)
+    if title_array is not None and\
+      title_array[i] is not None:
+      axs[i].set_title(title_array[i])
+    axs[i].axis("off")
+    fig.colorbar(
+      im, ax=axs[i], fraction=fraction, pad=pad, orientation="horizontal"
+    )
   fig.tight_layout(pad=0.0)
 
   if file_path is not None:

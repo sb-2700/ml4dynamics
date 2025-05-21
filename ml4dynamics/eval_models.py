@@ -114,8 +114,9 @@ def main(config_dict: ml_collections.ConfigDict):
   elif mode == "ols":
     if not _global: 
       forward_fn = partial(_forward_fn, is_aug=False)
-    x0_fine = jnp.kron(inputs[0, ..., 0], jnp.ones((r, r)))
-    model_fine.set_x_hist(np.fft.rfft2(x0_fine), model_fine.CN)
+    # NOTE: this is for future test of random initial condition
+    # x0_fine = jnp.kron(inputs[0, ..., 0], jnp.ones((r, r)))
+    # model_fine.set_x_hist(np.fft.rfft2(x0_fine), model_fine.CN)
     model_coarse.set_x_hist(np.fft.rfft2(inputs[0, ..., 0]), model_coarse.CN)
 
     x_hist = utils.eval_a_posteriori(
@@ -130,38 +131,7 @@ def main(config_dict: ml_collections.ConfigDict):
     )
 
     fig_name = f"{pde}_{config.train.sgs}_{mode}_{arch}"
-    n_plot = 6
-    step_num = inputs.shape[0]
-    index_array = np.arange(
-      0, n_plot * step_num // n_plot - 1, step_num // n_plot
-    )
-    im_array = np.zeros((5, n_plot, *(outputs[0, ..., 0]).shape))
-    for j in range(n_plot):
-      im_array[0, j] = res_fn(
-        model_fine.x_hist[index_array[j], ..., None]
-      )[..., 0]
-      im_array[1, j] = model_coarse.x_hist[index_array[j]]
-      im_array[2, j] = res_fn(model_fine.x_hist[index_array[j], ..., None])[..., 0] - model_coarse.x_hist[index_array[j]]
-      im_array[3, j] = x_hist[index_array[j], ..., 0]
-      im_array[4, j] = res_fn(model_fine.x_hist[index_array[j], ..., None])[..., 0] - x_hist[index_array[j], ..., 0]
-    utils.plot_with_horizontal_colorbar(
-      im_array, (12, 10), None, f"results/fig/eval_{fig_name}.png", 100
-    )
-    print(jnp.mean(
-      jnp.linalg.norm(
-        jax.vmap(res_fn)(model_fine.x_hist[..., None]) 
-        - model_coarse.x_hist[..., None],
-        axis = (1, 2)
-      )
-    ))
-    print(jnp.mean(
-      jnp.linalg.norm(
-        jax.vmap(res_fn)(model_fine.x_hist[..., None]) - x_hist,
-        axis = (1, 2)
-      )
-    ))
     breakpoint()
-
 
     if False:
       """visualizing the sensitivity analysis of the map"""
