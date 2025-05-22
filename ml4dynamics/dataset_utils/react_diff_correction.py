@@ -27,7 +27,7 @@ def main():
   dt = config.sim.dt
   step_num = int(T / dt)
   n = config.sim.n
-  r = config.sim.r
+  r = config.sim.rx
   sgs_model = config.train.sgs
   # solver parameters
   rng = random.PRNGKey(config.sim.seed)

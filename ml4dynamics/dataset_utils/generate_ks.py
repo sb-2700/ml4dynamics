@@ -35,7 +35,7 @@ def main():
     N1 = config.sim.n
   elif BC == "Dirichlet-Neumann":
     N1 = config.sim.n - 1
-  r = config.sim.r
+  r = config.sim.rx
   N2 = N1 // r
   rng = random.PRNGKey(config.sim.seed)
   case_num = config.sim.case_num

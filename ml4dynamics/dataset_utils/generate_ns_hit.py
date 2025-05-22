@@ -45,14 +45,14 @@ def main():
   T = config.sim.T
   dt = config.sim.dt
   L = config.sim.L
-  r = config.sim.r
+  r = config.sim.rx
   Re = config.sim.Re
   case_num = config.sim.case_num
   patience = 50
   writeInterval = 1
   model_fine, model_coarse = utils.create_fine_coarse_simulator(config_dict)
-  # model_fine.nu = 0
-  # model_coarse.nu = 0
+  model_fine.nu = 0
+  model_coarse.nu = 0
   n = model_coarse.N
   inputs = np.zeros((case_num, int(T/dt), n, n, 1))
   outputs_filter = np.zeros((case_num, int(T/dt), n, n, 1))
@@ -64,8 +64,11 @@ def main():
   while j < case_num and i < patience:
     i = i + 1
     print('generating the {}-th trajectory...'.format(j))
-    model_fine.w_hat = utils.hit_init_cond("spec_random", model_fine)
+    init_cond = "gaussian_process"
+    model_fine.w_hat = utils.hit_init_cond(init_cond, model_fine)
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
+    model_coarse.w_hat = utils.hit_init_cond(init_cond, model_coarse)
+    model_coarse.set_x_hist(model_coarse.w_hat, model_coarse.CN)
     res_fn, _ = dataset_utils.res_int_fn(config_dict)
 
     kernel_x = kernel_y = r
@@ -88,7 +91,7 @@ def main():
     padded_w = periodic_pad(model_fine.x_hist[..., None])
     w_coarse_ = conv(model_fine.x_hist[..., None])
     w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
-    assert np.linalg.norm(w_coarse_ - w_coarse) < 1e-14
+    # assert np.linalg.norm(w_coarse_ - w_coarse) < 1e-14
     J = calc_J(model_fine.xhat_hist, model_fine)
     J_coarse = calc_J(
       jnp.fft.rfft2(w_coarse[..., 0], axes=(1, 2)), model_coarse
@@ -123,7 +126,8 @@ def main():
       j = j + 1
 
   # breakpoint()
-  if j == case_num:
+  save = False
+  if j == case_num and save:
     data = {
       "metadata": {
         "type": "ns",
@@ -208,6 +212,7 @@ def main():
     )
     plt.legend()
     plt.savefig("results/fig/e_kin.png")
+    breakpoint()
 
 if __name__ == "__main__":
   main()

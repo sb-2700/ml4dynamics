@@ -29,7 +29,7 @@ def calc_correction(rd_fine, rd_coarse, nx: float, r: int, uv: jnp.ndarray):
 def res_int_fn(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
-  r = config.sim.r
+  r = config.sim.rx
   if config.case == "ks":
     BC = config.sim.BC
     if BC == "periodic":
