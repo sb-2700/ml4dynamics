@@ -13,6 +13,7 @@ import numpy as np
 import optax
 import torch
 from box import Box
+from flax import traverse_util
 from flax.training.train_state import TrainState
 from jax import random as random
 from jax.numpy.linalg import solve
@@ -77,7 +78,9 @@ def load_data(
         if "u" in input_labels:
           tmp.append(inputs)
         else:
-          """NOTE: for local model, the u must be included in the input for simulation"""
+          """NOTE: now for local model, the u must be included in the input for simulation
+          since we need the input of u for later a-posteriori test
+          """
           raise Exception("u is not in input_labels")
         if "u_x" in input_labels:
           tmp.append(jnp.einsum("ij, ajk -> aik", model.L1, inputs))
@@ -144,7 +147,8 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
   rng = random.PRNGKey(config.sim.seed)
   T = config.sim.T
   dt = config.sim.dt
-  r = config.sim.r
+  rx = config.sim.rx
+  rt = config.sim.rt
   L = config.sim.L
   n = config.sim.n
   # model parameters
@@ -162,9 +166,9 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
     )
     model_coarse = dynamics.react_diff(
       L=L,
-      N=(n // r)**2 * 2,
+      N=(n // rx)**2 * 2,
       T=T,
-      dt=dt,
+      dt=dt*rt,
       alpha=config.sim.alpha,
       beta=config.sim.beta,
       gamma=config.sim.gamma,
@@ -179,7 +183,7 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
       N1 = n
     elif BC == "Dirichlet-Neumann":
       N1 = n - 1
-    N2 = N1 // r
+    N2 = N1 // rx
     # fine simulation
     model_fine = dynamics.KS(
       L=L,
@@ -197,7 +201,7 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
       L=L,
       N=N2,
       T=T,
-      dt=dt,
+      dt=dt*rt,
       nu=config.sim.nu,
       c=c,
       BC=BC,
@@ -215,11 +219,11 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
     )
     model_coarse = dynamics.ns_hit(
       L=L * np.pi,
-      N=n // r,
+      N=n // rx,
       T=T,
-      dt=dt,
+      dt=dt*rt,
       nu=1 / config.sim.Re,
-      init_scale=(n // r)**(1.5),
+      init_scale=(n // rx)**(1.5),
     )
   return model_fine, model_coarse
 
@@ -326,7 +330,7 @@ def prepare_unet_train_state(
     output_features = 1
     DIM = 2
   else:
-    nx = ny = config.sim.n // config.sim.r
+    nx = ny = config.sim.n // config.sim.rx
     if config.case == "react_diff":
       input_features = 2
       output_features = 2
@@ -372,9 +376,13 @@ def prepare_unet_train_state(
     if not load_dict:
       if config.case == "ks":
         # init 1D UNet
-        params = unet.init(init_rngs, jnp.ones([1, nx, input_features]))
+        params = unet.init(
+          init_rngs, jnp.ones([1, nx, input_features], dtype=jnp.float64)
+        )
       else:
-        params = unet.init(init_rngs, jnp.ones([1, nx, ny, input_features]))
+        params = unet.init(
+          init_rngs, jnp.ones([1, nx, ny, input_features], dtype=jnp.float64)
+        )
     train_state = CustomTrainState.create(
       apply_fn=unet.apply,
       params=params["params"],
@@ -385,12 +393,22 @@ def prepare_unet_train_state(
     mlp = MLP(output_features)
     rng = jax.random.PRNGKey(0)
     if not load_dict:
-      params = mlp.init(random.PRNGKey(0), np.zeros((1, input_features)))
+      params = mlp.init(
+        random.PRNGKey(0), np.zeros((1, input_features), dtype=jnp.float64)
+      )
     train_state = TrainState.create(
       apply_fn=mlp.apply,
       params=params,
       tx=optimizer,
     )
+
+  flat_params = traverse_util.flatten_dict(train_state.params)
+  for value in flat_params.values():
+    if isinstance(value, jnp.ndarray) and value.dtype != jnp.float64:
+      breakpoint()
+      raise Exception(
+        f"Parameter {value} is not in float64, please check the model"
+      )
   return train_state, schedule
 
 
@@ -1138,7 +1156,7 @@ def a_posteriori_analysis(
     N1 = config.sim.n
   elif BC == "Dirichlet-Neumann":
     N1 = config.sim.n - 1
-  r = config.sim.r
+  r = config.sim.rx
   N2 = N1 // r
   rng = random.PRNGKey(config.sim.seed)
   train_mode = config.train.mode
