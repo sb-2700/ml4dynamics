@@ -302,7 +302,7 @@ def main():
         fig_name=f"reg_{fig_name}",
       )
       return
-    if not _global: 
+    if not _global:
       forward_fn = partial(_forward_fn, is_aug=True)
     utils.eval_a_priori(
       forward_fn=forward_fn,
@@ -313,7 +313,7 @@ def main():
       dim=dim,
       fig_name=f"reg_{fig_name}",
     )
-    if not _global: 
+    if not _global:
       forward_fn = partial(_forward_fn, is_aug=False)
     utils.eval_a_posteriori(
       config_dict=config_dict,

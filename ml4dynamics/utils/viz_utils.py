@@ -11,13 +11,9 @@ def plot_psd_cmp(u_list, dx_list, title_list, fig_name):
 
   if len(u_list) != len(dx_list) or len(u_list) != len(title_list):
     breakpoint()
-    raise ValueError(
-      "The length of u_list and dx_list must be the same."
-    )
+    raise ValueError("The length of u_list and dx_list must be the same.")
   for i in range(len(u_list)):
-    k_bins, E_k_avg = calc_utils.power_spec_over_t(
-      u_list[i], dx_list[i]
-    )
+    k_bins, E_k_avg = calc_utils.power_spec_over_t(u_list[i], dx_list[i])
     # assert np.linalg.norm(k_bins - k_bins_true) < 1e-14
     plt.plot(k_bins, E_k_avg, label=title_list[i])
     if i == 0:
@@ -219,9 +215,7 @@ def plot_stats_aux(
 
   if len(data_list) != len(title_list):
     breakpoint()
-    raise ValueError(
-      "The length of data_list and title_list must be the same."
-    )
+    raise ValueError("The length of data_list and title_list must be the same.")
   avg_length = 1000
   plt.figure(figsize=(6, 6))
   plt.subplot(211)
@@ -229,7 +223,8 @@ def plot_stats_aux(
   plt.plot(t_array, np.mean(truth, axis=1), label=title_list[0])
   for i in range(1, len(data_list)):
     plt.plot(
-      t_array, np.mean(data_list[i], axis=1),
+      t_array,
+      np.mean(data_list[i], axis=1),
       label="{}: stat_err={:.3e}".format(
         title_list[i],
         np.mean(truth[-avg_length:]) - np.mean(data_list[i][-avg_length:]),
@@ -242,10 +237,12 @@ def plot_stats_aux(
   plt.plot(t_array, np.mean(truth**2, axis=1), label=title_list[0])
   for i in range(1, len(data_list)):
     plt.plot(
-      t_array, np.mean(data_list[i]**2, axis=1),
+      t_array,
+      np.mean(data_list[i]**2, axis=1),
       label="{}: stat_err={:.3e}".format(
         title_list[i],
-        np.mean(truth[-avg_length:]**2) - np.mean(data_list[i][-avg_length:]**2),
+        np.mean(truth[-avg_length:]**2) -
+        np.mean(data_list[i][-avg_length:]**2),
       )
     )
   plt.legend()

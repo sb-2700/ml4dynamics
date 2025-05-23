@@ -29,7 +29,7 @@ def main(config_dict: ml_collections.ConfigDict):
   input_labels = config.train.input
 
   if pde == "ns_channel":
-      model = utils.create_ns_channel_simulator(config_dict)
+    model = utils.create_ns_channel_simulator(config_dict)
   else:
     model_fine, model_coarse = utils.create_fine_coarse_simulator(config_dict)
     res_fn, _ = dataset_utils.res_int_fn(config_dict)
@@ -53,6 +53,7 @@ def main(config_dict: ml_collections.ConfigDict):
     config_dict, ckpt_path, _global, False
   )
   if _global:
+
     @jax.jit
     def forward_fn(x):
       if _jacobian:
@@ -98,15 +99,18 @@ def main(config_dict: ml_collections.ConfigDict):
         x_ = x.reshape(-1, x.shape[-1])
         return train_state.apply_fn(train_state.params,
                                     x_).reshape(*(x.shape[:2]), -1)
-      
+
   def smagorinsky(x):
     """smagorinsky model"""
     Cs = 0.17
     u_x = jnp.einsum("ij, ajk -> aik", model_coarse.L1, x[:, :-1])
     breakpoint()
     return jnp.concatenate(
-      [Cs * model_coarse.dx**2 * jnp.abs(u_x) * u_x,
-      jnp.zeros((x.shape[0], 1, x.shape[-1]))], axis=1
+      [
+        Cs * model_coarse.dx**2 * jnp.abs(u_x) * u_x,
+        jnp.zeros((x.shape[0], 1, x.shape[-1]))
+      ],
+      axis=1
     )
 
   if mode == "ae":
@@ -126,7 +130,7 @@ def main(config_dict: ml_collections.ConfigDict):
     plt.close()
 
   elif mode == "ols":
-    if not _global: 
+    if not _global:
       forward_fn = partial(_forward_fn, is_aug=False)
     # NOTE: this is for future test of random initial condition
     # x0_fine = jnp.kron(inputs[0, ..., 0], jnp.ones((r, r)))

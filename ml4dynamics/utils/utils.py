@@ -1,4 +1,5 @@
 import gc
+import math
 import pickle
 from functools import partial
 from time import time
@@ -7,7 +8,6 @@ import h5py
 import jax
 import jax.numpy as jnp
 import jax.scipy.sparse.linalg as jsla
-import math
 import ml_collections
 import numpy as np
 import optax
@@ -168,7 +168,7 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
       L=L,
       N=(n // rx)**2 * 2,
       T=T,
-      dt=dt*rt,
+      dt=dt * rt,
       alpha=config.sim.alpha,
       beta=config.sim.beta,
       gamma=config.sim.gamma,
@@ -201,7 +201,7 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
       L=L,
       N=N2,
       T=T,
-      dt=dt*rt,
+      dt=dt * rt,
       nu=config.sim.nu,
       c=c,
       BC=BC,
@@ -221,7 +221,7 @@ def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
       L=L * np.pi,
       N=n // rx,
       T=T,
-      dt=dt*rt,
+      dt=dt * rt,
       nu=1 / config.sim.Re,
       init_scale=(n // rx)**(1.5),
     )
@@ -592,18 +592,18 @@ def eval_a_posteriori(
     if config.train.sgs == "fine_correction":
       res_fn, int_fn = res_int_fn(config)
       run_simulation = partial(
-        train_utils.run_simulation_fine_grid_correction, forward_fn,
-        model, iter_, outputs, beta, res_fn, int_fn, type_
+        train_utils.run_simulation_fine_grid_correction, forward_fn, model,
+        iter_, outputs, beta, res_fn, int_fn, type_
       )
     elif config.train.sgs == "filter":
       run_simulation = partial(
-        train_utils.run_simulation_sgs, forward_fn,
-        model, iter_, outputs, beta, type_
+        train_utils.run_simulation_sgs, forward_fn, model, iter_, outputs, beta,
+        type_
       )
     elif config.train.sgs == "correction":
       run_simulation = partial(
-        train_utils.run_simulation_coarse_grid_correction, forward_fn,
-        model, iter_, outputs, beta, type_
+        train_utils.run_simulation_coarse_grid_correction, forward_fn, model,
+        iter_, outputs, beta, type_
       )
 
   start = time()
@@ -624,13 +624,14 @@ def eval_a_posteriori(
   print(f"simulation takes {time() - start:.2f}s...")
   if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
     print("similation contains NaN!")
-  print("baseline:", jnp.mean(
-    jnp.linalg.norm(inputs - model.x_hist[..., None], axis = (1, 2))
-  ))
-  print("ours:", jnp.mean(jnp.linalg.norm(inputs - x_hist, axis = (1, 2))))
+  print(
+    "baseline:",
+    jnp.mean(jnp.linalg.norm(inputs - model.x_hist[..., None], axis=(1, 2)))
+  )
+  print("ours:", jnp.mean(jnp.linalg.norm(inputs - x_hist, axis=(1, 2))))
   # print(jnp.mean(
   #   jnp.linalg.norm(
-  #     jax.vmap(res_fn)(model_fine.x_hist[..., None]) 
+  #     jax.vmap(res_fn)(model_fine.x_hist[..., None])
   #     - model_coarse.x_hist[..., None],
   #     axis = (1, 2)
   #   )
@@ -706,17 +707,20 @@ def eval_a_posteriori(
       u_hist[..., 1] = -jnp.fft.irfft2(1j * psi * model.kx[None], axes=(1, 2))
       u_hist[..., 0] = jnp.fft.irfft2(1j * psi * model.ky[None], axes=(1, 2))
       u_hist_baseline[
-        ..., 1] = -jnp.fft.irfft2(1j * psi_baseline * model.kx[None], axes=(1, 2))
+        ...,
+        1] = -jnp.fft.irfft2(1j * psi_baseline * model.kx[None], axes=(1, 2))
       u_hist_baseline[
-        ..., 0] = jnp.fft.irfft2(1j * psi_baseline * model.ky[None], axes=(1, 2))
+        ...,
+        0] = jnp.fft.irfft2(1j * psi_baseline * model.ky[None], axes=(1, 2))
       viz_utils.plot_psd_cmp(
-        [u_hist_true, u_hist_baseline, u_hist], [[model.dx, model.dx],
-        [model.dx, model.dx], [model.dx, model.dx]],
+        [u_hist_true, u_hist_baseline, u_hist],
+        [[model.dx, model.dx], [model.dx, model.dx], [model.dx, model.dx]],
         ["truth", "baseline", "ours"], fig_name
       )
 
   breakpoint()
   return x_hist
+
 
 ###############################################################################
 #                   Numerical solver of the reaction-diffusion equation:
@@ -1356,8 +1360,9 @@ def plot_with_horizontal_colorbar(
     breakpoint()
     raise Exception("the number of images does not match the shape!s")
   if fig_size is None:
-    width = math.ceil(18 * shape[0] / shape[1] * im_list[0].shape[0] /
-                im_list[0].shape[1])
+    width = math.ceil(
+      18 * shape[0] / shape[1] * im_list[0].shape[0] / im_list[0].shape[1]
+    )
     fig_size = (12, width)
   fig, axs = plt.subplots(shape[0], shape[1], figsize=fig_size)
   axs = axs.flatten()

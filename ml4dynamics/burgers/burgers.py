@@ -108,7 +108,7 @@ def main():
 
   def ic(x):
     """Initial condition"""
-    return jnp.sin(x)# + jnp.sin(x/2)
+    return jnp.sin(x)  # + jnp.sin(x/2)
     # return jnp.sin(x)
 
   L = 2 * jnp.pi
@@ -143,10 +143,14 @@ def main():
   for i in i_list:
     r"""NOTE: with initial condition \sin(x), the real part is 0"""
     plt.plot(
-      jnp.linspace(dt, T, step_num), u_godunov_hat[:, i].imag, label=f'Im(k={i-64})'
+      jnp.linspace(dt, T, step_num),
+      u_godunov_hat[:, i].imag,
+      label=f'Im(k={i-64})'
     )
     plt.plot(
-      jnp.linspace(dt, T, step_num), u_godunov_hat[:, i].real, label=f'Re(k={i-64})'
+      jnp.linspace(dt, T, step_num),
+      u_godunov_hat[:, i].real,
+      label=f'Re(k={i-64})'
     )
   plt.legend(loc='center left')
   plt.title("Godunov")
@@ -154,10 +158,14 @@ def main():
   u_spectral = jnp.fft.fftshift(u_spectral, axes=1)
   for i in i_list:
     plt.plot(
-      jnp.linspace(dt, T, step_num), u_spectral[:, i].imag, label=f'Im(k={i-64})'
+      jnp.linspace(dt, T, step_num),
+      u_spectral[:, i].imag,
+      label=f'Im(k={i-64})'
     )
     plt.plot(
-      jnp.linspace(dt, T, step_num), u_spectral[:, i].real, label=f'Re(k={i-64})'
+      jnp.linspace(dt, T, step_num),
+      u_spectral[:, i].real,
+      label=f'Re(k={i-64})'
     )
   plt.legend(loc='center left')
   plt.title("Spectral")
