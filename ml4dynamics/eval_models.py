@@ -19,6 +19,7 @@ def main(config_dict: ml_collections.ConfigDict):
   config = Box(config_dict)
   pde = config.case
   _global = (config.train.input == "global")
+  _jacobian = False
   if _global:
     batch_size = config.train.batch_size_global
     arch = "unet"
@@ -26,7 +27,6 @@ def main(config_dict: ml_collections.ConfigDict):
     batch_size = config.train.batch_size_local
     arch = "mlp"
   input_labels = config.train.input
-  r = config.sim.r
 
   if pde == "ns_channel":
       model = utils.create_ns_channel_simulator(config_dict)
@@ -55,6 +55,8 @@ def main(config_dict: ml_collections.ConfigDict):
   if _global:
     @jax.jit
     def forward_fn(x):
+      if _jacobian:
+        x = x[None, ..., None]
       y_pred, _ = train_state.apply_fn_with_bn(
         {
           "params": train_state.params,
@@ -63,8 +65,10 @@ def main(config_dict: ml_collections.ConfigDict):
         x,
         is_training=False
       )
+      if _jacobian:
+        y_pred = y_pred[0, ..., 0]
       return y_pred
-  else:
+
     @partial(jax.jit, static_argnums=(1, ))
     def _forward_fn(x, is_aug):
       """forward function for the local model
@@ -127,24 +131,21 @@ def main(config_dict: ml_collections.ConfigDict):
     # NOTE: this is for future test of random initial condition
     # x0_fine = jnp.kron(inputs[0, ..., 0], jnp.ones((r, r)))
     # model_fine.set_x_hist(np.fft.rfft2(x0_fine), model_fine.CN)
-    model_coarse.set_x_hist(np.fft.rfft2(inputs[0, ..., 0]), model_coarse.CN)
+    # model_coarse.set_x_hist(np.fft.rfft2(inputs[0, ..., 0]), model_coarse.CN)
 
-    x_hist = utils.eval_a_posteriori(
+    _ = utils.eval_a_posteriori(
       config_dict=config_dict,
       forward_fn=forward_fn,
       inputs=inputs_[:one_traj_length],
       outputs=outputs_[:one_traj_length],
       dim=dim,
       beta=0.0,
-      fig_name=None,
-      _plot=False,
+      fig_name=f"{pde}_{config.train.sgs}_{mode}_{arch}",
     )
 
-    fig_name = f"{pde}_{config.train.sgs}_{mode}_{arch}"
-    breakpoint()
-
-    if False:
+    if True:
       """visualizing the sensitivity analysis of the map"""
+      _jacobian = True
       jacobian = jax.vmap(jax.jacfwd(forward_fn))
       batch_size = 200
       jac = np.zeros((inputs.shape[1], inputs.shape[1]))

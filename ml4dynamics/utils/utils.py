@@ -258,7 +258,7 @@ def create_ns_hit_simulator(config_dict: ml_collections.ConfigDict):
   return model
 
 
-def hit_init_cond(type_: str, model):
+def hit_init_cond(type_: str, model, key: PRNGKey):
 
   if type_ == "real_random":
     """initialization scheme 1: random real-space initialization
@@ -268,7 +268,7 @@ def hit_init_cond(type_: str, model):
     2. the discrepancy between the fine and coarse simulation is very big
     while their energy spectra are similar
     """
-    w = random.normal(random.PRNGKey(0), (model.N, model.N))
+    w = random.normal(key, (model.N, model.N))
     w_hat = jnp.fft.rfft2(w)
     w_hat = w_hat.at[0, 0].set(0)
   elif type_ == "spec_random":
@@ -280,7 +280,7 @@ def hit_init_cond(type_: str, model):
     f0 = 8
     w_hat = jnp.zeros((model.N, model.N // 2 + 1))
     w_hat = w_hat.at[:f0, :f0].set(
-      random.normal(random.PRNGKey(0), (f0, f0)) * model.init_scale
+      random.normal(key, (f0, f0)) * model.init_scale
     )
     w_hat = w_hat.at[0, 0].set(0)
   elif type_ == "gaussian_process":
@@ -291,7 +291,7 @@ def hit_init_cond(type_: str, model):
     the spectra looks okay
     """
     w_hat = random.normal(
-      random.PRNGKey(0), (model.N, model.N // 2 + 1)
+      key, (model.N, model.N // 2 + 1)
     ) * model.init_scale / (-model.laplacian_ + 49)**2.5 * model.N**1.5
   elif type_ == "taylor_green":
     """initialization scheme 4: Taylor-Green vortex
@@ -391,7 +391,6 @@ def prepare_unet_train_state(
     )
   else:
     mlp = MLP(output_features)
-    rng = jax.random.PRNGKey(0)
     if not load_dict:
       params = mlp.init(
         random.PRNGKey(0), np.zeros((1, input_features), dtype=jnp.float64)
@@ -403,7 +402,7 @@ def prepare_unet_train_state(
     )
 
   flat_params = traverse_util.flatten_dict(train_state.params)
-  for value in flat_params.values():
+  for _, value in flat_params.items():
     if isinstance(value, jnp.ndarray) and value.dtype != jnp.float64:
       breakpoint()
       raise Exception(
@@ -694,18 +693,26 @@ def eval_a_posteriori(
     if config.case == "ns_hit":
       u_hist_true = np.zeros((*x_hist.shape[:-1], 2))
       u_hist = np.zeros((*x_hist.shape[:-1], 2))
+      u_hist_baseline = np.zeros((*x_hist.shape[:-1], 2))
       psi_true = jnp.fft.rfft2(inputs[..., 0],
                                axes=(1, 2)) / model.laplacian_[None]
       psi = jnp.fft.rfft2(x_hist[..., 0], axes=(1, 2)) / model.laplacian_[None]
+      psi_baseline = jnp.fft.rfft2(model.x_hist, axes=(1, 2)) /\
+        model.laplacian_[None]
       u_hist_true[
         ..., 1] = -jnp.fft.irfft2(1j * psi_true * model.kx[None], axes=(1, 2))
       u_hist_true[
         ..., 0] = jnp.fft.irfft2(1j * psi_true * model.ky[None], axes=(1, 2))
       u_hist[..., 1] = -jnp.fft.irfft2(1j * psi * model.kx[None], axes=(1, 2))
       u_hist[..., 0] = jnp.fft.irfft2(1j * psi * model.ky[None], axes=(1, 2))
+      u_hist_baseline[
+        ..., 1] = -jnp.fft.irfft2(1j * psi_baseline * model.kx[None], axes=(1, 2))
+      u_hist_baseline[
+        ..., 0] = jnp.fft.irfft2(1j * psi_baseline * model.ky[None], axes=(1, 2))
       viz_utils.plot_psd_cmp(
-        u_hist_true, u_hist, [model.dx, model.dx], [model.dx, model.dx],
-        fig_name
+        [u_hist_true, u_hist_baseline, u_hist], [[model.dx, model.dx],
+        [model.dx, model.dx], [model.dx, model.dx]],
+        ["truth", "baseline", "ours"], fig_name
       )
 
   breakpoint()

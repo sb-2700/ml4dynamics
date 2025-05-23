@@ -6,19 +6,24 @@ from matplotlib import cm
 from ml4dynamics.utils import calc_utils
 
 
-def plot_psd_cmp(u1, u2, dx1, dx2, fig_name):
+def plot_psd_cmp(u_list, dx_list, title_list, fig_name):
   """Compare and plot the power spectrum density of the fluid field"""
 
-  k_bins_true, E_k_avg_true = calc_utils.power_spec_over_t(u1, dx1)
-  k_bins, E_k_avg = calc_utils.power_spec_over_t(u2, dx2)
-  # assert np.linalg.norm(k_bins - k_bins_true) < 1e-14
-  plt.plot(k_bins_true, E_k_avg_true, label="true")
-  plt.plot(
-    k_bins_true,
-    E_k_avg_true[1] * (k_bins_true / k_bins_true[1])**(-5 / 3),
-    label="-5/3 law"
-  )
-  plt.plot(k_bins, E_k_avg, label="sim")
+  if len(u_list) != len(dx_list) or len(u_list) != len(title_list):
+    breakpoint()
+    raise ValueError(
+      "The length of u_list and dx_list must be the same."
+    )
+  for i in range(len(u_list)):
+    k_bins, E_k_avg = calc_utils.power_spec_over_t(
+      u_list[i], dx_list[i]
+    )
+    # assert np.linalg.norm(k_bins - k_bins_true) < 1e-14
+    plt.plot(k_bins, E_k_avg, label=title_list[i])
+    if i == 0:
+      plt.plot(
+        k_bins, E_k_avg[1] * (k_bins / k_bins[1])**(-5 / 3), label="-5/3 law"
+      )
   plt.xlabel("k")
   plt.ylabel("E(k)")
   plt.xscale("log")

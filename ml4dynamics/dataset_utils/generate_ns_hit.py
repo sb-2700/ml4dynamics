@@ -10,6 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 import yaml
 from box import Box
+from jax import random
 from jax.lax import conv_general_dilated
 from matplotlib import pyplot as plt
 
@@ -48,11 +49,12 @@ def main():
   r = config.sim.rx
   Re = config.sim.Re
   case_num = config.sim.case_num
+  rng = random.PRNGKey(config.sim.seed)
   patience = 50
   writeInterval = 1
   model_fine, model_coarse = utils.create_fine_coarse_simulator(config_dict)
-  model_fine.nu = 0
-  model_coarse.nu = 0
+  # model_fine.nu = 0
+  # model_coarse.nu = 0
   n = model_coarse.N
   inputs = np.zeros((case_num, int(T/dt), n, n, 1))
   outputs_filter = np.zeros((case_num, int(T/dt), n, n, 1))
@@ -62,12 +64,13 @@ def main():
   j = 0
   i = 0
   while j < case_num and i < patience:
+    rng, key = random.split(rng)
     i = i + 1
     print('generating the {}-th trajectory...'.format(j))
-    init_cond = "gaussian_process"
-    model_fine.w_hat = utils.hit_init_cond(init_cond, model_fine)
+    init_cond = "spec_random"
+    model_fine.w_hat = utils.hit_init_cond(init_cond, model_fine, key)
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
-    model_coarse.w_hat = utils.hit_init_cond(init_cond, model_coarse)
+    model_coarse.w_hat = utils.hit_init_cond(init_cond, model_coarse, key)
     model_coarse.set_x_hist(model_coarse.w_hat, model_coarse.CN)
     res_fn, _ = dataset_utils.res_int_fn(config_dict)
 
@@ -125,8 +128,7 @@ def main():
       outputs_correction[j] = output_correction
       j = j + 1
 
-  # breakpoint()
-  save = False
+  save = True
   if j == case_num and save:
     data = {
       "metadata": {
@@ -197,9 +199,12 @@ def main():
       im_array[1, k] = output_filter[index_array[k], ..., 0]
       im_array[2, k] = output_correction[index_array[k], ..., 0]
       im_array[3, k] = delta[index_array[k], ..., 0]
+    im_list = []
+    for i in range(4):
+      for j in range(n_plot):
+        im_list.append(im_array[i, j])
     utils.plot_with_horizontal_colorbar(
-      im_array, fig_size=(12, 12), title_array=None,
-      file_path="results/fig/dataset.png", dpi=100
+      im_list, None, [4, n_plot], (12, 12), "results/fig/dataset.png", 100
     )
     what_coarse = jnp.fft.rfft2(w_coarse, axes=(1, 2))
     psi_hat = -what_coarse[..., 0] / model_coarse.laplacian_[None]

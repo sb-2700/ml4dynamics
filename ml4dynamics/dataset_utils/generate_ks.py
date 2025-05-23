@@ -201,6 +201,7 @@ def main():
     plt.close()
 
     _, s, vt = svd(jnp.array(inputs - jnp.mean(inputs, axis=0)[None]), full_matrices=False)
+    """NOTE: the singular values decay very slowly for KS equation"""
     s = np.array(s)
     vt = np.array(vt)
     n = 3
