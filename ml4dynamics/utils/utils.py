@@ -70,38 +70,51 @@ def load_data(
       outputs = h5f["data"]["outputs"][()]
     else:
       outputs = h5f["data"][f"outputs_{sgs}"][()]
-    input_labels = config.train.input
-    if input_labels != "global":
-      if pde == "ks":
-        _, model = create_fine_coarse_simulator(config_dict)
-        tmp = []
-        if "u" in input_labels:
-          tmp.append(inputs)
-        else:
-          """NOTE: now for local model, the u must be included in the input for simulation
-          since we need the input of u for later a-posteriori test
-          """
-          raise Exception("u is not in input_labels")
-        if "u_x" in input_labels:
-          tmp.append(jnp.einsum("ij, ajk -> aik", model.L1, inputs))
-        if "u_xx" in input_labels:
-          tmp.append(jnp.einsum("ij, ajk -> aik", model.L2, inputs))
-        if "u_xxxx" in input_labels:
-          tmp.append(jnp.einsum("ij, ajk -> aik", model.L4, inputs))
-        inputs = np.concatenate(tmp, axis=-1)
-      elif pde == "ns_hit":
-        _, model = create_fine_coarse_simulator(config_dict)
-        tmp = []
-        if "u" in input_labels:
-          tmp.append(inputs)
-        if "u_x" in input_labels:
-          what = jnp.fft.rfft2(inputs, axes=(1, 2))
-          psi_hat = -what[..., 0] / model.laplacian_[None]
-          dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
-          dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
-          tmp.append(dpsidy)
-          tmp.append(-dpsidx)
-        inputs = np.hstack(tmp)
+    """use derivatives as input"""
+    # input_labels = config.train.input
+    # if input_labels != "global":
+    #   if pde == "ks":
+    #     _, model = create_fine_coarse_simulator(config_dict)
+    #     tmp = []
+    #     if "u" in input_labels:
+    #       tmp.append(inputs)
+    #     else:
+    #       """NOTE: now for local model, the u must be included in the input for simulation
+    #       since we need the input of u for later a-posteriori test
+    #       """
+    #       raise Exception("u is not in input_labels")
+    #     if "u_x" in input_labels:
+    #       tmp.append(jnp.einsum("ij, ajk -> aik", model.L1, inputs))
+    #     if "u_xx" in input_labels:
+    #       tmp.append(jnp.einsum("ij, ajk -> aik", model.L2, inputs))
+    #     if "u_xxxx" in input_labels:
+    #       tmp.append(jnp.einsum("ij, ajk -> aik", model.L4, inputs))
+    #     inputs = np.concatenate(tmp, axis=-1)
+    #   elif pde == "ns_hit":
+    #     _, model = create_fine_coarse_simulator(config_dict)
+    #     tmp = []
+    #     if "u" in input_labels:
+    #       tmp.append(inputs)
+    #     if "u_x" in input_labels:
+    #       what = jnp.fft.rfft2(inputs, axes=(1, 2))
+    #       psi_hat = -what[..., 0] / model.laplacian_[None]
+    #       dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
+    #       dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
+    #       tmp.append(dpsidy)
+    #       tmp.append(-dpsidx)
+    #     inputs = np.hstack(tmp)
+    """use stencils as input"""
+    tmp = [inputs]
+    if config.train.input % 2 != 1:
+      raise Exception("Size of stencils must be odd")
+    for i in range(config.train.input // 2):
+      """NOTE: currently only support 1D KS with DN BC"""
+      tmp.append(np.roll(inputs, i + 1, axis=1))
+      tmp[-1][:, 0] = 0
+      tmp.append(np.roll(inputs, -(i + 1), axis=1))
+      tmp[-1][:, -1] = 0
+    inputs = np.concatenate(tmp, axis=-1)
+    breakpoint()
     # if mode == "torch":
     #   inputs = inputs.transpose(0, 3, 1, 2)
     #   outputs = outputs.transpose(0, 3, 1, 2)
