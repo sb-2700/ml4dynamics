@@ -40,22 +40,17 @@ class MLP(nn.Module):
   output_dim: int
   hidden_dim: int = 32
   dtype: str = jnp.float64
-
-  def setup(self):
-    self.dense1 = nn.Dense(self.hidden_dim, param_dtype=self.dtype)
-    self.dense2 = nn.Dense(self.hidden_dim, param_dtype=self.dtype)
-    self.dense3 = nn.Dense(self.output_dim, param_dtype=self.dtype)
-    self.linear_residue = nn.Dense(self.output_dim, param_dtype=self.dtype)
-
+  
+  @nn.compact
   def __call__(self, inputs):
     non_linear = nn.tanh
     x = inputs.reshape(inputs.shape[0], -1)
-    x = self.dense1(x)
+    x = nn.Dense(self.hidden_dim, param_dtype=self.dtype)(x)
     x = non_linear(x)
-    x = self.dense2(x)
+    x = nn.Dense(self.hidden_dim, param_dtype=self.dtype)(x)
     x = non_linear(x)
-    x = self.dense3(x)
-    return x + self.linear_residue(inputs.reshape(inputs.shape[0], -1))
+    x = nn.Dense(self.output_dim, param_dtype=self.dtype)(x)
+    return x + nn.Dense(self.output_dim, param_dtype=self.dtype)(inputs.reshape(inputs.shape[0], -1))
 
 
 """cVAE model definitions."""
@@ -99,13 +94,6 @@ class cVAE(nn.Module):
   latents: int = 128
   features: int = 256
   dtype: str = jnp.float64
-
-  # def __init__(self, latents, features):
-  #   super(cVAE, self).__init__()
-  #   self.latents = latents
-  #   self.features = features
-  #   self.encoder = None
-  #   self.decoder = None
 
   def setup(self):
     self.encoder = vae_Encoder(self.latents, self.dtype)
