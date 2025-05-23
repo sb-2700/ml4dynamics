@@ -8,6 +8,7 @@ import jax.random as random
 import numpy as np
 import yaml
 from box import Box
+from jax.scipy.linalg import svd
 from matplotlib import pyplot as plt
 
 from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
@@ -182,6 +183,32 @@ def main():
       axs[i].legend()
     c = config_dict["sim"]["c"]
     plt.savefig(f"results/fig/cmp_c{c:.1f}.png", dpi=300)
+    plt.close()
+
+    """visualize the Fourier & POD modes"""
+    input_hat = jnp.fft.fft(
+      jnp.concatenate([inputs, jnp.zeros((inputs.shape[0], 1))], axis=1), axis=1
+    )
+    input_hat = jnp.fft.fftshift(input_hat, axes=1)
+    # i_list = [96, 112, 120, 124, 126, 127, 128, 129, 130, 132, 136, 144, 160]
+    i_list = [128, 129, 130, 132, 144]
+    _ = plt.figure(figsize=(20, 12))
+    for i in i_list:
+      plt.plot(input_hat[:, i].real, label=f"Re(k = {i - 128})")
+      plt.plot(input_hat[:, i].imag, label=f"Im(k = {i - 128})")
+    plt.legend(loc = "lower left")
+    plt.savefig("results/fig/ks_ode.png", dpi=300)
+    plt.close()
+
+    _, s, vt = svd(jnp.array(inputs - jnp.mean(inputs, axis=0)[None]), full_matrices=False)
+    s = np.array(s)
+    vt = np.array(vt)
+    n = 3
+    _ = plt.figure(figsize=(12, 12))
+    transform_x = inputs @ vt.T
+    plt.scatter(transform_x[:, 0], transform_x[:, 1], s=0.1)
+    plt.savefig(f"results/fig/pod_ks.png")
+    breakpoint()
     plt.close()
 
 

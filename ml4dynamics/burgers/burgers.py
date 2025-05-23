@@ -139,21 +139,25 @@ def main():
   plt.subplot(211)
   u_godunov_hat = jnp.fft.fft(u_godunov, axis=1)
   u_godunov_hat = jnp.fft.fftshift(u_godunov_hat, axes=1)
-  i_list = [0, 32, 48, 56, 60, 62, 63, 64, 65, 66, 68, 72, 80, 96, 127]
+  i_list = [64, 65, 66, 68, 80]
   for i in i_list:
+    r"""NOTE: with initial condition \sin(x), the real part is 0"""
     plt.plot(
-      jnp.linspace(dt, T, step_num),
-      u_godunov_hat[:, i].imag, label=f'$k={i-64}$'
+      jnp.linspace(dt, T, step_num), u_godunov_hat[:, i].imag, label=f'Im(k={i-64})'
+    )
+    plt.plot(
+      jnp.linspace(dt, T, step_num), u_godunov_hat[:, i].real, label=f'Re(k={i-64})'
     )
   plt.legend(loc='center left')
   plt.title("Godunov")
   plt.subplot(212)
   u_spectral = jnp.fft.fftshift(u_spectral, axes=1)
-  i_list = [1, 32, 48, 56, 60, 62, 63, 64, 65, 66, 68, 72, 80, 96, 128]
   for i in i_list:
     plt.plot(
-      jnp.linspace(dt, T, step_num),
-      u_spectral[:, i].imag, label=f'$k={i-64}$'
+      jnp.linspace(dt, T, step_num), u_spectral[:, i].imag, label=f'Im(k={i-64})'
+    )
+    plt.plot(
+      jnp.linspace(dt, T, step_num), u_spectral[:, i].real, label=f'Re(k={i-64})'
     )
   plt.legend(loc='center left')
   plt.title("Spectral")
