@@ -8,6 +8,7 @@ import jax
 
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
+import numpy as np
 import yaml
 from box import Box
 from flax import traverse_util
@@ -229,7 +230,7 @@ def main():
       )
       val_loss += loss
     print(f"val loss: {val_loss:.4e}")
-    plt.plot(loss_hist)
+    plt.plot(np.linspace(0, epochs, len(loss_hist)), loss_hist)
     plt.yscale("log")
     plt.title(f"loss = {loss_hist[-1]:.3e}")
     plt.savefig(f"results/fig/losshist_{fig_name}.png")

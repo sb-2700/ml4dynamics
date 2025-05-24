@@ -127,9 +127,9 @@ def augment_inputs(inputs: jnp.ndarray, pde: str, input_labels, model):
     for i in range(input_labels // 2):
       """NOTE: currently only support 1D KS with DN BC"""
       tmp.append(jnp.roll(inputs, i + 1, axis=1))
-      tmp[-1] = tmp[-1].at[:, 0].set(0)
+      tmp[-1] = tmp[-1].at[:, :i+1].set(0)
       tmp.append(jnp.roll(inputs, -(i + 1), axis=1))
-      tmp[-1] = tmp[-1].at[:, -1].set(0)
+      tmp[-1] = tmp[-1].at[:, -i-1:].set(0)
   else:
     """use derivatives as input"""
     tmp = []
