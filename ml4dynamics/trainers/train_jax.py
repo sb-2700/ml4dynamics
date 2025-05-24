@@ -128,6 +128,9 @@ def main():
       fig_name = f"{pde}_{config.train.sgs}_{mode}_{arch}"
     else:
       fig_name = f"{pde}_{mode}_{arch}"
+    augment_inputs_fn = partial(
+      utils.augment_inputs, pde=pde, input_labels=input_labels, model=sim_model
+    )
     if mode == "tr":
       lambda_ = config.train.lambda_
       ae_train_state, _ = utils.prepare_unet_train_state(
@@ -237,7 +240,7 @@ def main():
     outputs_ = outputs
     if pde == "ks":
       dim = 1
-      if config.sim.BC == "Dirichlet-Neumann":
+      if config.sim.BC == "Dirichlet-Neumann" and _global:
         inputs_ = inputs[:, :-1]
         outputs_ = outputs[:, :-1]
     one_traj_length = inputs.shape[0] // config.sim.case_num
@@ -266,18 +269,9 @@ def main():
         The shape of the input and output is aligned with the
         global model for the a-posteriori simulation
         """
-        tmp = []
         if not is_aug:
           """a-posteriori evaluation"""
-          if "u" in input_labels:
-            tmp.append(x[:, :-1])
-          if "u_x" in input_labels:
-            tmp.append(jnp.einsum("ij, ajk -> aik", sim_model.L1, x[:, :-1]))
-          if "u_xx" in input_labels:
-            tmp.append(jnp.einsum("ij, ajk -> aik", sim_model.L2, x[:, :-1]))
-          if "u_xxxx" in input_labels:
-            tmp.append(jnp.einsum("ij, ajk -> aik", sim_model.L4, x[:, :-1]))
-          x_ = jnp.concatenate(tmp, axis=-1)
+          x_ = augment_inputs_fn(x[:, :-1])
           x_ = jnp.concatenate(
             [x_, jnp.zeros((x_.shape[0], 1, x_.shape[-1]))], axis=1
           )

@@ -70,61 +70,21 @@ def load_data(
       outputs = h5f["data"]["outputs"][()]
     else:
       outputs = h5f["data"][f"outputs_{sgs}"][()]
-    """use derivatives as input"""
-    # input_labels = config.train.input
-    # if input_labels != "global":
-    #   if pde == "ks":
-    #     _, model = create_fine_coarse_simulator(config_dict)
-    #     tmp = []
-    #     if "u" in input_labels:
-    #       tmp.append(inputs)
-    #     else:
-    #       """NOTE: now for local model, the u must be included in the input for simulation
-    #       since we need the input of u for later a-posteriori test
-    #       """
-    #       raise Exception("u is not in input_labels")
-    #     if "u_x" in input_labels:
-    #       tmp.append(jnp.einsum("ij, ajk -> aik", model.L1, inputs))
-    #     if "u_xx" in input_labels:
-    #       tmp.append(jnp.einsum("ij, ajk -> aik", model.L2, inputs))
-    #     if "u_xxxx" in input_labels:
-    #       tmp.append(jnp.einsum("ij, ajk -> aik", model.L4, inputs))
-    #     inputs = np.concatenate(tmp, axis=-1)
-    #   elif pde == "ns_hit":
-    #     _, model = create_fine_coarse_simulator(config_dict)
-    #     tmp = []
-    #     if "u" in input_labels:
-    #       tmp.append(inputs)
-    #     if "u_x" in input_labels:
-    #       what = jnp.fft.rfft2(inputs, axes=(1, 2))
-    #       psi_hat = -what[..., 0] / model.laplacian_[None]
-    #       dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
-    #       dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
-    #       tmp.append(dpsidy)
-    #       tmp.append(-dpsidx)
-    #     inputs = np.hstack(tmp)
-    """use stencils as input"""
-    tmp = [inputs]
-    if config.train.input % 2 != 1:
-      raise Exception("Size of stencils must be odd")
-    for i in range(config.train.input // 2):
-      """NOTE: currently only support 1D KS with DN BC"""
-      tmp.append(np.roll(inputs, i + 1, axis=1))
-      tmp[-1][:, 0] = 0
-      tmp.append(np.roll(inputs, -(i + 1), axis=1))
-      tmp[-1][:, -1] = 0
-    inputs = np.concatenate(tmp, axis=-1)
-    breakpoint()
-    # if mode == "torch":
-    #   inputs = inputs.transpose(0, 3, 1, 2)
-    #   outputs = outputs.transpose(0, 3, 1, 2)
-    #   GPU = 0
-    #   device = torch.device(
-    #     "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
-    #   )
-    #   inputs = torch.from_numpy(inputs).to(device)
-    #   outputs = torch.from_numpy(outputs).to(device)
-  if pde == "ks" and config.sim.BC == "Dirichlet-Neumann":
+
+  if config.train.input != "global":
+    _, model = create_fine_coarse_simulator(config_dict)
+    inputs = np.array(augment_inputs(inputs, pde, config.train.input, model))
+  # if mode == "torch":
+  #   inputs = inputs.transpose(0, 3, 1, 2)
+  #   outputs = outputs.transpose(0, 3, 1, 2)
+  #   GPU = 0
+  #   device = torch.device(
+  #     "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
+  #   )
+  #   inputs = torch.from_numpy(inputs).to(device)
+  #   outputs = torch.from_numpy(outputs).to(device)
+  if pde == "ks" and config.sim.BC == "Dirichlet-Neumann" and\
+    config.train.input == "global":
     # NOTE: the zero-padding is only physically correct for the u and u_x
     inputs_padding = np.zeros((inputs.shape[0], 1, inputs.shape[-1]))
     outputs_padding = np.zeros((outputs.shape[0], 1, outputs.shape[-1]))
@@ -151,7 +111,54 @@ def load_data(
     batch_size=batch_size,
     shuffle=True  # , num_workers=num_workers
   )
+  print("inputs shape:", inputs.shape)
   return inputs, outputs, train_dataloader, test_dataloader, dataset
+
+
+def augment_inputs(inputs: jnp.ndarray, pde: str, input_labels, model):
+  """This function is used both at loading the data and inference time"""
+  
+  if isinstance(input_labels, int):
+    """use stencils as input"""
+
+    tmp = [inputs]
+    if input_labels % 2 != 1:
+      raise Exception("Size of stencils must be odd")
+    for i in range(input_labels // 2):
+      """NOTE: currently only support 1D KS with DN BC"""
+      tmp.append(jnp.roll(inputs, i + 1, axis=1))
+      tmp[-1] = tmp[-1].at[:, 0].set(0)
+      tmp.append(jnp.roll(inputs, -(i + 1), axis=1))
+      tmp[-1] = tmp[-1].at[:, -1].set(0)
+  else:
+    """use derivatives as input"""
+    tmp = []
+    if pde == "ks":
+      if "u" in input_labels:
+        tmp.append(inputs)
+      else:
+        """NOTE: now for local model, the u must be included in the input for simulation
+        since we need the input of u for later a-posteriori test
+        """
+        raise Exception("u is not in input_labels")
+      if "u_x" in input_labels:
+        tmp.append(jnp.einsum("ij, ajk -> aik", model.L1, inputs))
+      if "u_xx" in input_labels:
+        tmp.append(jnp.einsum("ij, ajk -> aik", model.L2, inputs))
+      if "u_xxxx" in input_labels:
+        tmp.append(jnp.einsum("ij, ajk -> aik", model.L4, inputs))
+    elif pde == "ns_hit":
+      if "u" in input_labels:
+        tmp.append(inputs)
+      if "u_x" in input_labels:
+        what = jnp.fft.rfft2(inputs, axes=(1, 2))
+        psi_hat = -what[..., 0] / model.laplacian_[None]
+        dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
+        dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
+        tmp.append(dpsidy)
+        tmp.append(-dpsidx)
+
+  return jnp.concatenate(tmp, axis=-1)
 
 
 def create_fine_coarse_simulator(config_dict: ml_collections.ConfigDict):
@@ -328,7 +335,8 @@ def prepare_unet_train_state(
   config = Box(config_dict)
   rng = random.PRNGKey(config.sim.seed)
   n_sample = int(config.sim.T / config.sim.dt * 0.8)
-  if config.train.input == "global":
+  inputs_labels = config.train.input
+  if inputs_labels == "global":
     epochs = config.train.epochs_global
     decay = config.train.decay_global
     batch_size = config.train.batch_size_global
@@ -352,14 +360,16 @@ def prepare_unet_train_state(
       if is_global:
         input_features = 1
       else:
-        input_features = len(config.train.input)
+        input_features = inputs_labels if isinstance(inputs_labels, int)\
+          else len(inputs_labels)
       output_features = 1
       DIM = 2
     elif config.case == "ks":
       if is_global:
         input_features = 1
       else:
-        input_features = len(config.train.input)
+        input_features = inputs_labels if isinstance(inputs_labels, int)\
+          else len(inputs_labels)
       output_features = 1
       DIM = 1
   if load_dict:
@@ -625,8 +635,8 @@ def eval_a_posteriori(
   outputs = outputs[:step_num]
   if config.case == "ns_hit":
     model.set_x_hist(np.fft.rfft2(inputs[0, ..., 0]), model.CN)
-  else:
-    model.run_simulation(inputs[0, ..., 0], iter_)
+  elif config.case == "ks":
+    model.run_simulation(inputs[0, :, 0], iter_)
   x_hist = run_simulation(inputs[0])
   # NOTE: for general a-posteriori test
   # u_fft = jnp.zeros((2, nx, nx))
