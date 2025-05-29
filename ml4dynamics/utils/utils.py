@@ -603,7 +603,7 @@ def eval_a_posteriori(
       outputs, beta
     )
   else:
-    _, model = create_fine_coarse_simulator(config)
+    model_fine, model = create_fine_coarse_simulator(config)
     type_ = None
     if config.case == "react_diff":
       iter_ = model.adi
@@ -629,119 +629,163 @@ def eval_a_posteriori(
         iter_, outputs, beta, type_
       )
 
-  start = time()
-  step_num = model.step_num
-  inputs = inputs[:step_num]
-  outputs = outputs[:step_num]
-  if config.case == "ns_hit":
-    model.set_x_hist(np.fft.rfft2(inputs[0, ..., 0]), model.CN)
-  elif config.case == "ks":
-    model.run_simulation(inputs[0, :, 0], iter_)
-  x_hist = run_simulation(inputs[0])
-  # NOTE: for general a-posteriori test
-  # u_fft = jnp.zeros((2, nx, nx))
-  # u_fft = u_fft.at[:, :10, :10].set(
-  #   random.normal(key=random.PRNGKey(0), shape=(2, 10, 10))
-  # )
-  # uv0 = jnp.real(jnp.fft.fftn(u_fft, axes=(1, 2))) / nx
-  print(f"simulation takes {time() - start:.2f}s...")
-  if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
-    print("similation contains NaN!")
-  print(
-    "baseline:",
-    jnp.mean(jnp.linalg.norm(inputs - model.x_hist[..., None], axis=(1, 2)))
-  )
-  print("ours:", jnp.mean(jnp.linalg.norm(inputs - x_hist, axis=(1, 2))))
-  # print(jnp.mean(
-  #   jnp.linalg.norm(
-  #     jax.vmap(res_fn)(model_fine.x_hist[..., None])
-  #     - model_coarse.x_hist[..., None],
-  #     axis = (1, 2)
-  #   )
-  # ))
-  # print(jnp.mean(
-  #   jnp.linalg.norm(
-  #     jax.vmap(res_fn)(model_fine.x_hist[..., None]) - x_hist,
-  #     axis = (1, 2)
-  #   )
-  # ))
-  x_hist = jnp.where(jnp.abs(x_hist) < 5, x_hist, 5)
-
-  # visualization
-  if dim == 1 and _plot:
-
-    im_list = [
-      inputs[..., 0].T, model.x_hist.T, (inputs[..., 0] - model.x_hist).T,
-      x_hist[..., 0].T, (inputs - x_hist)[..., 0].T
-    ]
-    plot_with_horizontal_colorbar(
-      im_list, None, [len(im_list), 1], None, f"results/fig/{fig_name}.png", 100
-    )
-    viz_utils.plot_stats_aux(
-      np.arange(inputs.shape[0]) * model.dt,
-      [inputs[..., 0], model.x_hist, x_hist[..., 0]],
-      ["truth", "baseline", "ours"],
-      f"results/fig/{fig_name}_stats.png",
-    )
-  elif dim == 2 and _plot:
-    n_plot = 6
-    step_num = inputs.shape[0]
-    index_array = np.arange(
-      0, n_plot * step_num // n_plot - 1, step_num // n_plot
-    )
-    im_array = np.zeros((5, n_plot, *(outputs[0, ..., 0]).shape))
-    for j in range(n_plot):
-      im_array[0, j] = inputs[index_array[j], ..., 0]
-      im_array[1, j] = model.x_hist[index_array[j]]
-      im_array[3, j] = x_hist[index_array[j], ..., 0]
-      im_array[2, j] = inputs[index_array[j], ..., 0] -\
-        model.x_hist[index_array[j]]
-      im_array[4, j] = inputs[index_array[j], ..., 0] -\
-        x_hist[index_array[j], ..., 0]
-      # im_array[0, j] = res_fn(
-      #   model_fine.x_hist[index_array[j], ..., None]
-      # )[..., 0]
-      # im_array[2, j] = res_fn(
-      #   model_fine.x_hist[index_array[j], ..., None]
-      # )[..., 0] - model_coarse.x_hist[index_array[j]]
-      # im_array[4, j] = res_fn(
-      #   model_fine.x_hist[index_array[j], ..., None]
-      # )[..., 0] - x_hist[index_array[j], ..., 0]
-    im_list = []
-    for j in range(im_array.shape[0] * im_array.shape[1]):
-      im_list.append(im_array[j // n_plot, j % n_plot])
-    plot_with_horizontal_colorbar(
-      im_list, None, [5, n_plot], None, f"results/fig/{fig_name}.png", 100
-    )
-
+  stats_test = True
+  if not stats_test:
+    """Test with the trajectory in the dataset"""
+    start = time()
+    step_num = model.step_num
+    inputs = inputs[:step_num]
+    outputs = outputs[:step_num]
     if config.case == "ns_hit":
-      u_hist_true = np.zeros((*x_hist.shape[:-1], 2))
-      u_hist = np.zeros((*x_hist.shape[:-1], 2))
-      u_hist_baseline = np.zeros((*x_hist.shape[:-1], 2))
-      psi_true = jnp.fft.rfft2(inputs[..., 0],
-                               axes=(1, 2)) / model.laplacian_[None]
-      psi = jnp.fft.rfft2(x_hist[..., 0], axes=(1, 2)) / model.laplacian_[None]
-      psi_baseline = jnp.fft.rfft2(model.x_hist, axes=(1, 2)) /\
-        model.laplacian_[None]
-      u_hist_true[
-        ..., 1] = -jnp.fft.irfft2(1j * psi_true * model.kx[None], axes=(1, 2))
-      u_hist_true[
-        ..., 0] = jnp.fft.irfft2(1j * psi_true * model.ky[None], axes=(1, 2))
-      u_hist[..., 1] = -jnp.fft.irfft2(1j * psi * model.kx[None], axes=(1, 2))
-      u_hist[..., 0] = jnp.fft.irfft2(1j * psi * model.ky[None], axes=(1, 2))
-      u_hist_baseline[
-        ...,
-        1] = -jnp.fft.irfft2(1j * psi_baseline * model.kx[None], axes=(1, 2))
-      u_hist_baseline[
-        ...,
-        0] = jnp.fft.irfft2(1j * psi_baseline * model.ky[None], axes=(1, 2))
-      viz_utils.plot_psd_cmp(
-        [u_hist_true, u_hist_baseline, u_hist],
-        [[model.dx, model.dx], [model.dx, model.dx], [model.dx, model.dx]],
-        ["truth", "baseline", "ours"], fig_name
+      model.set_x_hist(np.fft.rfft2(inputs[0, ..., 0]), model.CN)
+    elif config.case == "ks":
+      model.run_simulation(inputs[0, :, 0], iter_)
+    x_hist = run_simulation(inputs[0])
+    # NOTE: for general a-posteriori test
+    # u_fft = jnp.zeros((2, nx, nx))
+    # u_fft = u_fft.at[:, :10, :10].set(
+    #   random.normal(key=random.PRNGKey(0), shape=(2, 10, 10))
+    # )
+    # uv0 = jnp.real(jnp.fft.fftn(u_fft, axes=(1, 2))) / nx
+    print(f"simulation takes {time() - start:.2f}s...")
+    if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
+      print("similation contains NaN!")
+    print(
+      "baseline:",
+      jnp.mean(jnp.linalg.norm(inputs - model.x_hist[..., None], axis=(1, 2)))
+    )
+    print("ours:", jnp.mean(jnp.linalg.norm(inputs - x_hist, axis=(1, 2))))
+    # print(jnp.mean(
+    #   jnp.linalg.norm(
+    #     jax.vmap(res_fn)(model_fine.x_hist[..., None])
+    #     - model_coarse.x_hist[..., None],
+    #     axis = (1, 2)
+    #   )
+    # ))
+    # print(jnp.mean(
+    #   jnp.linalg.norm(
+    #     jax.vmap(res_fn)(model_fine.x_hist[..., None]) - x_hist,
+    #     axis = (1, 2)
+    #   )
+    # ))
+    x_hist = jnp.where(jnp.abs(x_hist) < 5, x_hist, 5)
+
+    # visualization
+    if dim == 1 and _plot:
+
+      im_list = [
+        inputs[..., 0].T, model.x_hist.T, (inputs[..., 0] - model.x_hist).T,
+        x_hist[..., 0].T, (inputs - x_hist)[..., 0].T
+      ]
+      plot_with_horizontal_colorbar(
+        im_list, None, [len(im_list), 1], None, f"results/fig/{fig_name}.png", 100
+      )
+      viz_utils.plot_stats_aux(
+        np.arange(inputs.shape[0]) * model.dt,
+        [inputs[..., 0], model.x_hist, x_hist[..., 0]],
+        ["truth", "baseline", "ours"],
+        f"results/fig/{fig_name}_stats.png",
+      )
+    elif dim == 2 and _plot:
+      n_plot = 6
+      step_num = inputs.shape[0]
+      index_array = np.arange(
+        0, n_plot * step_num // n_plot - 1, step_num // n_plot
+      )
+      im_array = np.zeros((5, n_plot, *(outputs[0, ..., 0]).shape))
+      for j in range(n_plot):
+        im_array[0, j] = inputs[index_array[j], ..., 0]
+        im_array[1, j] = model.x_hist[index_array[j]]
+        im_array[3, j] = x_hist[index_array[j], ..., 0]
+        im_array[2, j] = inputs[index_array[j], ..., 0] -\
+          model.x_hist[index_array[j]]
+        im_array[4, j] = inputs[index_array[j], ..., 0] -\
+          x_hist[index_array[j], ..., 0]
+        # im_array[0, j] = res_fn(
+        #   model_fine.x_hist[index_array[j], ..., None]
+        # )[..., 0]
+        # im_array[2, j] = res_fn(
+        #   model_fine.x_hist[index_array[j], ..., None]
+        # )[..., 0] - model_coarse.x_hist[index_array[j]]
+        # im_array[4, j] = res_fn(
+        #   model_fine.x_hist[index_array[j], ..., None]
+        # )[..., 0] - x_hist[index_array[j], ..., 0]
+      im_list = []
+      for j in range(im_array.shape[0] * im_array.shape[1]):
+        im_list.append(im_array[j // n_plot, j % n_plot])
+      plot_with_horizontal_colorbar(
+        im_list, None, [5, n_plot], None, f"results/fig/{fig_name}.png", 100
       )
 
+      if config.case == "ns_hit":
+        u_hist_true = np.zeros((*x_hist.shape[:-1], 2))
+        u_hist = np.zeros((*x_hist.shape[:-1], 2))
+        u_hist_baseline = np.zeros((*x_hist.shape[:-1], 2))
+        psi_true = jnp.fft.rfft2(inputs[..., 0],
+                                axes=(1, 2)) / model.laplacian_[None]
+        psi = jnp.fft.rfft2(x_hist[..., 0], axes=(1, 2)) / model.laplacian_[None]
+        psi_baseline = jnp.fft.rfft2(model.x_hist, axes=(1, 2)) /\
+          model.laplacian_[None]
+        u_hist_true[
+          ..., 1] = -jnp.fft.irfft2(1j * psi_true * model.kx[None], axes=(1, 2))
+        u_hist_true[
+          ..., 0] = jnp.fft.irfft2(1j * psi_true * model.ky[None], axes=(1, 2))
+        u_hist[..., 1] = -jnp.fft.irfft2(1j * psi * model.kx[None], axes=(1, 2))
+        u_hist[..., 0] = jnp.fft.irfft2(1j * psi * model.ky[None], axes=(1, 2))
+        u_hist_baseline[
+          ...,
+          1] = -jnp.fft.irfft2(1j * psi_baseline * model.kx[None], axes=(1, 2))
+        u_hist_baseline[
+          ...,
+          0] = jnp.fft.irfft2(1j * psi_baseline * model.ky[None], axes=(1, 2))
+        viz_utils.plot_psd_cmp(
+          [u_hist_true, u_hist_baseline, u_hist],
+          [[model.dx, model.dx], [model.dx, model.dx], [model.dx, model.dx]],
+          ["truth", "baseline", "ours"], fig_name
+        )
+  else:
+    """Statistical test to obtain the error bar"""
+    n_sample = 10
+    step_num = model.step_num
+    rng = random.PRNGKey(1000)
+    res_fn, _ = res_int_fn(config_dict)
+    N1 = config.sim.n - 1
+    dx = config.sim.L / (N1 + 1)
+    x = jnp.linspace(dx, config.sim.L - dx, N1)
+    l2_list = []
+    first_moment_list = []
+    second_moment_list = []
+    avg_length = 1000
+    for _ in range(n_sample):
+      print(f"{_}th sample")
+      rng, key = random.split(rng)
+      r0 = random.uniform(key) * 20 + 44
+      u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
+      model_fine.run_simulation(u0, model_fine.CN_FEM)
+      truth = jax.vmap(res_fn)(model_fine.x_hist)[..., 0]
+      model.run_simulation(res_fn(u0)[..., 0], iter_)
+      x_hist = run_simulation(res_fn(u0))
+      if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
+        print("similation contains NaN!")
+      baseline_l2 = jnp.mean(jnp.linalg.norm(truth - model.x_hist, axis=(1, )))
+      ours_l2 = jnp.mean(jnp.linalg.norm(truth - x_hist[..., 0], axis=(1, )))
+      baseline_first_moment = np.mean((truth - model.x_hist)[-avg_length:])
+      ours_first_moment = np.mean((truth - x_hist[..., 0])[-avg_length:])
+      baseline_second_moment = np.mean((truth**2 - model.x_hist**2)[-avg_length:])
+      ours_second_moment = np.mean((truth**2 - x_hist[..., 0]**2)[-avg_length:])
+      l2_list.append(np.array([baseline_l2, ours_l2]))
+      first_moment_list.append(np.array([baseline_first_moment, ours_first_moment]))
+      second_moment_list.append(np.array([baseline_second_moment, ours_second_moment]))
+      print("l2:", l2_list[-1])
+      print("first moment:", first_moment_list[-1])
+      print("second moment:", second_moment_list[-1])
   breakpoint()
+  viz_utils.plot_stats_aux(
+    np.arange(inputs.shape[0]) * model.dt,
+    [inputs[..., 0], model.x_hist, x_hist[..., 0]],
+    ["truth", "baseline", "ours"],
+    f"results/fig/{fig_name}_stats.png",
+  )
   return x_hist
 
 
