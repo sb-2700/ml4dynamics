@@ -779,13 +779,22 @@ def eval_a_posteriori(
       print("l2:", l2_list[-1])
       print("first moment:", first_moment_list[-1])
       print("second moment:", second_moment_list[-1])
-  breakpoint()
+  l2_list = np.array(l2_list)
+  first_moment_list = np.array(first_moment_list)
+  second_moment_list = np.array(second_moment_list)
+  print(np.mean(l2_list, axis=0),", ", np.std(l2_list, axis=0))
+  print(np.mean(first_moment_list, axis=0),", ", np.std(first_moment_list, axis=0))
+  print(np.mean(second_moment_list, axis=0),", ", np.std(second_moment_list, axis=0))
+  print(np.mean(l2_list[~np.isnan(l2_list).any(axis=1)], axis=0),", ", np.std(l2_list[~np.isnan(l2_list).any(axis=1)], axis=0))
+  print(np.mean(first_moment_list[~np.isnan(first_moment_list).any(axis=1)], axis=0),", ", np.std(first_moment_list[~np.isnan(first_moment_list).any(axis=1)], axis=0))
+  print(np.mean(second_moment_list[~np.isnan(second_moment_list).any(axis=1)], axis=0),", ", np.std(second_moment_list[~np.isnan(second_moment_list).any(axis=1)], axis=0))
   viz_utils.plot_stats_aux(
     np.arange(inputs.shape[0]) * model.dt,
     [inputs[..., 0], model.x_hist, x_hist[..., 0]],
     ["truth", "baseline", "ours"],
     f"results/fig/{fig_name}_stats.png",
   )
+  breakpoint()
   return x_hist
 
 
