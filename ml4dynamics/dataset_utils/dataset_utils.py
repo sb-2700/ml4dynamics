@@ -39,9 +39,6 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
     N2 = N1 // r
     res_op = jnp.zeros((N2, N1))
     int_op = jnp.zeros((N1, N2))
-    # for i in range(N2):
-    #   res_op = res_op.at[i, i * r:i * r + 7].set(1)
-    # res_op /= 7
     if r == 2:
       res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r].set(1)
       res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 2].set(1)
