@@ -144,7 +144,7 @@ def main():
 
     f.attrs["readme"] = data["readme"]
 
-  plot_ = False
+  plot_ = True
   if plot_ and case_num == 1:
     """calculate the commutator of derivative and filter operator"""
     delta1 = jax.vmap(res_fn)(
@@ -162,9 +162,11 @@ def main():
       delta1.T[None], delta2.T[None], delta4.T[None]], axis=0
     )
     utils.plot_with_horizontal_colorbar(
-      im_array[:, None], fig_size=(20, 10),
+      list(im_array),
       title_array=["u", r"$\tau^f$", r"$\tau^c$",
                     r"$[R, D_x]$", r"$[R, D_x^2]$", r"$[R, D_x^4]$"],
+      shape=(6, 1),
+      fig_size=(20, 10),
       file_path="results/fig/ks.png", dpi=100
     )
 
