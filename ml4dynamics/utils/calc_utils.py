@@ -68,3 +68,11 @@ def power_spec_over_t(U: jnp.array, dx: list):
   E_k_all = jax.vmap(power_spec)(u)
   E_k_avg = jnp.mean(E_k_all, axis=0)
   return k_bins[:-1], E_k_avg
+
+
+def plot_corr_over_t(
+  ground_truth: np.ndarray,
+  simulation: np.ndarray,
+):
+  
+  corr = jnp.sum(ground_truth * simulation, axis=(1)) / jnp.sum(ground_truth**2)
