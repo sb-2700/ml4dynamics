@@ -61,7 +61,7 @@ sympy==1.13.3
 tensorstore==0.1.75
 threadpoolctl==3.6.0
 toolz==1.0.0
-torch==2.7.0+cu126
+torch==2.7.1
 torchaudio==2.7.0+cu126
 torchvision==0.22.0+cu126
 tqdm==4.67.1
