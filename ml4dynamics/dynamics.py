@@ -1012,7 +1012,7 @@ class ns_hit(dynamics):
     n = w_hat.shape[0]
     # the forcing is consistent with the choice of
     # https://arxiv.org/pdf/2010.08895
-    forcing = jnp.zeros_like(w_hat)
+    # forcing = jnp.zeros_like(w_hat)
     # forcing = forcing.at[1, 1].set(n**2 / 2) * jnp.sin(self.t)
     """implementation 1: expansion method"""
     w_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
@@ -1029,12 +1029,16 @@ class ns_hit(dynamics):
     psiy2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2y)
     #print(np.linalg.norm(wx2*psiy2-wy2*psix2))
     tmp = jnp.zeros_like(w_hat, dtype=jnp.complex128)
+    # breakpoint()
+    # k = 16
+    # force = jnp.sin(k * jnp.linspace(0, 2 * np.pi, n, endpoint=False))
+    # tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2 + force)
     tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)
     tmp = tmp.at[:n // 2].set(tmp_[:n // 2, :n // 2 + 1] / 4)
     tmp = tmp.at[n // 2:].set(tmp_[-n // 2:, :n // 2 + 1] / 4)
     """implementation 2: dealiasing method"""
     # w_hat_ = jnp.roll(w_hat, n // 2, axis=0)
-    # w_hat_dealias = jnp.zeros_like(w_hat)
+    # w_hat_dealias = jnp.zeros_like(w_hat, dtype=jnp.complex128)
     # w_hat_dealias = w_hat_dealias.at[n // 2 - n // 3: n // 2 + n // 3, :n // 3].set(
     #   w_hat_[n // 2 - n // 3: n // 2 + n // 3, :n // 3]
     # )
@@ -1054,7 +1058,7 @@ class ns_hit(dynamics):
     # tmp = jnp.fft.rfft2(wx * psiy - wy * psix)
 
     w_hat = ((1 + dt / 2 * nu * self.laplacian) * w_hat - dt * tmp) /\
-      (1 - dt / 2 * nu * self.laplacian) + dt * forcing
+      (1 - dt / 2 * nu * self.laplacian)# + dt * forcing
     return w_hat
 
   def CN_real(self, w):
@@ -1078,19 +1082,28 @@ class ns_hit(dynamics):
     for i in range(step_num):
       self.xhat_hist[i] = w.copy()
       w = iter(w)
+      self.t += self.dt
       #self.err_hist[i] = np.sum((irfft2(w) -
       #       2*self.kappa * np.cos(self.kappa*self.X)
       #       * np.cos(self.kappa*self.Y)
       #       * np.exp(
       #           np.Tensor([-2*self.kappa**2*(i+1)*self.dt*self.nu])))**2
       #         )
-    self.x_hist = np.array(jnp.fft.irfft2(self.xhat_hist, axes=(1, 2)))
+    from time import time
+    t0 = time()
+    # self.x_hist = np.array(np.fft.irfft2(self.xhat_hist, axes=(1, 2)))
+    # psi = self.xhat_hist / self.laplacian_[None]
+    # self.u_hist[..., 1] = -np.fft.irfft2(1j * psi * self.kx[None], axes=(1, 2))
+    # self.u_hist[..., 0] = np.fft.irfft2(1j * psi * self.ky[None], axes=(1, 2))
+    # self.e_kin = np.sum(self.u_hist**2, axis=(-3, -2, -1)) / 2
+    self.x_hist = np.zeros((step_num, self.N, self.N))
     psi = self.xhat_hist / self.laplacian_[None]
-    self.u_hist[..., 1] = -jnp.fft.irfft2(1j * psi * self.kx[None], axes=(1, 2))
-    self.u_hist[..., 0] = jnp.fft.irfft2(1j * psi * self.ky[None], axes=(1, 2))
+    for i in range(step_num):
+      self.x_hist[i] = jnp.fft.irfft2(self.xhat_hist[i])
+      self.u_hist[i, ..., 1] = -jnp.fft.irfft2(1j * psi[i] * self.kx[None])
+      self.u_hist[i, ..., 0] = jnp.fft.irfft2(1j * psi[i] * self.ky[None])
     self.e_kin = np.sum(self.u_hist**2, axis=(-3, -2, -1)) / 2
-    self.t += self.dt
-
+    print(f"Time taken: {time() - t0} seconds")
 
 class ns_channel(dynamics):
   r"""

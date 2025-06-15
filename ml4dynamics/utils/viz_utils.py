@@ -2,6 +2,7 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm
+from matplotlib.animation import FuncAnimation
 
 from ml4dynamics.utils import calc_utils
 
@@ -96,6 +97,22 @@ def plot_from_h5py_cmp():
         )
         plt.axis("off")
     plt.savefig("results/fig/traj_64_" + str(random_integer) + ".pdf")
+
+
+def plot_gif(data: np.ndarray, fig_name: str):
+  """visualize as gif"""
+  fig, ax = plt.subplots(figsize=(6, 6))
+  img = ax.imshow(data[0], cmap=cm.twilight)
+  fig.colorbar(img)
+
+  def update(frame):
+    img.set_array(data[50 * frame])
+    ax.set_title(f'Heatmap Frame: {frame}')
+    return img,
+
+  ani = FuncAnimation(fig, update, frames=100, interval=100, blit=True)
+  ani.save(f"results/fig/{fig_name}.gif", writer='pillow', fps=30, dpi=100)
+  plt.close()
 
 
 def plot_stats(

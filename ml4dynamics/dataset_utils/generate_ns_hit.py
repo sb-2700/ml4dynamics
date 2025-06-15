@@ -15,7 +15,7 @@ from jax.lax import conv_general_dilated
 from matplotlib import pyplot as plt
 
 from ml4dynamics.dataset_utils import dataset_utils
-from ml4dynamics.utils import utils
+from ml4dynamics.utils import utils, viz_utils
 
 
 def main():
@@ -23,12 +23,12 @@ def main():
   # @jax.jit
   def calc_J(what_hist, model):
     psi_hat = -what_hist / model.laplacian_[None]
-    dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
-    dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
-    dwdx = jnp.fft.irfft2(
+    dpsidx = np.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
+    dpsidy = np.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
+    dwdx = np.fft.irfft2(
       1j * what_hist * model.kx[None], axes=(1, 2)
     )
-    dwdy = jnp.fft.irfft2(
+    dwdy = np.fft.irfft2(
       1j * what_hist * model.ky[None], axes=(1, 2)
     )
     return dpsidy * dwdx - dpsidx * dwdy
@@ -91,20 +91,37 @@ def main():
       mode='wrap'
     )
 
-    padded_w = periodic_pad(model_fine.x_hist[..., None])
-    w_coarse_ = conv(model_fine.x_hist[..., None])
-    w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
-    # assert np.linalg.norm(w_coarse_ - w_coarse) < 1e-14
-    J = calc_J(model_fine.xhat_hist, model_fine)
-    J_coarse = calc_J(
-      jnp.fft.rfft2(w_coarse[..., 0], axes=(1, 2)), model_coarse
-    )[..., None]
-    padded_J = periodic_pad(J[..., None])
-    # J_filter = conv(padded_J)
-    J_filter = jax.vmap(res_fn)(J[..., None])
+    if n <= 32:
+      """gpu implementation for small size simulation"""
+      padded_w = periodic_pad(model_fine.x_hist[..., None])
+      w_coarse_ = conv(model_fine.x_hist[..., None])
+      w_coarse = jax.vmap(res_fn)(model_fine.x_hist[..., None])
+      # assert np.linalg.norm(w_coarse_ - w_coarse) < 1e-14
+      J = calc_J(model_fine.xhat_hist, model_fine)
+      J_coarse = calc_J(
+        jnp.fft.rfft2(w_coarse[..., 0], axes=(1, 2)), model_coarse
+      )[..., None]
+      padded_J = periodic_pad(J[..., None])
+      # J_filter = conv(padded_J)
+      J_filter = jax.vmap(res_fn)(J[..., None])
+    else:
+      """cpu implementation for large size simulation"""
+      def res_fn(x):
+        result = np.zeros((x.shape[0], n, n, x.shape[-1]))
+        for k in range(r):
+          for j in range(r):
+            result += x[:, k::r, j::r]
+        return result / (r**2)
+      w_coarse = res_fn(model_fine.x_hist[..., None])
+      J = calc_J(model_fine.xhat_hist, model_fine)
+      J_coarse = calc_J(
+        np.fft.rfft2(w_coarse[..., 0], axes=(1, 2)), model_coarse
+      )[..., None]
+      J_filter = res_fn(J[..., None])
     # NOTE: be careful with the sign here!!!
     output_filter = -(J_filter - J_coarse) / model_coarse.dx**2
 
+    res_fn, _ = dataset_utils.res_int_fn(config_dict)
     output_correction = np.zeros_like(w_coarse)
     for k in range(model_fine.step_num):
       next_step_fine = model_fine.CN_real(model_fine.x_hist[k][..., None])
@@ -127,8 +144,8 @@ def main():
       outputs_filter[j] = output_filter
       outputs_correction[j] = output_correction
       j = j + 1
-
-  save = True
+  
+  save = False
   if j == case_num and save:
     data = {
       "metadata": {
@@ -180,7 +197,9 @@ def main():
       f.attrs["readme"] = data["readme"]
 
   if case_num == 1:
-    n_plot = 4
+    viz_utils.plot_gif(w_coarse[..., 0], "ns_hit")
+    
+    n_plot = 6
     delta = conv(
       jnp.fft.irfft2(
         model_fine.xhat_hist * model_fine.laplacian[None], axes=(1, 2)
@@ -204,7 +223,7 @@ def main():
       for j in range(n_plot):
         im_list.append(im_array[i, j])
     utils.plot_with_horizontal_colorbar(
-      im_list, None, [4, n_plot], (12, 12), "results/fig/dataset.png", 100
+      im_list, None, [4, n_plot], (12, 18), "results/fig/dataset.png", 100
     )
     what_coarse = jnp.fft.rfft2(w_coarse, axes=(1, 2))
     psi_hat = -what_coarse[..., 0] / model_coarse.laplacian_[None]
