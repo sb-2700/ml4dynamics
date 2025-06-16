@@ -297,7 +297,7 @@ def hit_init_cond(type_: str, model, key: PRNGKey):
 
     the stress is a bit hard to learn
     """
-    f0 = 8
+    f0 = 64
     w_hat = jnp.zeros((model.N, model.N // 2 + 1))
     w_hat = w_hat.at[:f0, :f0].set(
       random.normal(key, (f0, f0)) * model.init_scale
@@ -611,7 +611,8 @@ def eval_a_posteriori(
       iter_ = model.CN_real
     elif config.case == "ks":
       iter_ = model.CN_FEM
-      type_ = "pad"
+      if config.sim.BC == "Dirichlet-Neumann":
+        type_ = "pad"
     if config.train.sgs == "fine_correction":
       res_fn, int_fn = res_int_fn(config)
       run_simulation = partial(

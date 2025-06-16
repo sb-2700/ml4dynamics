@@ -75,6 +75,8 @@ def calc_corr_over_t(
   simulation: np.ndarray,
 ):
   
+  n = ground_truth.shape[0]
   return jnp.sum(
-    (ground_truth * simulation).reshape(ground_truth.shape[0], -1), axis=1
-  ) / jnp.sum((ground_truth**2).reshape(ground_truth.shape[0], -1), axis=1)
+    (ground_truth * simulation).reshape(n, -1), axis=1
+  ) / jnp.sum((ground_truth**2).reshape(n, -1), axis=1)**(1/2) \
+  / jnp.sum((simulation**2).reshape(n, -1), axis=1)**(1/2)

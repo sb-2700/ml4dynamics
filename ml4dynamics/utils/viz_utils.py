@@ -121,6 +121,7 @@ def plot_corr_over_t(
 ):
 
   corr = calc_utils.calc_corr_over_t(ground_truth, simulation)
+  breakpoint()
   plt.plot(t_array, corr)
   plt.savefig(f"results/fig/{fig_name}_corr.png")
   plt.close()
