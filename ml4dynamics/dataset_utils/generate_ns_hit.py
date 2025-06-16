@@ -70,9 +70,11 @@ def main():
     init_cond = "spec_random"
     model_fine.w_hat = utils.hit_init_cond(init_cond, model_fine, key)
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
-    model_coarse.w_hat = utils.hit_init_cond(init_cond, model_coarse, key)
-    model_coarse.set_x_hist(model_coarse.w_hat, model_coarse.CN)
+    # model_coarse.w_hat = utils.hit_init_cond(init_cond, model_coarse, key)
     res_fn, _ = dataset_utils.res_int_fn(config_dict)
+    w = jnp.fft.irfft2(model_fine.w_hat)
+    model_coarse.w_hat = jnp.fft.rfft2(res_fn(w[..., None])[..., 0])
+    model_coarse.set_x_hist(model_coarse.w_hat, model_coarse.CN)
 
     kernel_x = kernel_y = r
     kernel = jnp.ones((1, kernel_x, kernel_y, 1)) / kernel_x / kernel_y
@@ -145,7 +147,7 @@ def main():
       outputs_correction[j] = output_correction
       j = j + 1
   
-  save = False
+  save = True
   if j == case_num and save:
     data = {
       "metadata": {
@@ -197,6 +199,8 @@ def main():
       f.attrs["readme"] = data["readme"]
 
   if case_num == 1:
+    t_array = np.linspace(0, T, model_coarse.step_num)
+    viz_utils.plot_corr_over_t(w_coarse[..., 0], model_coarse.x_hist, t_array, "ns_hit")
     viz_utils.plot_gif(w_coarse[..., 0], "ns_hit")
     
     n_plot = 6

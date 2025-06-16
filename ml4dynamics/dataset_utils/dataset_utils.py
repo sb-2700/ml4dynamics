@@ -40,6 +40,7 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
     res_op = jnp.zeros((N2, N1))
     int_op = jnp.zeros((N1, N2))
     if r == 2:
+      raise Exception("Deprecated...")
       res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r].set(1)
       res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 2].set(1)
     elif r == 4:
@@ -47,9 +48,14 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
       # for i in range(N2):
       #   res_op = res_op.at[i, i * r + 1:i * r + 6].set(1)
       # res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 3].set(0)
+      # if BC == "periodic":
+      #   res_op = res_op.at[-1, :r // 2].set(1)
+
       # stencil = 7
       for i in range(N2):
         res_op = res_op.at[i, i * r:i * r + 7].set(1)
+      if BC == "periodic":
+        res_op = res_op.at[-1, :3].set(1)
       res_op /= 7 / 4
     elif r == 8:
       # stencil = 12

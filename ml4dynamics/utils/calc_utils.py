@@ -70,9 +70,11 @@ def power_spec_over_t(U: jnp.array, dx: list):
   return k_bins[:-1], E_k_avg
 
 
-def plot_corr_over_t(
+def calc_corr_over_t(
   ground_truth: np.ndarray,
   simulation: np.ndarray,
 ):
   
-  corr = jnp.sum(ground_truth * simulation, axis=(1)) / jnp.sum(ground_truth**2)
+  return jnp.sum(
+    (ground_truth * simulation).reshape(ground_truth.shape[0], -1), axis=1
+  ) / jnp.sum((ground_truth**2).reshape(ground_truth.shape[0], -1), axis=1)

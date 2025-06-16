@@ -115,6 +115,17 @@ def plot_gif(data: np.ndarray, fig_name: str):
   plt.close()
 
 
+def plot_corr_over_t(
+  ground_truth: np.ndarray, simulation: np.ndarray,
+  t_array: np.ndarray, fig_name: str
+):
+
+  corr = calc_utils.calc_corr_over_t(ground_truth, simulation)
+  plt.plot(t_array, corr)
+  plt.savefig(f"results/fig/{fig_name}_corr.png")
+  plt.close()
+
+
 def plot_stats(
   t_array: np.array,
   fine_traj: np.ndarray,
