@@ -200,7 +200,9 @@ def main():
 
   if case_num == 1:
     t_array = np.linspace(0, T, model_coarse.step_num)
-    viz_utils.plot_corr_over_t(w_coarse[..., 0], model_coarse.x_hist, t_array, "ns_hit")
+    viz_utils.plot_corr_over_t(
+      [w_coarse[..., 0], model_coarse.x_hist], [''], t_array, "ns_hit"
+    )
     viz_utils.plot_gif(w_coarse[..., 0], "ns_hit")
     
     n_plot = 6

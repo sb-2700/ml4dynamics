@@ -12,7 +12,7 @@ from jax.scipy.linalg import svd
 from matplotlib import pyplot as plt
 
 from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
-from ml4dynamics.utils import utils
+from ml4dynamics.utils import utils, viz_utils
 
 
 def main():
@@ -60,6 +60,10 @@ def main():
       dx = model_fine.L / N1
       u0 = model_fine.attractor + model_fine.init_scale * random.normal(key) *\
         jnp.sin(10 * jnp.pi * jnp.linspace(0, L - L/N1, N1) / L)
+      r0 = random.uniform(key) * 20 + 44
+      u0 = jnp.exp(-(jnp.linspace(0, L - L/N1, N1) - r0)**2 / r0**2 * 4)
+      dx_ = L / (N + 1)
+      u0_ = jnp.exp(-(jnp.linspace(dx_, L - dx_, N) - r0)**2 / r0**2 * 4)
     elif BC == "Dirichlet-Neumann":
       dx = L / (N1 + 1)
       x = jnp.linspace(dx, L - dx, N1)
@@ -70,7 +74,10 @@ def main():
       #   random.uniform(rng) * jnp.sin(16 * jnp.pi * x / 128)
       r0 = random.uniform(key) * 20 + 44
       u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
+      dx_ = L / (N + 1)
+      u0_ = jnp.exp(-(jnp.linspace(dx_, L - dx_, N) - r0)**2 / r0**2 * 4)
     model_fine.run_simulation(u0, model_fine.CN_FEM)
+    model_coarse.run_simulation(u0_, model_coarse.CN_FEM)
     input = jax.vmap(res_fn)(model_fine.x_hist)[..., 0]  # shape = [step_num, N2]
     output_correction =  np.zeros_like(outputs_correction[0])
     output_filter = -(jax.vmap(res_fn)(model_fine.x_hist**2)[..., 0] - input**2) / 2\
@@ -146,6 +153,10 @@ def main():
 
   plot_ = True
   if plot_ and case_num == 1:
+    t_array = np.linspace(0, T, model_coarse.step_num)
+    breakpoint()
+    viz_utils.plot_corr_over_t([inputs[..., 0], model_coarse.x_hist], [''], t_array, "ks")
+
     """calculate the commutator of derivative and filter operator"""
     delta1 = jax.vmap(res_fn)(
       jnp.einsum("ij, aj -> ai", model_fine.L1, model_fine.x_hist)
