@@ -688,6 +688,13 @@ def eval_a_posteriori(
         ["truth", "baseline", "ours"],
         f"results/fig/{fig_name}_stats.png",
       )
+      t_array = np.linspace(0, model.T, model.step_num)
+      viz_utils.plot_corr_over_t(
+        [inputs[..., 0], model.x_hist, x_hist[..., 0]],
+        ['baseline', 'ours'],
+        t_array,
+        config.case
+      )
     elif dim == 2 and _plot:
       n_plot = 6
       step_num = inputs.shape[0]

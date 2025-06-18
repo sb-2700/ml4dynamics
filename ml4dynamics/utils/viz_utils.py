@@ -116,13 +116,15 @@ def plot_gif(data: np.ndarray, fig_name: str):
 
 
 def plot_corr_over_t(
-  ground_truth: np.ndarray, simulation: np.ndarray,
-  t_array: np.ndarray, fig_name: str
+  data: list, title: list, t_array: np.ndarray, fig_name: str
 ):
 
-  corr = calc_utils.calc_corr_over_t(ground_truth, simulation)
-  breakpoint()
-  plt.plot(t_array, corr)
+  for i in range(len(data) - 1):
+    corr = calc_utils.calc_corr_over_t(data[0], data[i+1])
+    plt.plot(t_array, corr, label=title[i])
+  plt.xlabel(r"$T$")
+  plt.ylabel("corrrelation")
+  plt.legend()
   plt.savefig(f"results/fig/{fig_name}_corr.png")
   plt.close()
 
