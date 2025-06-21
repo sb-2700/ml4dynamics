@@ -154,8 +154,7 @@ def main():
   plot_ = True
   if plot_ and case_num == 1:
     t_array = np.linspace(0, T, model_coarse.step_num)
-    breakpoint()
-    viz_utils.plot_corr_over_t([inputs[..., 0], model_coarse.x_hist], [''], t_array, "ks")
+    viz_utils.plot_corr_over_t([inputs, model_coarse.x_hist], [''], t_array, "ks")
 
     """calculate the commutator of derivative and filter operator"""
     delta1 = jax.vmap(res_fn)(
