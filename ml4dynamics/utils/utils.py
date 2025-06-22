@@ -297,11 +297,12 @@ def hit_init_cond(type_: str, model, key: PRNGKey):
 
     the stress is a bit hard to learn
     """
-    f0 = 64
+    f0 = 16
     w_hat = jnp.zeros((model.N, model.N // 2 + 1))
     w_hat = w_hat.at[:f0, :f0].set(
       random.normal(key, (f0, f0)) * model.init_scale
     )
+    # w_hat = w_hat.at[:f0, :f0].set(model.init_scale)
     w_hat = w_hat.at[0, 0].set(0)
   elif type_ == "gaussian_process":
     r"""initialization scheme 3: Gaussian-process initialization
@@ -788,6 +789,10 @@ def eval_a_posteriori(
       print("l2:", l2_list[-1])
       print("first moment:", first_moment_list[-1])
       print("second moment:", second_moment_list[-1])
+
+      corr1.appned(calc_corr_over_t(truth, model.x_hist))
+      corr2.appned(calc_corr_over_t(truth, x_hist[..., 0]))
+
     l2_list = np.array(l2_list)
     first_moment_list = np.array(first_moment_list)
     second_moment_list = np.array(second_moment_list)
