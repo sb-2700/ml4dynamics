@@ -167,16 +167,19 @@ def main():
       jnp.einsum("ij, aj -> ai", model_fine.L4, model_fine.x_hist)
     )[..., 0] - jnp.einsum("ij, aj -> ai", model_coarse.L4, inputs)
 
+    # im_array = np.concatenate(
+    #   [inputs.T[None], outputs_filter.T[None], outputs_correction.T[None],
+    #   delta1.T[None], delta2.T[None], delta4.T[None]], axis=0
+    # )
     im_array = np.concatenate(
-      [inputs.T[None], outputs_filter.T[None], outputs_correction.T[None],
-      delta1.T[None], delta2.T[None], delta4.T[None]], axis=0
+      [inputs.T[None], outputs_filter.T[None], outputs_correction.T[None]], axis=0
     )
     utils.plot_with_horizontal_colorbar(
       list(im_array),
       title_array=["u", r"$\tau^f$", r"$\tau^c$",
                     r"$[R, D_x]$", r"$[R, D_x^2]$", r"$[R, D_x^4]$"],
-      shape=(6, 1),
-      fig_size=(20, 10),
+      shape=(3, 1),
+      fig_size=(20, 5),
       file_path="results/fig/ks.png", dpi=100
     )
 

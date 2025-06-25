@@ -1029,10 +1029,9 @@ class ns_hit(dynamics):
     psiy2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2y)
     #print(np.linalg.norm(wx2*psiy2-wy2*psix2))
     tmp = jnp.zeros_like(w_hat, dtype=jnp.complex128)
-    # breakpoint()
-    # k = 16
-    # force = jnp.sin(k * jnp.linspace(0, 2 * np.pi, n, endpoint=False))
-    # tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2 + force)
+    k = 4
+    force = -k * jnp.cos(k * jnp.linspace(0, 2 * np.pi, n * 2, endpoint=False))
+    tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2 + force[None])
     tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)
     tmp = tmp.at[:n // 2].set(tmp_[:n // 2, :n // 2 + 1] / 4)
     tmp = tmp.at[n // 2:].set(tmp_[-n // 2:, :n // 2 + 1] / 4)

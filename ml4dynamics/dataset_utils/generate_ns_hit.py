@@ -15,7 +15,7 @@ from jax.lax import conv_general_dilated
 from matplotlib import pyplot as plt
 
 from ml4dynamics.dataset_utils import dataset_utils
-from ml4dynamics.utils import utils, viz_utils
+from ml4dynamics.utils import calc_utils, utils, viz_utils
 
 
 def main():
@@ -199,6 +199,10 @@ def main():
       f.attrs["readme"] = data["readme"]
 
   if case_num == 1:
+
+    breakpoint()
+    corr_xy = calc_utils.corr(model_fine.x_hist)
+
     t_array = np.linspace(0, T, model_coarse.step_num)
     viz_utils.plot_corr_over_t(
       [w_coarse[..., 0], model_coarse.x_hist], [''], t_array, "ns_hit"
