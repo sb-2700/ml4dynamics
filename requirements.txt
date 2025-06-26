@@ -47,7 +47,7 @@ optax==0.2.4
 orbax-checkpoint==0.6.4
 packaging==25.0
 pillow==11.0.0
-protobuf==6.31.0
+protobuf==6.31.1
 Pygments==2.19.1
 pyparsing==3.2.3
 python-box==7.3.2
