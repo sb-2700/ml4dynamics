@@ -12,11 +12,24 @@ def corr(u):
   U (Float[Array, 'batch_size nx ny']): field variable, the batch dimension can
   contains both time snapshots or other dimensions.
   """
-  corr = np.zeros(*u.shape[1:])
-  for i in range(corr.shape[0]):
-    for j in range(corr.shape[1]):
-      corr[i, j] = jnp.mean(jnp.roll(u, [i, j], axis=[1, 2]) * u)
-  return corr
+  u = u - jnp.mean(u, axis=(0, ))[None]
+  n = u.shape[-1]
+  correlation = np.zeros([*u.shape[2:]])
+  for i in range(n):
+    correlation[i] = jnp.mean(jnp.roll(u, i, axis=1) * u) /\
+      jnp.mean(u**2)
+  import matplotlib.pyplot as plt
+  plt.plot(np.linspace(-np.pi, np.pi, u.shape[1]), np.roll(correlation, n//2))
+  plt.savefig("results/fig/corr1d.png")
+  plt.close()
+  breakpoint()
+
+  """NOTE: 2D correlation is too slow to evaluate"""
+  correlation = np.zeros([*u.shape[1:]])
+  for i in range(n):
+    for j in range(n):
+      correlation[i, j] = jnp.mean(jnp.roll(u[-100:], [i, j], axis=[1, 2]) * u[-100:])
+  return correlation
 
 
 @partial(jax.jit, static_argnums=(1, ))

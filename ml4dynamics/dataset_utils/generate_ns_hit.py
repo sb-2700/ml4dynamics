@@ -200,7 +200,6 @@ def main():
 
   if case_num == 1:
 
-    breakpoint()
     corr_xy = calc_utils.corr(model_fine.x_hist)
 
     t_array = np.linspace(0, T, model_coarse.step_num)

@@ -27,7 +27,7 @@ from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
 from ml4dynamics.models.models_jax import MLP, CustomTrainState, UNet
 from ml4dynamics.trainers import train_utils
 from ml4dynamics.types import PRNGKey
-from ml4dynamics.utils import viz_utils
+from ml4dynamics.utils import calc_utils, viz_utils
 
 jax.config.update("jax_enable_x64", True)
 torch.set_default_dtype(torch.float64)
@@ -765,6 +765,8 @@ def eval_a_posteriori(
     l2_list = []
     first_moment_list = []
     second_moment_list = []
+    corr1 = []
+    corr2 = []
     avg_length = 1000
     for _ in range(n_sample):
       print(f"{_}th sample")
@@ -790,9 +792,16 @@ def eval_a_posteriori(
       print("first moment:", first_moment_list[-1])
       print("second moment:", second_moment_list[-1])
 
-      corr1.appned(calc_corr_over_t(truth, model.x_hist))
-      corr2.appned(calc_corr_over_t(truth, x_hist[..., 0]))
+      corr1.append(calc_utils.calc_corr_over_t(truth, model.x_hist))
+      corr2.append(calc_utils.calc_corr_over_t(truth, x_hist[..., 0]))
 
+    corr1 = np.array(corr1)
+    corr2 = np.array(corr2)
+    plt.plot(t_array, np.mean(corr1, axis=0), label="baseline")
+    plt.plot(t_array, np.mean(corr2, axis=0), label="ours")
+    plt.legend()
+    plt.savefig(f"results/fig/{fig_name}_corr.png")
+    breakpoint()
     l2_list = np.array(l2_list)
     first_moment_list = np.array(first_moment_list)
     second_moment_list = np.array(second_moment_list)
