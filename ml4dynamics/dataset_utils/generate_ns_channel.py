@@ -39,6 +39,7 @@ def main():
   u_hist_ = np.zeros([case_num, step_num // writeInterval, nx, ny])
   v_hist_ = np.zeros([case_num, step_num // writeInterval, nx, ny])
   p_hist_ = np.zeros([case_num, step_num // writeInterval, nx, ny])
+
   def inlet(y: jnp.ndarray):
     """set the inlet velocity"""
     return y * (1 - y) * jnp.exp(-10 * (y - y0)**2) * 3
@@ -51,16 +52,24 @@ def main():
     y0 = 0.325
     iter = partial(
       utils.projection_correction,
-      dx=dx, dy=dy, nx=nx, ny=ny, dt=dt, Re=Re, BC=BC
+      dx=dx,
+      dy=dy,
+      nx=nx,
+      ny=ny,
+      dt=dt,
+      Re=Re,
+      BC=BC
     )
     u_inlet = inlet(np.linspace(dy / 2, 1 - dy / 2, ny))
     u = jnp.tile(u_inlet, (nx, 1))
     v = jnp.zeros([nx, ny])
-    p = jnp.zeros([nx, ny])  # staggered grid, the size of grid p is undetermined
+    p = jnp.zeros(
+      [nx, ny]
+    )  # staggered grid, the size of grid p is undetermined
     # source term in poisson equation: divergence of the predicted velocity field
     # divu = np.zeros(
     #   [nx, ny]
-    # )  
+    # )
     u_hist = np.zeros([(step_num + warm_up) // writeInterval, nx, ny])
     v_hist = np.zeros([(step_num + warm_up) // writeInterval, nx, ny])
     p_hist = np.zeros([(step_num + warm_up) // writeInterval, nx, ny])
@@ -98,10 +107,12 @@ def main():
         "creation_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       },
       "data": {
-        "inputs":
-        U.reshape(-1, nx, ny, 2),  # shape [case_num * step_num // writeInterval, nx+2, ny+2, 2]
-        "outputs":
-        p_hist_.reshape(-1, nx, ny, 1),  # shape [case_num * step_num // writeInterval, nx, ny, 1]
+        "inputs": U.reshape(
+          -1, nx, ny, 2
+        ),  # shape [case_num * step_num // writeInterval, nx+2, ny+2, 2]
+        "outputs": p_hist_.reshape(
+          -1, nx, ny, 1
+        ),  # shape [case_num * step_num // writeInterval, nx, ny, 1]
       },
       "config":
       config_dict,

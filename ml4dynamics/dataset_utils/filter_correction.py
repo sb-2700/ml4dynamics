@@ -10,7 +10,7 @@ def main():
   case = "ks"
   with open(f"config/{case}.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
-  
+
   if case == "ns_hit":
     config_dict["sim"]["Re"] = 10000
   elif case == "ks":
@@ -20,9 +20,7 @@ def main():
     config_dict, 100
   )
   config_dict["train"]["sgs"] = "filter"
-  inputs_filter, outputs_filter, _, _, _ = utils.load_data(
-    config_dict, 100
-  )
+  inputs_filter, outputs_filter, _, _, _ = utils.load_data(config_dict, 100)
   assert np.linalg.norm(
     inputs_correction - inputs_filter
   ) < 1e-14, "The input data should be the same"
@@ -51,13 +49,14 @@ def main():
     im_array[2, 0] = outputs_correction[..., 0].T
     ratio = outputs_filter.max() / outputs_correction.max()
     print(ratio)
-    im_array[3, 0] = outputs_filter[..., 0].T - outputs_correction[..., 0].T * ratio
+    im_array[3, 0] = outputs_filter[...,
+                                    0].T - outputs_correction[..., 0].T * ratio
     # utils.plot_with_horizontal_colorbar(
     #   im_array, fig_size=(12, 4), title_array=None,
     #   file_path="results/fig/cmp_ks.png",
     #   dpi=100, cmap=cm.coolwarm,
     # )
-    
+
     _, axs = plt.subplots(2, 2, figsize=(12, 8))
     axs = axs.flatten()
     index_array = [500, 1500, 2500, 3500]
@@ -86,9 +85,12 @@ def main():
       im_array[3, i] = outputs_filter[index_array[i], ..., 0] -\
         outputs_correction[index_array[i], ..., 0] * ratio
     utils.plot_with_horizontal_colorbar(
-      im_array, fig_size=(n_plots * 3, 12), title_array=None,
+      im_array,
+      fig_size=(n_plots * 3, 12),
+      title_array=None,
       file_path="results/fig/cmp_Re.png",
-      dpi=100, cmap=cm.coolwarm,
+      dpi=100,
+      cmap=cm.coolwarm,
     )
   breakpoint()
 

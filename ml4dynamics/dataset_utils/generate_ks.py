@@ -18,9 +18,7 @@ from ml4dynamics.utils import utils, viz_utils
 def main():
 
   parser = argparse.ArgumentParser()
-  parser.add_argument(
-    "-c", "--c", default=None, help="constant velocity."
-  )
+  parser.add_argument("-c", "--c", default=None, help="constant velocity.")
   args = parser.parse_args()
   with open(f"config/ks.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
@@ -42,7 +40,7 @@ def main():
   case_num = config.sim.case_num
   model_fine, model_coarse = utils.create_fine_coarse_simulator(config)
   res_fn, _ = res_int_fn(config_dict)
-    
+
   # if sgs_model == "fine_correction":
   #   N = N1
   # else:
@@ -61,7 +59,7 @@ def main():
       u0 = model_fine.attractor + model_fine.init_scale * random.normal(key) *\
         jnp.sin(10 * jnp.pi * jnp.linspace(0, L - L/N1, N1) / L)
       r0 = random.uniform(key) * 20 + 44
-      u0 = jnp.exp(-(jnp.linspace(0, L - L/N1, N1) - r0)**2 / r0**2 * 4)
+      u0 = jnp.exp(-(jnp.linspace(0, L - L / N1, N1) - r0)**2 / r0**2 * 4)
       dx_ = L / (N + 1)
       u0_ = jnp.exp(-(jnp.linspace(dx_, L - dx_, N) - r0)**2 / r0**2 * 4)
     elif BC == "Dirichlet-Neumann":
@@ -78,14 +76,16 @@ def main():
       u0_ = jnp.exp(-(jnp.linspace(dx_, L - dx_, N) - r0)**2 / r0**2 * 4)
     model_fine.run_simulation(u0, model_fine.CN_FEM)
     model_coarse.run_simulation(u0_, model_coarse.CN_FEM)
-    input = jax.vmap(res_fn)(model_fine.x_hist)[..., 0]  # shape = [step_num, N2]
-    output_correction =  np.zeros_like(outputs_correction[0])
+    input = jax.vmap(res_fn)(model_fine.x_hist)[...,
+                                                0]  # shape = [step_num, N2]
+    output_correction = np.zeros_like(outputs_correction[0])
     output_filter = -(jax.vmap(res_fn)(model_fine.x_hist**2)[..., 0] - input**2) / 2\
       / model_coarse.dx**2
     for j in range(model_fine.step_num):
       next_step_fine = model_fine.CN_FEM(model_fine.x_hist[j])
       next_step_coarse = model_coarse.CN_FEM(input[j])
-      output_correction[j] = (res_fn(next_step_fine)[:, 0] - next_step_coarse) / dt
+      output_correction[
+        j] = (res_fn(next_step_fine)[:, 0] - next_step_coarse) / dt
       # elif sgs_model == "fine_correction":
       #   output[j] = (next_step_fine - int_fn(next_step_coarse)[:, 0]) / dt
 
@@ -102,7 +102,7 @@ def main():
     jnp.any(jnp.isinf(inputs)) or jnp.any(jnp.isinf(outputs_filter)) or\
     jnp.any(jnp.isnan(outputs_correction)) or jnp.any(jnp.isinf(outputs_correction)):
     raise Exception("The data contains Inf or NaN")
-  
+
   data = {
     "metadata": {
       "type": "ks",
@@ -116,12 +116,9 @@ def main():
       "creation_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     },
     "data": {
-      "inputs":
-      inputs[..., None],
-      "outputs_filter":
-      outputs_filter[..., None],
-      "outputs_correction":
-      outputs_correction[..., None],
+      "inputs": inputs[..., None],
+      "outputs_filter": outputs_filter[..., None],
+      "outputs_correction": outputs_correction[..., None],
     },
     "config":
     config_dict,
@@ -131,16 +128,16 @@ def main():
     "field represents the correction from the coarse grid simulation."
   }
 
-  with h5py.File(
-    f"data/ks/c{c:.1f}_n{case_num}.h5", "w"
-  ) as f:
+  with h5py.File(f"data/ks/c{c:.1f}_n{case_num}.h5", "w") as f:
     metadata_group = f.create_group("metadata")
     for key, value in data["metadata"].items():
       metadata_group.create_dataset(key, data=value)
 
     data_group = f.create_group("data")
     data_group.create_dataset("inputs", data=data["data"]["inputs"])
-    data_group.create_dataset("outputs_filter", data=data["data"]["outputs_filter"])
+    data_group.create_dataset(
+      "outputs_filter", data=data["data"]["outputs_filter"]
+    )
     data_group.create_dataset(
       "outputs_correction", data=data["data"]["outputs_correction"]
     )
@@ -154,8 +151,9 @@ def main():
   plot_ = True
   if plot_ and case_num == 1:
     t_array = np.linspace(0, T, model_coarse.step_num)
-    viz_utils.plot_corr_over_t([inputs, model_coarse.x_hist], [''], t_array, "ks")
-
+    viz_utils.plot_corr_over_t(
+      [inputs, model_coarse.x_hist], [''], t_array, "ks"
+    )
     """calculate the commutator of derivative and filter operator"""
     delta1 = jax.vmap(res_fn)(
       jnp.einsum("ij, aj -> ai", model_fine.L1, model_fine.x_hist)
@@ -172,15 +170,19 @@ def main():
     #   delta1.T[None], delta2.T[None], delta4.T[None]], axis=0
     # )
     im_array = np.concatenate(
-      [inputs.T[None], outputs_filter.T[None], outputs_correction.T[None]], axis=0
+      [inputs.T[None], outputs_filter.T[None], outputs_correction.T[None]],
+      axis=0
     )
     utils.plot_with_horizontal_colorbar(
       list(im_array),
-      title_array=["u", r"$\tau^f$", r"$\tau^c$",
-                    r"$[R, D_x]$", r"$[R, D_x^2]$", r"$[R, D_x^4]$"],
+      title_array=[
+        "u", r"$\tau^f$", r"$\tau^c$", r"$[R, D_x]$", r"$[R, D_x^2]$",
+        r"$[R, D_x^4]$"
+      ],
       shape=(3, 1),
       fig_size=(20, 5),
-      file_path="results/fig/ks.png", dpi=100
+      file_path="results/fig/ks.png",
+      dpi=100
     )
 
     _, axs = plt.subplots(2, 2, figsize=(12, 8))
@@ -199,10 +201,10 @@ def main():
     c = config_dict["sim"]["c"]
     plt.savefig(f"results/fig/cmp_c{c:.1f}.png", dpi=300)
     plt.close()
-
     """visualize the Fourier & POD modes"""
     input_hat = jnp.fft.fft(
-      jnp.concatenate([inputs, jnp.zeros((inputs.shape[0], 1))], axis=1), axis=1
+      jnp.concatenate([inputs, jnp.zeros((inputs.shape[0], 1))], axis=1),
+      axis=1
     )
     input_hat = jnp.fft.fftshift(input_hat, axes=1)
     # i_list = [96, 112, 120, 124, 126, 127, 128, 129, 130, 132, 136, 144, 160]
@@ -211,11 +213,13 @@ def main():
     for i in i_list:
       plt.plot(input_hat[:, i].real, label=f"Re(k = {i - 128})")
       plt.plot(input_hat[:, i].imag, label=f"Im(k = {i - 128})")
-    plt.legend(loc = "lower left")
+    plt.legend(loc="lower left")
     plt.savefig("results/fig/ks_ode.png", dpi=300)
     plt.close()
 
-    _, s, vt = svd(jnp.array(inputs - jnp.mean(inputs, axis=0)[None]), full_matrices=False)
+    _, s, vt = svd(
+      jnp.array(inputs - jnp.mean(inputs, axis=0)[None]), full_matrices=False
+    )
     """NOTE: the singular values decay very slowly for KS equation"""
     s = np.array(s)
     vt = np.array(vt)
