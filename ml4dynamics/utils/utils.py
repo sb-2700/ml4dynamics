@@ -846,11 +846,13 @@ def eval_a_posteriori(
 
 
 def assembly_RDmatrix(n, dt, dx, beta=1.0, gamma=0.05, d=2):
-  """assemble matrices used in the calculation
-    A1 = I - gamma dt \Delta, used in implicit discretization of diffusion term, size n2*n2
-    A2 = I - gamma dt/2 \Delta, used in CN discretization of diffusion term, size n2*n2
-    A3 = I + gamma dt/2 \Delta, used in CN discretization of diffusion term, size n2*n2
+  r"""assemble matrices used in the calculation
+
+    A1 = I - \gamma dt \Delta, used in implicit discretization of diffusion term, size n2*n2
+    A2 = I - \gamma dt/2 \Delta, used in CN discretization of diffusion term, size n2*n2
+    A3 = I + \gamma dt/2 \Delta, used in CN discretization of diffusion term, size n2*n2
     D, size 4n2*n2, Jacobi of the Newton solver in CN discretization
+
     :d: ratio between the diffusion coeff for u & v
     """
 
@@ -1137,7 +1139,7 @@ def projection_correction(
   BC: str = "Dirichlet",
   correction: bool = False,
 ):
-  """projection method to solve the incompressible NS equation
+  r"""projection method to solve the incompressible NS equation
     The convection discretization is given by central difference
     u_ij (u_i+1,j - u_i-1,j)/2dx + \Sigma v_ij (u_i,j+1 - u_i,j-1)/2dx
     
