@@ -20,7 +20,8 @@ def calc_correction(rd_fine, rd_coarse, nx: float, r: int, uv: jnp.ndarray):
     [
       jnp.kron(next_step_coarse[..., 0], jnp.ones((r, r)))[..., None],
       jnp.kron(next_step_coarse[..., 1], jnp.ones((r, r)))[..., None],
-    ], axis=2
+    ],
+    axis=2
   )
 
   return next_step_fine - next_step_coarse_interp
@@ -66,14 +67,17 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
     int_op = jnp.linalg.pinv(res_op)
     assert jnp.allclose(res_op @ int_op, jnp.eye(N2))
     assert jnp.allclose(res_op.sum(axis=-1), jnp.ones(N2))
+
     @jax.jit
     def res_fn(x):
       return (x.reshape(-1, N1) @ res_op.T).reshape(N2, -1)
+
     @jax.jit
     def int_fn(x):
       return (x.reshape(-1, N2) @ int_op.T).reshape(N1, -1)
   elif config.case == "react_diff" or config.case == "ns_hit":
     n = config.sim.n
+
     @jax.jit
     def res_fn(x):
       result = jnp.zeros((n // r, n // r, x.shape[-1]))
@@ -89,6 +93,8 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
         [
           jnp.kron(x[..., 0], jnp.ones((r, r)))[..., None],
           jnp.kron(x[..., 1], jnp.ones((r, r)))[..., None],
-        ], axis=2
+        ],
+        axis=2
       )
+
   return res_fn, int_fn

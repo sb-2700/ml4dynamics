@@ -1104,6 +1104,7 @@ class ns_hit(dynamics):
     self.e_kin = np.sum(self.u_hist**2, axis=(-3, -2, -1)) / 2
     print(f"Time taken: {time() - t0} seconds")
 
+
 class ns_channel(dynamics):
   r"""
   

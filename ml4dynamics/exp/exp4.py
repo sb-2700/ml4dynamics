@@ -1,4 +1,4 @@
-# This is the script for the figure \cref{NS-cmp}, we only use the `else` block 
+# This is the script for the figure \cref{NS-cmp}, we only use the `else` block
 # to do the plot
 import sys
 from pathlib import Path
@@ -14,85 +14,115 @@ from src.utils import *
 
 
 def main():
-    simulator_list_ols = []
-    simulator_list_tr = []
-    simu_type = 'RD'
-    n = 128
+  simulator_list_ols = []
+  simulator_list_tr = []
+  simu_type = 'RD'
+  n = 128
 
-    for i in range(10):
-        simulator_list_ols.append(test_simulator(n=n, test_index=i, simu_type='RD', model_type='OLS')[0])
-        simulator_list_tr.append(test_simulator(n=n, test_index=i, simu_type='RD', model_type='TR')[0])
-    simu_type = test_simulator(test_index=i, model_type='TR')[1]
+  for i in range(10):
+    simulator_list_ols.append(
+      test_simulator(n=n, test_index=i, simu_type='RD', model_type='OLS')[0]
+    )
+    simulator_list_tr.append(
+      test_simulator(n=n, test_index=i, simu_type='RD', model_type='TR')[0]
+    )
+  simu_type = test_simulator(test_index=i, model_type='TR')[1]
 
-    plt.rcParams['savefig.dpi'] = 300
-    plt.rcParams['figure.dpi']  = 300 
-    width = 10
-    height = 4
-    labelsize = 10
-    #################################################################
-    #               Plot of the simulation result                   #
-    # we only plot the result of the test history                   #
-    #################################################################
-    test_index = 0
-    simulator_ols = simulator_list_ols[test_index]
-    simulator_tr = simulator_list_tr[test_index]
+  plt.rcParams['savefig.dpi'] = 300
+  plt.rcParams['figure.dpi'] = 300
+  width = 10
+  height = 4
+  labelsize = 10
+  #################################################################
+  #               Plot of the simulation result                   #
+  # we only plot the result of the test history                   #
+  #################################################################
+  test_index = 0
+  simulator_ols = simulator_list_ols[test_index]
+  simulator_tr = simulator_list_tr[test_index]
 
-    fig = plt.figure(figsize=(width, height))
-    if simu_type == 'RD':
-        x_left = 0
-        x_right = n
-        y_left = 0
-        y_right = n
-    if simu_type == 'NS':
-        x_left = 1
-        x_right = n//4+1
-        y_left = 1
-        y_right = -1
-    fig_num = 5
-    hspace = 0.01
-    wspace = -0.765
-    fraction = 0.016
-    pad = 0.001
-    time_scale = 500
-    t_array = (np.array([0.0, 0.2, 0.4, 0.6, 1.0])*time_scale).astype(int)
-    ax1 = []
-    ax2 = []
-    ax3 = []
-    im = []
-    for i in range(fig_num):
-        ax1.append(fig.add_subplot(3,fig_num,i+1))
-        ax2.append(fig.add_subplot(3,fig_num,i+fig_num+1))
-        ax3.append(fig.add_subplot(3,fig_num,i+fig_num*2+1))
-    fig.tight_layout()
-    for i in range(fig_num):
-        im_ = ax1[i].imshow(simulator_ols.u_hist[t_array[i]][x_left:x_right, y_left:y_right], cmap=cm.jet)
-        #cbar = fig.colorbar(im, ax=ax1[i], fraction=fraction, pad=pad, orientation='horizontal')
-        #cbar.ax.tick_params(labelsize=5)
-        ax1[i].set_axis_off()
-        im.append(im_)
-        im_ = ax2[i].imshow(simulator_ols.u_hist_simu[t_array[i]][x_left:x_right, y_left:y_right], cmap=cm.jet)
-        #cbar = fig.colorbar(im, ax=ax2[i], fraction=fraction, pad=pad, orientation='horizontal')
-        #cbar.ax.tick_params(labelsize=5)
-        ax2[i].set_axis_off()
-        im_ = ax3[i].imshow(simulator_tr.u_hist_simu[t_array[i]][x_left:x_right, y_left:y_right], cmap=cm.jet)
-        #cbar = fig.colorbar(im, ax=ax3[i], fraction=fraction, pad=pad, orientation='horizontal')
-        #cbar.ax.tick_params(labelsize=5)
-        ax3[i].set_axis_off()
-        
-    plt.subplots_adjust(hspace=hspace)
-    plt.subplots_adjust(wspace=wspace)
-    for i in range(fig_num):
-        cbar = fig.colorbar(im[i], ax=[ax1[i], ax2[i], ax3[i]], fraction=fraction, pad=pad, orientation='horizontal')
-        cbar.ax.tick_params(labelsize=5)
-    plt.savefig('../../fig/exp4/{}/1.pdf'.format(simu_type), dpi = 1000, bbox_inches='tight', pad_inches=0)
-    plt.savefig('../../fig/exp4/{}/1.svg'.format(simu_type), dpi = 1000, bbox_inches='tight', pad_inches=0, format='svg')
-    plt.show()
-    #plt.close()
+  fig = plt.figure(figsize=(width, height))
+  if simu_type == 'RD':
+    x_left = 0
+    x_right = n
+    y_left = 0
+    y_right = n
+  if simu_type == 'NS':
+    x_left = 1
+    x_right = n // 4 + 1
+    y_left = 1
+    y_right = -1
+  fig_num = 5
+  hspace = 0.01
+  wspace = -0.765
+  fraction = 0.016
+  pad = 0.001
+  time_scale = 500
+  t_array = (np.array([0.0, 0.2, 0.4, 0.6, 1.0]) * time_scale).astype(int)
+  ax1 = []
+  ax2 = []
+  ax3 = []
+  im = []
+  for i in range(fig_num):
+    ax1.append(fig.add_subplot(3, fig_num, i + 1))
+    ax2.append(fig.add_subplot(3, fig_num, i + fig_num + 1))
+    ax3.append(fig.add_subplot(3, fig_num, i + fig_num * 2 + 1))
+  fig.tight_layout()
+  for i in range(fig_num):
+    im_ = ax1[i].imshow(
+      simulator_ols.u_hist[t_array[i]][x_left:x_right, y_left:y_right],
+      cmap=cm.jet
+    )
+    #cbar = fig.colorbar(im, ax=ax1[i], fraction=fraction, pad=pad, orientation='horizontal')
+    #cbar.ax.tick_params(labelsize=5)
+    ax1[i].set_axis_off()
+    im.append(im_)
+    im_ = ax2[i].imshow(
+      simulator_ols.u_hist_simu[t_array[i]][x_left:x_right, y_left:y_right],
+      cmap=cm.jet
+    )
+    #cbar = fig.colorbar(im, ax=ax2[i], fraction=fraction, pad=pad, orientation='horizontal')
+    #cbar.ax.tick_params(labelsize=5)
+    ax2[i].set_axis_off()
+    im_ = ax3[i].imshow(
+      simulator_tr.u_hist_simu[t_array[i]][x_left:x_right, y_left:y_right],
+      cmap=cm.jet
+    )
+    #cbar = fig.colorbar(im, ax=ax3[i], fraction=fraction, pad=pad, orientation='horizontal')
+    #cbar.ax.tick_params(labelsize=5)
+    ax3[i].set_axis_off()
 
-    #################################################################
-    #              Plot of the ds & error comparison                #
-    #################################################################
-    '''avg_err_hist_ols = 0
+  plt.subplots_adjust(hspace=hspace)
+  plt.subplots_adjust(wspace=wspace)
+  for i in range(fig_num):
+    cbar = fig.colorbar(
+      im[i],
+      ax=[ax1[i], ax2[i], ax3[i]],
+      fraction=fraction,
+      pad=pad,
+      orientation='horizontal'
+    )
+    cbar.ax.tick_params(labelsize=5)
+  plt.savefig(
+    '../../fig/exp4/{}/1.pdf'.format(simu_type),
+    dpi=1000,
+    bbox_inches='tight',
+    pad_inches=0
+  )
+  plt.savefig(
+    '../../fig/exp4/{}/1.svg'.format(simu_type),
+    dpi=1000,
+    bbox_inches='tight',
+    pad_inches=0,
+    format='svg'
+  )
+  plt.show()
+  #plt.close()
+
+  #################################################################
+  #              Plot of the ds & error comparison                #
+  #################################################################
+  '''avg_err_hist_ols = 0
     avg_err_hist_tr = 0
     avg_ds_hist_ols = 0
     avg_ds_hist_tr = 0
@@ -150,5 +180,6 @@ def main():
     plt.savefig('../../fig/exp4/{}/2.svg'.format(simu_type), dpi = 1000, bbox_inches='tight', pad_inches=0, format='svg')
     plt.show()'''
 
+
 if __name__ == '__main__':
-    main()
+  main()

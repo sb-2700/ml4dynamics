@@ -117,7 +117,7 @@ def load_data(
 
 def augment_inputs(inputs: jnp.ndarray, pde: str, input_labels, model):
   """This function is used both at loading the data and inference time"""
-  
+
   if isinstance(input_labels, int):
     """use stencils as input"""
 
@@ -127,9 +127,9 @@ def augment_inputs(inputs: jnp.ndarray, pde: str, input_labels, model):
     for i in range(input_labels // 2):
       """NOTE: currently only support 1D KS with DN BC"""
       tmp.append(jnp.roll(inputs, i + 1, axis=1))
-      tmp[-1] = tmp[-1].at[:, :i+1].set(0)
+      tmp[-1] = tmp[-1].at[:, :i + 1].set(0)
       tmp.append(jnp.roll(inputs, -(i + 1), axis=1))
-      tmp[-1] = tmp[-1].at[:, -i-1:].set(0)
+      tmp[-1] = tmp[-1].at[:, -i - 1:].set(0)
   else:
     """use derivatives as input"""
     tmp = []
@@ -681,7 +681,8 @@ def eval_a_posteriori(
         x_hist[..., 0].T, (inputs - x_hist)[..., 0].T
       ]
       plot_with_horizontal_colorbar(
-        im_list, None, [len(im_list), 1], None, f"results/fig/{fig_name}.png", 100
+        im_list, None, [len(im_list), 1], None, f"results/fig/{fig_name}.png",
+        100
       )
       viz_utils.plot_stats_aux(
         np.arange(inputs.shape[0]) * model.dt,
@@ -691,10 +692,8 @@ def eval_a_posteriori(
       )
       t_array = np.linspace(0, model.T, model.step_num)
       viz_utils.plot_corr_over_t(
-        [inputs[..., 0], model.x_hist, x_hist[..., 0]],
-        ['baseline', 'ours'],
-        t_array,
-        config.case
+        [inputs[..., 0], model.x_hist, x_hist[..., 0]], ['baseline', 'ours'],
+        t_array, fig_name
       )
     elif dim == 2 and _plot:
       n_plot = 6
@@ -732,12 +731,14 @@ def eval_a_posteriori(
         u_hist = np.zeros((*x_hist.shape[:-1], 2))
         u_hist_baseline = np.zeros((*x_hist.shape[:-1], 2))
         psi_true = jnp.fft.rfft2(inputs[..., 0],
-                                axes=(1, 2)) / model.laplacian_[None]
-        psi = jnp.fft.rfft2(x_hist[..., 0], axes=(1, 2)) / model.laplacian_[None]
+                                 axes=(1, 2)) / model.laplacian_[None]
+        psi = jnp.fft.rfft2(x_hist[..., 0],
+                            axes=(1, 2)) / model.laplacian_[None]
         psi_baseline = jnp.fft.rfft2(model.x_hist, axes=(1, 2)) /\
           model.laplacian_[None]
         u_hist_true[
-          ..., 1] = -jnp.fft.irfft2(1j * psi_true * model.kx[None], axes=(1, 2))
+          ...,
+          1] = -jnp.fft.irfft2(1j * psi_true * model.kx[None], axes=(1, 2))
         u_hist_true[
           ..., 0] = jnp.fft.irfft2(1j * psi_true * model.ky[None], axes=(1, 2))
         u_hist[..., 1] = -jnp.fft.irfft2(1j * psi * model.kx[None], axes=(1, 2))
@@ -783,11 +784,17 @@ def eval_a_posteriori(
       ours_l2 = jnp.mean(jnp.linalg.norm(truth - x_hist[..., 0], axis=(1, )))
       baseline_first_moment = np.mean((truth - model.x_hist)[-avg_length:])
       ours_first_moment = np.mean((truth - x_hist[..., 0])[-avg_length:])
-      baseline_second_moment = np.mean((truth**2 - model.x_hist**2)[-avg_length:])
+      baseline_second_moment = np.mean(
+        (truth**2 - model.x_hist**2)[-avg_length:]
+      )
       ours_second_moment = np.mean((truth**2 - x_hist[..., 0]**2)[-avg_length:])
       l2_list.append(np.array([baseline_l2, ours_l2]))
-      first_moment_list.append(np.array([baseline_first_moment, ours_first_moment]))
-      second_moment_list.append(np.array([baseline_second_moment, ours_second_moment]))
+      first_moment_list.append(
+        np.array([baseline_first_moment, ours_first_moment])
+      )
+      second_moment_list.append(
+        np.array([baseline_second_moment, ours_second_moment])
+      )
       print("l2:", l2_list[-1])
       print("first moment:", first_moment_list[-1])
       print("second moment:", second_moment_list[-1])
@@ -805,27 +812,34 @@ def eval_a_posteriori(
     l2_list = np.array(l2_list)
     first_moment_list = np.array(first_moment_list)
     second_moment_list = np.array(second_moment_list)
-    print(np.mean(l2_list, axis=0),", ", np.std(l2_list, axis=0))
+    print(np.mean(l2_list, axis=0), ", ", np.std(l2_list, axis=0))
     print(
-      np.mean(first_moment_list, axis=0),", ", np.std(first_moment_list, axis=0)
+      np.mean(first_moment_list, axis=0), ", ",
+      np.std(first_moment_list, axis=0)
     )
     print(
-      np.mean(second_moment_list, axis=0),", ", np.std(second_moment_list, axis=0)
+      np.mean(second_moment_list, axis=0), ", ",
+      np.std(second_moment_list, axis=0)
     )
     print(
-      np.mean(l2_list[~np.isnan(l2_list).any(axis=1)], axis=0),
-      ", ",
+      np.mean(l2_list[~np.isnan(l2_list).any(axis=1)], axis=0), ", ",
       np.std(l2_list[~np.isnan(l2_list).any(axis=1)], axis=0)
     )
     print(
-      np.mean(first_moment_list[~np.isnan(first_moment_list).any(axis=1)], axis=0),
-      ", ",
-      np.std(first_moment_list[~np.isnan(first_moment_list).any(axis=1)], axis=0)
+      np.mean(
+        first_moment_list[~np.isnan(first_moment_list).any(axis=1)], axis=0
+      ), ", ",
+      np.std(
+        first_moment_list[~np.isnan(first_moment_list).any(axis=1)], axis=0
+      )
     )
     print(
-      np.mean(second_moment_list[~np.isnan(second_moment_list).any(axis=1)], axis=0),
-      ", ",
-      np.std(second_moment_list[~np.isnan(second_moment_list).any(axis=1)], axis=0)
+      np.mean(
+        second_moment_list[~np.isnan(second_moment_list).any(axis=1)], axis=0
+      ), ", ",
+      np.std(
+        second_moment_list[~np.isnan(second_moment_list).any(axis=1)], axis=0
+      )
     )
   viz_utils.plot_stats_aux(
     np.arange(inputs.shape[0]) * model.dt,

@@ -25,18 +25,12 @@ def main():
     psi_hat = -what_hist / model.laplacian_[None]
     dpsidx = np.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
     dpsidy = np.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
-    dwdx = np.fft.irfft2(
-      1j * what_hist * model.kx[None], axes=(1, 2)
-    )
-    dwdy = np.fft.irfft2(
-      1j * what_hist * model.ky[None], axes=(1, 2)
-    )
+    dwdx = np.fft.irfft2(1j * what_hist * model.kx[None], axes=(1, 2))
+    dwdy = np.fft.irfft2(1j * what_hist * model.ky[None], axes=(1, 2))
     return dpsidy * dwdx - dpsidx * dwdy
 
   parser = argparse.ArgumentParser()
-  parser.add_argument(
-    "-R", "--Re", default=None, help="Reynolds number."
-  )
+  parser.add_argument("-R", "--Re", default=None, help="Reynolds number.")
   args = parser.parse_args()
   with open(f"config/ns_hit.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
@@ -56,9 +50,9 @@ def main():
   # model_fine.nu = 0
   # model_coarse.nu = 0
   n = model_coarse.N
-  inputs = np.zeros((case_num, int(T/dt), n, n, 1))
-  outputs_filter = np.zeros((case_num, int(T/dt), n, n, 1))
-  outputs_correction = np.zeros((case_num, int(T/dt), n, n, 1))
+  inputs = np.zeros((case_num, int(T / dt), n, n, 1))
+  outputs_filter = np.zeros((case_num, int(T / dt), n, n, 1))
+  outputs_correction = np.zeros((case_num, int(T / dt), n, n, 1))
   print('Generating NS HIT data with n = {}, Re = {} ...'.format(n, Re))
 
   j = 0
@@ -86,9 +80,10 @@ def main():
       dimension_numbers=('NXYC', 'OXYI', 'NXYC'),
     )
     periodic_pad = partial(
-      jnp.pad, pad_width=(
-        (0, 0), (kernel_x//2, kernel_x//2 - 1), 
-        (kernel_y//2, kernel_y//2 - 1), (0, 0)
+      jnp.pad,
+      pad_width=(
+        (0, 0), (kernel_x // 2, kernel_x // 2 - 1),
+        (kernel_y // 2, kernel_y // 2 - 1), (0, 0)
       ),
       mode='wrap'
     )
@@ -108,12 +103,14 @@ def main():
       J_filter = jax.vmap(res_fn)(J[..., None])
     else:
       """cpu implementation for large size simulation"""
+
       def res_fn(x):
         result = np.zeros((x.shape[0], n, n, x.shape[-1]))
         for k in range(r):
           for j in range(r):
             result += x[:, k::r, j::r]
         return result / (r**2)
+
       w_coarse = res_fn(model_fine.x_hist[..., None])
       J = calc_J(model_fine.xhat_hist, model_fine)
       J_coarse = calc_J(
@@ -140,13 +137,14 @@ def main():
       breakpoint()
       raise Exception("The shape of output is wrong.")
 
-    if not jnp.isnan(outputs_correction).any() and not jnp.isinf(w_coarse).any():
+    if not jnp.isnan(outputs_correction).any() and not jnp.isinf(w_coarse
+                                                                 ).any():
       # successful generating traj
       inputs[j] = w_coarse
       outputs_filter[j] = output_filter
       outputs_correction[j] = output_correction
       j = j + 1
-  
+
   save = True
   if j == case_num and save:
     data = {
@@ -163,12 +161,9 @@ def main():
         "creation_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       },
       "data": {
-        "inputs":
-        inputs.reshape(-1, n, n, 1),
-        "outputs_filter":
-        outputs_filter.reshape(-1, n, n, 1),
-        "outputs_correction":
-        outputs_correction.reshape(-1, n, n, 1),
+        "inputs": inputs.reshape(-1, n, n, 1),
+        "outputs_filter": outputs_filter.reshape(-1, n, n, 1),
+        "outputs_correction": outputs_correction.reshape(-1, n, n, 1),
       },
       "config":
       config_dict,
@@ -178,16 +173,16 @@ def main():
       "field represents the correction from the coarse grid simulation."
     }
 
-    with h5py.File(
-      f"data/ns_hit/Re{Re}_n{case_num}.h5", "w"
-    ) as f:
+    with h5py.File(f"data/ns_hit/Re{Re}_n{case_num}.h5", "w") as f:
       metadata_group = f.create_group("metadata")
       for key, value in data["metadata"].items():
         metadata_group.create_dataset(key, data=value)
 
       data_group = f.create_group("data")
       data_group.create_dataset("inputs", data=data["data"]["inputs"])
-      data_group.create_dataset("outputs_filter", data=data["data"]["outputs_filter"])
+      data_group.create_dataset(
+        "outputs_filter", data=data["data"]["outputs_filter"]
+      )
       data_group.create_dataset(
         "outputs_correction", data=data["data"]["outputs_correction"]
       )
@@ -207,7 +202,7 @@ def main():
       [w_coarse[..., 0], model_coarse.x_hist], [''], t_array, "ns_hit"
     )
     viz_utils.plot_gif(w_coarse[..., 0], "ns_hit")
-    
+
     n_plot = 6
     delta = conv(
       jnp.fft.irfft2(
@@ -241,11 +236,14 @@ def main():
     plt.plot(jnp.sum(dpsidx**2 + dpsidy**2, axis=(1, 2)), label='e_kin')
     plt.plot(
       jnp.sum(dpsidx**2 + dpsidy**2, axis=(1, 2))[0] *
-      jnp.exp(-model_fine.nu * jnp.linspace(0, model_fine.T, int(T/dt)+1)), label='decay'
+      jnp.exp(-model_fine.nu * jnp.linspace(0, model_fine.T,
+                                            int(T / dt) + 1)),
+      label='decay'
     )
     plt.legend()
     plt.savefig("results/fig/e_kin.png")
     breakpoint()
+
 
 if __name__ == "__main__":
   main()

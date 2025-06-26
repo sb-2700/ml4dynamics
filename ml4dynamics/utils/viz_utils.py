@@ -120,7 +120,7 @@ def plot_corr_over_t(
 ):
 
   for i in range(len(data) - 1):
-    corr = calc_utils.calc_corr_over_t(data[0], data[i+1])
+    corr = calc_utils.calc_corr_over_t(data[0], data[i + 1])
     plt.plot(t_array, corr, label=title[i])
   plt.xlabel(r"$T$")
   plt.ylabel("corrrelation")

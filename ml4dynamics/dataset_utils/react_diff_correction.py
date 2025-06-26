@@ -55,17 +55,17 @@ def main():
 
     output = np.zeros_like(outputs[0])
     if sgs_model == "fine_correction":
-      calc_correction = jax.jit(partial(
-        dataset_utils.calc_correction, rd_fine, rd_coarse, n, r
-      ))
+      calc_correction = jax.jit(
+        partial(dataset_utils.calc_correction, rd_fine, rd_coarse, n, r)
+      )
       for j in range(rd_fine.step_num):
         output[j] = calc_correction(rd_fine.x_hist[j]) / dt
     else:
       input = jax.vmap(res_fn)(rd_fine.x_hist)
       if sgs_model == "filter":
-          output_ = jax.vmap(res_fn)(rd_fine.x_hist**3)
-          output[..., 0] = (output_[..., 0] - input[..., 0]**3) /\
-            (config.sim.L / n * r)**2
+        output_ = jax.vmap(res_fn)(rd_fine.x_hist**3)
+        output[..., 0] = (output_[..., 0] - input[..., 0]**3) /\
+          (config.sim.L / n * r)**2
       else:
         for j in range(rd_fine.step_num):
           next_step_fine = rd_fine.adi(rd_fine.x_hist[j])
@@ -94,8 +94,7 @@ def main():
       "creation_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     },
     "data": {
-      "inputs":
-      inputs,  # shape [case_num, step_num // writeInterval, n, n, 2]
+      "inputs": inputs,  # shape [case_num, step_num // writeInterval, n, n, 2]
       "outputs":
       outputs,  # shape [case_num, step_num // writeInterval, n, n, 2]
     },
@@ -108,8 +107,9 @@ def main():
   }
 
   with h5py.File(
-    "data/react_diff/alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}_{}.h5".
-    format(alpha, beta, gamma, case_num, sgs_model), "w"
+    "data/react_diff/alpha{:.2f}_beta{:.2f}_gamma{:.2f}_n{}_{}.h5".format(
+      alpha, beta, gamma, case_num, sgs_model
+    ), "w"
   ) as f:
     metadata_group = f.create_group("metadata")
     for key, value in data["metadata"].items():

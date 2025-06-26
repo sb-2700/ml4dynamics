@@ -19,16 +19,16 @@ def corr(u):
     correlation[i] = jnp.mean(jnp.roll(u, i, axis=1) * u) /\
       jnp.mean(u**2)
   import matplotlib.pyplot as plt
-  plt.plot(np.linspace(-np.pi, np.pi, u.shape[1]), np.roll(correlation, n//2))
+  plt.plot(np.linspace(-np.pi, np.pi, u.shape[1]), np.roll(correlation, n // 2))
   plt.savefig("results/fig/corr1d.png")
   plt.close()
-  breakpoint()
-
   """NOTE: 2D correlation is too slow to evaluate"""
-  correlation = np.zeros([*u.shape[1:]])
-  for i in range(n):
-    for j in range(n):
-      correlation[i, j] = jnp.mean(jnp.roll(u[-100:], [i, j], axis=[1, 2]) * u[-100:])
+  # correlation = np.zeros([*u.shape[1:]])
+  # for i in range(n):
+  #   for j in range(n):
+  #     correlation[i, j] = jnp.mean(
+  #       jnp.roll(u[-100:], [i, j], axis=[1, 2]) * u[-100:]
+  #     )
   return correlation
 
 
@@ -87,7 +87,7 @@ def calc_corr_over_t(
   ground_truth: np.ndarray,
   simulation: np.ndarray,
 ):
-  
+
   n = ground_truth.shape[0]
   return jnp.sum(
     (ground_truth * simulation).reshape(n, -1), axis=1
