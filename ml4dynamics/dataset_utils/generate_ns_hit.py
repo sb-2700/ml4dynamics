@@ -195,10 +195,11 @@ def main():
 
   if case_num == 1:
 
-    corr_xy = calc_utils.corr(model_fine.x_hist)
-
     t_array = np.linspace(0, T, model_coarse.step_num)
-    viz_utils.plot_corr_over_t(
+    viz_utils.plot_1D_spatial_corr(
+      [model_fine.x_hist], [''], t_array, "ns_hit"
+    )
+    viz_utils.plot_temporal_corr(
       [w_coarse[..., 0], model_coarse.x_hist], [''], t_array, "ns_hit"
     )
     viz_utils.plot_gif(w_coarse[..., 0], "ns_hit")

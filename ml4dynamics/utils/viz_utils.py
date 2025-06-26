@@ -115,17 +115,29 @@ def plot_gif(data: np.ndarray, fig_name: str):
   plt.close()
 
 
-def plot_corr_over_t(
+def plot_temporal_corr(
   data: list, title: list, t_array: np.ndarray, fig_name: str
 ):
 
   for i in range(len(data) - 1):
-    corr = calc_utils.calc_corr_over_t(data[0], data[i + 1])
+    corr = calc_utils.calc_temporal_corr(data[0], data[i + 1])
     plt.plot(t_array, corr, label=title[i])
   plt.xlabel(r"$T$")
   plt.ylabel("corrrelation")
   plt.legend()
   plt.savefig(f"results/fig/{fig_name}_corr.png")
+  plt.close()
+
+
+def plot_1D_spatial_corr(
+  data: list, title: list, t_array: np.ndarray, fig_name: str
+):
+  for i in range(len(data)):
+    corr = calc_utils.calc_1D_spatial_corr(data[i])
+    n = len(corr)
+    plt.plot(np.linspace(-np.pi, np.pi, n), np.roll(corr, n // 2), label=title[i])
+  plt.legend()
+  plt.savefig(f"results/fig/{fig_name}_corr1d.png")
   plt.close()
 
 

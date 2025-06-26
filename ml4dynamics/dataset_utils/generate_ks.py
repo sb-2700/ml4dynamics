@@ -151,7 +151,7 @@ def main():
   plot_ = True
   if plot_ and case_num == 1:
     t_array = np.linspace(0, T, model_coarse.step_num)
-    viz_utils.plot_corr_over_t(
+    viz_utils.plot_temporal_corr(
       [inputs, model_coarse.x_hist], [''], t_array, "ks"
     )
     """calculate the commutator of derivative and filter operator"""

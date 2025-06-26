@@ -73,7 +73,7 @@ print(s)
 """NOTE: the singular values decay very slowly for KS equation"""
 t_array = np.linspace(0, T, model_coarse.step_num)
 filtered_x = jax.vmap(res_fn)(model_fine.x_hist[..., None])
-viz_utils.plot_corr_over_t(
+viz_utils.plot_temporal_corr(
   [filtered_x[..., 0], model_coarse.x_hist], [''], t_array, "ns_hit"
 )
 

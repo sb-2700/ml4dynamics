@@ -631,7 +631,7 @@ def eval_a_posteriori(
         iter_, outputs, beta, type_
       )
 
-  stats_test = False
+  stats_test = True
   if not stats_test:
     """Test with the trajectory in the dataset"""
     start = time()
@@ -691,7 +691,7 @@ def eval_a_posteriori(
         f"results/fig/{fig_name}_stats.png",
       )
       t_array = np.linspace(0, model.T, model.step_num)
-      viz_utils.plot_corr_over_t(
+      viz_utils.plot_temporal_corr(
         [inputs[..., 0], model.x_hist, x_hist[..., 0]], ['baseline', 'ours'],
         t_array, fig_name
       )
@@ -799,8 +799,8 @@ def eval_a_posteriori(
       print("first moment:", first_moment_list[-1])
       print("second moment:", second_moment_list[-1])
 
-      corr1.append(calc_utils.calc_corr_over_t(truth, model.x_hist))
-      corr2.append(calc_utils.calc_corr_over_t(truth, x_hist[..., 0]))
+      corr1.append(calc_utils.calc_temporal_corr(truth, model.x_hist))
+      corr2.append(calc_utils.calc_temporal_corr(truth, x_hist[..., 0]))
 
     corr1 = np.array(corr1)
     corr2 = np.array(corr2)

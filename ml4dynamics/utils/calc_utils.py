@@ -5,7 +5,8 @@ import jax.numpy as jnp
 import numpy as np
 
 
-def corr(u):
+@jax.jit
+def calc_1D_spatial_corr(u):
   """Calculate the spatial correlation of the field.
 
   Args:
@@ -13,23 +14,19 @@ def corr(u):
   contains both time snapshots or other dimensions.
   """
   u = u - jnp.mean(u, axis=(0, ))[None]
-  n = u.shape[-1]
-  correlation = np.zeros([*u.shape[2:]])
-  for i in range(n):
-    correlation[i] = jnp.mean(jnp.roll(u, i, axis=1) * u) /\
-      jnp.mean(u**2)
-  import matplotlib.pyplot as plt
-  plt.plot(np.linspace(-np.pi, np.pi, u.shape[1]), np.roll(correlation, n // 2))
-  plt.savefig("results/fig/corr1d.png")
-  plt.close()
+  corr = jnp.zeros(u.shape[-1])
+  for i in range(u.shape[-1]):
+    corr = corr.at[i].set(
+      jnp.mean(jnp.roll(u, i, axis=1) * u) / jnp.mean(u**2)
+    )
   """NOTE: 2D correlation is too slow to evaluate"""
-  # correlation = np.zeros([*u.shape[1:]])
+  # corr = np.zeros([*u.shape[1:]])
   # for i in range(n):
   #   for j in range(n):
-  #     correlation[i, j] = jnp.mean(
+  #     corr[i, j] = jnp.mean(
   #       jnp.roll(u[-100:], [i, j], axis=[1, 2]) * u[-100:]
   #     )
-  return correlation
+  return corr
 
 
 @partial(jax.jit, static_argnums=(1, ))
@@ -83,7 +80,7 @@ def power_spec_over_t(U: jnp.array, dx: list):
   return k_bins[:-1], E_k_avg
 
 
-def calc_corr_over_t(
+def calc_temporal_corr(
   ground_truth: np.ndarray,
   simulation: np.ndarray,
 ):
