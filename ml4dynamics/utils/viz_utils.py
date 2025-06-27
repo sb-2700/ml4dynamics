@@ -130,7 +130,7 @@ def plot_temporal_corr(
 
 
 def plot_1D_spatial_corr(
-  data: list, title: list, t_array: np.ndarray, fig_name: str
+  data: list, title: list, fig_name: str
 ):
   for i in range(len(data)):
     corr = calc_utils.calc_1D_spatial_corr(data[i])
