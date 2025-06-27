@@ -61,7 +61,7 @@ def main():
     rng, key = random.split(rng)
     i = i + 1
     print('generating the {}-th trajectory...'.format(j))
-    init_cond = "spec_random"
+    init_cond = "gaussian_process" # gaussian_process, spec_random, real_random, taylor_green
     model_fine.w_hat = utils.hit_init_cond(init_cond, model_fine, key)
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
     # model_coarse.w_hat = utils.hit_init_cond(init_cond, model_coarse, key)
@@ -197,11 +197,12 @@ def main():
 
     t_array = np.linspace(0, T, model_coarse.step_num)
     viz_utils.plot_1D_spatial_corr(
-      [model_fine.x_hist], [''], t_array, "ns_hit"
+      [model_fine.x_hist], [''], "ns_hit"
     )
     viz_utils.plot_temporal_corr(
       [w_coarse[..., 0], model_coarse.x_hist], [''], t_array, "ns_hit"
     )
+    breakpoint()
     viz_utils.plot_gif(w_coarse[..., 0], "ns_hit")
 
     n_plot = 6

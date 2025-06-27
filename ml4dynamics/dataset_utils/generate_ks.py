@@ -169,8 +169,12 @@ def main():
     #   [inputs.T[None], outputs_filter.T[None], outputs_correction.T[None],
     #   delta1.T[None], delta2.T[None], delta4.T[None]], axis=0
     # )
+    outputs_correction = (np.roll(outputs_correction, -1, axis=1) -
+                          np.roll(outputs_correction, 1, axis=1)) / 2 / model_coarse.dx
     im_array = np.concatenate(
-      [inputs.T[None], outputs_filter.T[None], outputs_correction.T[None]],
+      [inputs.T[None], outputs_filter.T[None], outputs_correction.T[None],
+       outputs_filter.T[None] - outputs_correction.T[None],
+       outputs_filter.T[None] + outputs_correction.T[None]],
       axis=0
     )
     utils.plot_with_horizontal_colorbar(
@@ -179,7 +183,7 @@ def main():
         "u", r"$\tau^f$", r"$\tau^c$", r"$[R, D_x]$", r"$[R, D_x^2]$",
         r"$[R, D_x^4]$"
       ],
-      shape=(3, 1),
+      shape=(5, 1),
       fig_size=(20, 5),
       file_path="results/fig/ks.png",
       dpi=100
