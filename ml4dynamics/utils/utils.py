@@ -631,11 +631,12 @@ def eval_a_posteriori(
         iter_, outputs, beta, type_
       )
 
+  step_num = model.step_num
+  t_array = np.linspace(0, model.T, model.step_num)
   stats_test = True
   if not stats_test:
     """Test with the trajectory in the dataset"""
     start = time()
-    step_num = model.step_num
     inputs = inputs[:step_num]
     outputs = outputs[:step_num]
     if config.case == "ns_hit":
@@ -690,7 +691,6 @@ def eval_a_posteriori(
         ["truth", "baseline", "ours"],
         f"results/fig/{fig_name}_stats.png",
       )
-      t_array = np.linspace(0, model.T, model.step_num)
       viz_utils.plot_temporal_corr(
         [inputs[..., 0], model.x_hist, x_hist[..., 0]], ['baseline', 'ours'],
         t_array, fig_name
@@ -757,12 +757,9 @@ def eval_a_posteriori(
   else:
     """Statistical test to obtain the error bar"""
     n_sample = 10
-    step_num = model.step_num
     rng = random.PRNGKey(1000)
     res_fn, _ = res_int_fn(config_dict)
-    N1 = config.sim.n - 1
-    dx = config.sim.L / (N1 + 1)
-    x = jnp.linspace(dx, config.sim.L - dx, N1)
+    N1 = config.sim.n
     l2_list = []
     first_moment_list = []
     second_moment_list = []
@@ -773,7 +770,23 @@ def eval_a_posteriori(
       print(f"{_}th sample")
       rng, key = random.split(rng)
       r0 = random.uniform(key) * 20 + 44
-      u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
+      L = model_fine.Lx
+      if config.sim.BC == "periodic":
+        dx = L / N1
+        # u0 = model_fine.attractor + model_fine.init_scale * random.normal(key) *\
+        #   jnp.sin(10 * jnp.pi * jnp.linspace(0, L - L/N1, N1) / L)
+        r0 = random.uniform(key) * 20 + 44
+        u0 = jnp.exp(-(jnp.linspace(0, L - L / N1, N1) - r0)**2 / r0**2 * 4)
+      elif config.sim.BC == "Dirichlet-Neumann":
+        dx = L / (N1 + 1)
+        x = jnp.linspace(dx, L - dx, N1)
+        # different choices of initial conditions
+        # u0 = model_fine.attractor + init_scale * random.normal(key) *\
+        #   jnp.sin(10 * jnp.pi * x / L)
+        # u0 = random.uniform(key) * jnp.sin(8 * jnp.pi * x / 128) +\
+        #   random.uniform(rng) * jnp.sin(16 * jnp.pi * x / 128)
+        r0 = random.uniform(key) * 20 + 44
+        u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
       model_fine.run_simulation(u0, model_fine.CN_FEM)
       truth = jax.vmap(res_fn)(model_fine.x_hist)[..., 0]
       model.run_simulation(res_fn(u0)[..., 0], iter_)

@@ -151,9 +151,9 @@ class dynamics(object):
 
   def run_simulation(self, x, iter: callable):
     step_num = self.step_num
-    self.x_hist = jnp.zeros([step_num, *x.shape])
+    self.x_hist = np.zeros([step_num, *x.shape])
     for i in range(step_num):
-      self.x_hist = self.x_hist.at[i].set(x)
+      self.x_hist[i] = x
       x = iter(x)
 
     # self.check_simulation()
@@ -533,15 +533,15 @@ class KS(dynamics):
     super(KS, self).__init__(
       model_type, N, T, dt, tol, init_scale, tv_scale, rng, plot
     )
-    self.L = L
+    self.Lx = L
     self.nu = nu
     self.c = c
     dt = self.dt
     self.BC = BC
     if self.BC == "periodic":
-      self.dx = self.L / self.N
+      self.dx = self.Lx / self.N
     elif self.BC == "Dirichlet-Neumann":
-      self.dx = self.L / (self.N + 1)
+      self.dx = self.Lx / (self.N + 1)
     self.assembly_matrix()
 
   def f(self, t, x):
@@ -639,7 +639,7 @@ class KS(dynamics):
     # however, periodic boundary condition does not give ergodic system
     dt = self.dt
     c = self.c
-    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    k = jnp.fft.rfftfreq(self.N, d=self.Lx / self.N) * 2 * jnp.pi
     x_hat = jnp.fft.rfft(x)
     x_hat = ((1 - c*1j*k/2 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))*x_hat -\
       dt/2 * 1j * k * jnp.fft.rfft(x*x))\
@@ -651,7 +651,7 @@ class KS(dynamics):
     # CN scheme for the dual variable \lambda
     dt = self.dt
     c = self.c
-    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    k = jnp.fft.rfftfreq(self.N, d=self.Lx / self.N) * 2 * jnp.pi
     lambda_hat = jnp.fft.rfft(lambda_)
     delta_x = jnp.fft.rfft(self.x_hist[:, i] - self.x_targethist[:, i])
     lambda_hat = ((1 - c*1j*k/2 + dt/2 * (k**2) - self.nu*dt/2 * (k**4))*\
@@ -665,7 +665,7 @@ class KS(dynamics):
     step_num = self.step_num
     iter = self.CN_FEM
     dual_iter = self.CN_FEM_adj
-    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    k = jnp.fft.rfftfreq(self.N, d=self.Lx / self.N) * 2 * jnp.pi
     # saving dual variable instead of primal variable helps save the memory consumption
     x = copy.deepcopy(self.x)
     y = jnp.zeros(self.N)
@@ -707,7 +707,7 @@ class KS(dynamics):
   def CN_lss(self, w, i):
     # CN scheme for the modified equation of LSS method
     dt = self.dt
-    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    k = jnp.fft.rfftfreq(self.N, d=self.Lx / self.N) * 2 * jnp.pi
     w_hat = jnp.fft.rfft(w)
     # I am not sure whether here should be
     u0 = copy.deepcopy(self.x_hist[:, i])
@@ -723,7 +723,7 @@ class KS(dynamics):
   def CN_lss_adj(self, w, i):
     # CN scheme for the modified equation of LSS method
     dt = self.dt
-    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    k = jnp.fft.rfftfreq(self.N, d=self.Lx / self.N) * 2 * jnp.pi
     w_hat = jnp.fft.rfft(w)
     # I am not sure whether here should be
     u0 = copy.deepcopy(self.x_hist[:, i])
@@ -743,7 +743,7 @@ class KS(dynamics):
     T = self.T
     iter = self.CN
     dual_iter = self.CN_adj
-    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    k = jnp.fft.rfftfreq(self.N, d=self.Lx / self.N) * 2 * jnp.pi
     # saving dual variable instead of primal variable helps save the memory consumption
     x = copy.deepcopy(self.x_hist[:, 0])
     y = jnp.zeros(self.N)
@@ -773,7 +773,7 @@ class KS(dynamics):
     iter = self.CN
     iter_lss = self.CN_lss
     dual_iter = self.CN_lss_adj
-    k = jnp.fft.rfftfreq(self.N, d=self.L / self.N) * 2 * jnp.pi
+    k = jnp.fft.rfftfreq(self.N, d=self.Lx / self.N) * 2 * jnp.pi
     # saving dual variable instead of primal variable helps save the memory consumption
     x = copy.deepcopy(self.x_hist[:, 0])
     y = jnp.zeros(self.N)
@@ -1029,9 +1029,9 @@ class ns_hit(dynamics):
     psiy2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2y)
     #print(np.linalg.norm(wx2*psiy2-wy2*psix2))
     tmp = jnp.zeros_like(w_hat, dtype=jnp.complex128)
-    k = 4
-    force = -k * jnp.cos(k * jnp.linspace(0, 2 * np.pi, n * 2, endpoint=False))
-    tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2 + force[None])
+    # k = 4
+    # force = -k * jnp.cos(k * jnp.linspace(0, 2 * np.pi, n * 2, endpoint=False))
+    tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)# + force[None])
     tmp_ = jnp.fft.rfft2(wx2 * psiy2 - wy2 * psix2)
     tmp = tmp.at[:n // 2].set(tmp_[:n // 2, :n // 2 + 1] / 4)
     tmp = tmp.at[n // 2:].set(tmp_[-n // 2:, :n // 2 + 1] / 4)
