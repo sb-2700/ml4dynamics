@@ -60,8 +60,10 @@ def load_data(
       Re = config.sim.Re
       dataset = f"Re{Re}_n{case_num}"
     elif pde == "ks":
+      bc = "pbc" if config.sim.BC == "periodic" else "dnbc"
+      nu = config.sim.nu
       c = config.sim.c
-      dataset = f"c{c:.1f}_n{case_num}"
+      dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}"
   h5_filename = f"data/{pde}/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
