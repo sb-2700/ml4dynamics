@@ -391,7 +391,7 @@ def plot_bias_variance_comparison(data_file: str):
         second_moment_biases, second_moment_variances
     
     first_moment_biases, first_moment_variances,\
-    second_moment_biases, second_moment_variances = read_data_file(f"results/data/{data_file}")
+    second_moment_biases, second_moment_variances = read_data_file(f"results/data/{data_file}.txt")
     methods = ['baseline', 'global correction', 'global filter', 'local correction', 'local filter']
     assert len(methods) == len(first_moment_biases) == len(first_moment_variances), "输入列表长度必须一致"
 
