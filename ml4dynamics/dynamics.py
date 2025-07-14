@@ -916,6 +916,12 @@ class react_diff(dynamics):
 
 class ns_hit(dynamics):
 
+  CN_FEM = "CN_FEM"
+
+  def CN_FEM(self, w_hat):
+    # Use the existing spectral CN method as a placeholder
+    return self.CN(w_hat)
+
   def __init__(
     self,
     model_type='NS',
