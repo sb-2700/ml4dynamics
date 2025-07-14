@@ -23,8 +23,7 @@ case: ns_hit
 
 sim:
   n: 512
-  Lx: 2
-  Ly: 2
+  L: 2
   Re: 1000
   dim: 2
   T: 20

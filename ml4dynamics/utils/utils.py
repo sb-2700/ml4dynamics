@@ -773,7 +773,7 @@ def eval_a_posteriori(
     n_sample = 10
     rng = random.PRNGKey(1000)
     res_fn, _ = res_int_fn(config_dict)
-    L = model_fine.Lx
+    L = model_fine.L
     N1 = config.sim.n
     dx = L / N1
     l2_list = []
