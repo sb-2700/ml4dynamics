@@ -1015,20 +1015,22 @@ class ns_hit(dynamics):
     # Crank-Nicolson scheme for spectral method with periodic boundary condition
     dt = self.dt
     nu = self.nu
-    n = w_hat.shape[0]
+    n, m = w_hat.shape  # Expect w_hat to be (n, n//2+1)
+    assert w_hat.ndim == 2, f"w_hat should be 2D, got {w_hat.shape}"
     # the forcing is consistent with the choice of
     # https://arxiv.org/pdf/2010.08895
     # forcing = jnp.zeros_like(w_hat)
     # forcing = forcing.at[1, 1].set(n**2 / 2) * jnp.sin(self.t)
     """implementation 1: expansion method"""
-    w_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
-    psi_hat2 = jnp.zeros((n * 2, n + 1), dtype=jnp.complex128)
-    w_hat2 = w_hat2.at[:n // 2, :n // 2 + 1].set(w_hat[:n // 2] * 4)
-    w_hat2 = w_hat2.at[-n // 2:, :n // 2 + 1].set(w_hat[n // 2:] * 4)
-    psi_hat2 = psi_hat2.at[:n // 2, :n // 2 +
-                           1].set(-(w_hat / self.laplacian_)[:n // 2] * 4)
-    psi_hat2 = psi_hat2.at[-n // 2:, :n // 2 +
-                           1].set(-(w_hat / self.laplacian_)[n // 2:] * 4)
+    w_hat2 = jnp.zeros((n * 2, m * 2 - 1), dtype=jnp.complex128)
+    psi_hat2 = jnp.zeros((n * 2, m * 2 - 1), dtype=jnp.complex128)
+    # Place w_hat in the upper-left block, scaled by 4
+    w_hat2 = w_hat2.at[:n, :m].set(w_hat * 4)
+    # Place w_hat in the lower-left block, scaled by 4
+    w_hat2 = w_hat2.at[-n:, :m].set(w_hat * 4)
+    # psi_hat2: -(w_hat / self.laplacian_) in the same blocks
+    psi_hat2 = psi_hat2.at[:n, :m].set(-(w_hat / self.laplacian_) * 4)
+    psi_hat2 = psi_hat2.at[-n:, :m].set(-(w_hat / self.laplacian_) * 4)
     wx2 = jnp.fft.irfft2(1j * w_hat2 * self.k2x)
     wy2 = jnp.fft.irfft2(1j * w_hat2 * self.k2y)
     psix2 = jnp.fft.irfft2(1j * psi_hat2 * self.k2x)
