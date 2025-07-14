@@ -17,6 +17,7 @@ import jax.numpy as jnp
 from flax import linen as nn
 from flax.training.train_state import TrainState
 from jax import random
+from ml4dynamics.models.transformer import Transformer2D
 
 
 class CustomTrainState(TrainState):
@@ -585,3 +586,31 @@ class UNet(nn.Module):
       # y = nn.softplus(y)
 
     return y
+
+
+def get_model_from_config(config):
+    """
+    Returns the model instance based on config.model.type.
+    Supports 'unet' and 'transformer' (Transformer2D).
+    """
+    model_type = config.model.type.lower()
+    if model_type == "unet":
+        return UNet(
+            input_features=config.model.input_features,
+            output_features=config.model.output_features,
+            DIM=2,
+            kernel_size=getattr(config.model, "kernel_size", 3),
+            dtype=getattr(config.model, "dtype", jnp.float32),
+            training=getattr(config.model, "training", True),
+        )
+    elif model_type == "transformer":
+        return Transformer2D(
+            model_dim=config.model.model_dim,
+            num_classes=config.model.output_features,
+            num_heads=config.model.num_heads,
+            num_layers=config.model.num_layers,
+            dropout_prob=getattr(config.model, "dropout_prob", 0.0),
+            input_dropout_prob=getattr(config.model, "input_dropout_prob", 0.0),
+        )
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")

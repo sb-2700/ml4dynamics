@@ -24,7 +24,8 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from ml4dynamics import dynamics
 from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
-from ml4dynamics.models.models_jax import MLP, CustomTrainState, UNet
+from ml4dynamics.models.models_jax import MLP, CustomTrainState, UNet, get_model_from_config
+from ml4dynamics.models.transformer import Transformer2D
 from ml4dynamics.trainers import train_utils
 from ml4dynamics.types import PRNGKey
 from ml4dynamics.utils import calc_utils, viz_utils
@@ -390,30 +391,41 @@ def prepare_unet_train_state(
   )
   optimizer = optax.adam(schedule)
   if is_global:
-    unet = UNet(
-      input_features=input_features,
-      output_features=output_features,
-      kernel_size=config.train.kernel_size,
-      DIM=DIM,
-      training=is_training,
-    )
+    model_type = getattr(config.model, "type", "unet")
+    if model_type == "unet":
+        unet = UNet(
+            input_features=input_features,
+            output_features=output_features,
+            kernel_size=config.train.kernel_size,
+            DIM=DIM,
+            training=is_training,
+        )
+        model = unet
+        input_shape = [1, nx, ny, input_features] if DIM == 2 else [1, nx, input_features]
+    elif model_type == "transformer":
+        model = Transformer2D(
+            model_dim=getattr(config.model, "model_dim", 128),
+            num_classes=output_features,
+            num_heads=getattr(config.model, "num_heads", 4),
+            num_layers=getattr(config.model, "num_layers", 4),
+            dropout_prob=getattr(config.model, "dropout_prob", 0.1),
+            input_dropout_prob=getattr(config.model, "input_dropout_prob", 0.1),
+        )
+        input_shape = [1, nx, ny, input_features]
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
     rng1, rng2 = random.split(rng)
     init_rngs = {'params': rng1, 'dropout': rng2}
     if not load_dict:
-      if config.case == "ks":
-        # init 1D UNet
-        params = unet.init(
-          init_rngs, jnp.ones([1, nx, input_features], dtype=jnp.float64)
-        )
-      else:
-        params = unet.init(
-          init_rngs, jnp.ones([1, nx, ny, input_features], dtype=jnp.float64)
+        params = model.init(
+            init_rngs, jnp.ones(input_shape, dtype=jnp.float64)
         )
     train_state = CustomTrainState.create(
-      apply_fn=unet.apply,
-      params=params["params"],
-      tx=optimizer,
-      batch_stats=params["batch_stats"]
+        apply_fn=model.apply,
+        params=params["params"],
+        tx=optimizer,
+        batch_stats=params.get("batch_stats", {})
     )
   else:
     mlp = MLP(output_features)

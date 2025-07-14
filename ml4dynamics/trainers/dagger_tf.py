@@ -25,7 +25,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from ml4dynamics.dynamics import RD
-from ml4dynamics.models.models_jax import CustomTrainState, UNet
+from ml4dynamics.models.models_jax import CustomTrainState, get_model_from_config
 from ml4dynamics.utils import jax_memory_profiler
 
 # jax.config.update("jax_enable_x64", True)
@@ -72,18 +72,18 @@ def main(config_dict: ml_collections.ConfigDict):
   val_dataset = tf.data.Dataset.from_tensor_slices((test_x, test_y))
   val_dataset = val_dataset.shuffle(buffer_size=buffer_size).batch(batch_size)
 
-  unet = UNet()
+  model = get_model_from_config(config)
   init_rngs = {
     'params': jax.random.PRNGKey(0),
     'dropout': jax.random.PRNGKey(1)
   }
-  unet_variables = unet.init(init_rngs, jnp.ones([1, n, n, 2]))
+  model_variables = model.init(init_rngs, jnp.ones([1, n, n, 2]))
   optimizer = optax.adam(learning_rate=0.01)
   train_state = CustomTrainState.create(
-    apply_fn=unet.apply,
-    params=unet_variables["params"],
+    apply_fn=model.apply,
+    params=model_variables["params"],
     tx=optimizer,
-    batch_stats=unet_variables["batch_stats"]
+    batch_stats=model_variables["batch_stats"]
   )
 
   @partial(jax.jit, static_argnums=(3, ))
