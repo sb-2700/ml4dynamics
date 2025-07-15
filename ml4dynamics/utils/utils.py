@@ -438,7 +438,7 @@ def prepare_unet_train_state(
         apply_fn=unet.apply,
         params=params["params"],
         tx=optimizer,
-        batch_stats=params["batch_stats"]
+        batch_stats=params.get("batch_stats", {})
       )
   else:
     mlp = MLP(output_features)
@@ -570,7 +570,7 @@ def prepare_model_train_state(
         apply_fn=unet.apply,
         params=params["params"],
         tx=optimizer,
-        batch_stats=params["batch_stats"]
+        batch_stats=params.get("batch_stats", {})
       )
   else:
     mlp = MLP(output_features)
@@ -1575,7 +1575,7 @@ def a_posteriori_analysis(
       dx = L / N2
       u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) / dx / 2
       u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
-      u_xxxx = ((jnp.roll(input, 2) + jnproll(input, -2)) -\
+      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
           dx**4
       if config.train.input == "u":

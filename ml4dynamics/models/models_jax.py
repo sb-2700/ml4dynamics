@@ -586,3 +586,29 @@ class UNet(nn.Module):
       # y = nn.softplus(y)
 
     return y
+
+
+def get_model(arch, case, input_features, output_features, kernel_size, DIM, is_training, nx, config_train):
+    """
+    Returns the correct model instance (UNet or Transformer1D) for the given config.
+    """
+    if arch == 'transformer1d' and case == 'ks':
+        return Transformer1D(
+            input_features=input_features,
+            output_features=output_features,
+            model_dim=getattr(config_train, 'model_dim', 128),
+            num_heads=getattr(config_train, 'num_heads', 4),
+            num_layers=getattr(config_train, 'num_layers', 4),
+            dim_feedforward=getattr(config_train, 'dim_feedforward', 256),
+            dropout_prob=getattr(config_train, 'dropout_prob', 0.1),
+            input_dropout_prob=getattr(config_train, 'input_dropout_prob', 0.0),
+            max_len=nx
+        )
+    else:
+        return UNet(
+            input_features=input_features,
+            output_features=output_features,
+            kernel_size=kernel_size,
+            DIM=DIM,
+            training=is_training,
+        )
