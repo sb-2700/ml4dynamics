@@ -1015,8 +1015,8 @@ class ns_hit(dynamics):
     # Crank-Nicolson scheme for spectral method with periodic boundary condition
     dt = self.dt
     nu = self.nu
-    n, m = w_hat.shape  # Expect w_hat to be (n, n//2+1)
     assert w_hat.ndim == 2, f"w_hat should be 2D, got {w_hat.shape}"
+    n, m = w_hat.shape  # Expect w_hat to be (n, n//2+1)
     # the forcing is consistent with the choice of
     # https://arxiv.org/pdf/2010.08895
     # forcing = jnp.zeros_like(w_hat)
