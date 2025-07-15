@@ -920,8 +920,15 @@ class ns_hit(dynamics):
 
   def CN_FEM(self, w_hat):
     print("DEBUG: w_hat.shape =", w_hat.shape, "ndim =", w_hat.ndim, "type =", type(w_hat))
-    assert w_hat.ndim == 2, f"w_hat should be 2D, got {w_hat.shape}"
-    # Use the existing spectral CN method as a placeholder
+    # Handle both 1D and 2D inputs
+    if w_hat.ndim == 1:
+        # Reshape 1D input to 2D
+        n = self.N
+        w_hat = w_hat.reshape(n, n//2+1)
+    elif w_hat.ndim != 2:
+        raise ValueError(f"w_hat should be 1D or 2D, got shape {w_hat.shape}")
+    
+    # Use the existing spectral CN method
     return self.CN(w_hat)
 
   def __init__(
