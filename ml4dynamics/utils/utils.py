@@ -611,7 +611,7 @@ def eval_a_posteriori(
     if config.case == "react_diff":
       iter_ = model.adi
     elif config.case == "ns_hit":
-      iter_ = model.CN_real
+      iter_ = model.CN
     elif config.case == "ks":
       iter_ = model.CN_FEM
       if config.sim.BC == "Dirichlet-Neumann":
@@ -788,7 +788,10 @@ def eval_a_posteriori(
         #   random.uniform(rng) * jnp.sin(16 * jnp.pi * x / 128)
         r0 = random.uniform(key) * 20 + 44
         u0 = jnp.exp(-(x - r0)**2 / r0**2 * 4)
-      model_fine.run_simulation(u0, model_fine.CN_FEM)
+      if config.case == "ns_hit":
+        model_fine.run_simulation(u0, model_fine.CN)
+      else:
+        model_fine.run_simulation(u0, model_fine.CN_FEM)
       truth = jax.vmap(res_fn)(model_fine.x_hist)[..., 0]
       model.run_simulation(res_fn(u0)[..., 0], iter_)
       x_hist = run_simulation(res_fn(u0))
