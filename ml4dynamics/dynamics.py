@@ -919,6 +919,8 @@ class ns_hit(dynamics):
   CN_FEM = "CN_FEM"
 
   def CN_FEM(self, w_hat):
+    print("DEBUG: w_hat.shape =", w_hat.shape, "ndim =", w_hat.ndim, "type =", type(w_hat))
+    assert w_hat.ndim == 2, f"w_hat should be 2D, got {w_hat.shape}"
     # Use the existing spectral CN method as a placeholder
     return self.CN(w_hat)
 
