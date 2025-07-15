@@ -662,7 +662,6 @@ def eval_a_posteriori(
     outputs = outputs[:step_num]
     if config.case == "ns_hit":
       model.set_x_hist(np.fft.rfft2(inputs[0, ..., 0]), model.CN)
-      model.run_simulation(inputs[0, ..., 0], iter_)  # Use iter_ consistently
     elif config.case == "ks":
       model.run_simulation(inputs[0, :, 0], iter_)
     x_hist = run_simulation(inputs[0])
