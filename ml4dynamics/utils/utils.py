@@ -25,6 +25,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from ml4dynamics import dynamics
 from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
 from ml4dynamics.models.models_jax import MLP, CustomTrainState, UNet
+from ml4dynamics.models.transformer1d import Transformer1D
 from ml4dynamics.trainers import train_utils
 from ml4dynamics.types import PRNGKey
 from ml4dynamics.utils import calc_utils, viz_utils
@@ -389,32 +390,56 @@ def prepare_unet_train_state(
     }
   )
   optimizer = optax.adam(schedule)
+  arch = getattr(config.train, 'arch', 'unet')
   if is_global:
-    unet = UNet(
-      input_features=input_features,
-      output_features=output_features,
-      kernel_size=config.train.kernel_size,
-      DIM=DIM,
-      training=is_training,
-    )
-    rng1, rng2 = random.split(rng)
-    init_rngs = {'params': rng1, 'dropout': rng2}
-    if not load_dict:
-      if config.case == "ks":
-        # init 1D UNet
-        params = unet.init(
-          init_rngs, jnp.ones([1, nx, input_features], dtype=jnp.float64)
-        )
-      else:
-        params = unet.init(
-          init_rngs, jnp.ones([1, nx, ny, input_features], dtype=jnp.float64)
-        )
-    train_state = CustomTrainState.create(
-      apply_fn=unet.apply,
-      params=params["params"],
-      tx=optimizer,
-      batch_stats=params["batch_stats"]
-    )
+    if arch == 'transformer1d' and config.case == 'ks':
+      model = Transformer1D(
+        input_features=input_features,
+        output_features=output_features,
+        model_dim=getattr(config.train, 'model_dim', 128),
+        num_heads=getattr(config.train, 'num_heads', 4),
+        num_layers=getattr(config.train, 'num_layers', 4),
+        dim_feedforward=getattr(config.train, 'dim_feedforward', 256),
+        dropout_prob=getattr(config.train, 'dropout_prob', 0.1),
+        input_dropout_prob=getattr(config.train, 'input_dropout_prob', 0.0),
+        max_len=nx
+      )
+      rng1, rng2 = random.split(rng)
+      init_rngs = {'params': rng1, 'dropout': rng2}
+      if not load_dict:
+        params = model.init(init_rngs, jnp.ones([1, nx, input_features], dtype=jnp.float64))
+      train_state = CustomTrainState.create(
+        apply_fn=model.apply,
+        params=params["params"],
+        tx=optimizer,
+        batch_stats=params.get("batch_stats", {})
+      )
+    else:
+      unet = UNet(
+        input_features=input_features,
+        output_features=output_features,
+        kernel_size=config.train.kernel_size,
+        DIM=DIM,
+        training=is_training,
+      )
+      rng1, rng2 = random.split(rng)
+      init_rngs = {'params': rng1, 'dropout': rng2}
+      if not load_dict:
+        if config.case == "ks":
+          # init 1D UNet
+          params = unet.init(
+            init_rngs, jnp.ones([1, nx, input_features], dtype=jnp.float64)
+          )
+        else:
+          params = unet.init(
+            init_rngs, jnp.ones([1, nx, ny, input_features], dtype=jnp.float64)
+          )
+      train_state = CustomTrainState.create(
+        apply_fn=unet.apply,
+        params=params["params"],
+        tx=optimizer,
+        batch_stats=params["batch_stats"]
+      )
   else:
     mlp = MLP(output_features)
     if not load_dict:
@@ -1518,6 +1543,7 @@ def plot_with_horizontal_colorbar(
     if title_array is not None and\
       title_array[i] is not None:
       axs[i].set_title(title_array[i])
+   
     axs[i].axis("off")
     fig.colorbar(
       im, ax=axs[i], fraction=fraction, pad=pad, orientation="horizontal"

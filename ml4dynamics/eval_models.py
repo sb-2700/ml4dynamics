@@ -49,7 +49,7 @@ def main(config_dict: ml_collections.ConfigDict):
       inputs_ = inputs[:, :-1]
       outputs_ = outputs[:, :-1]
 
-  train_state, _ = utils.prepare_unet_train_state(
+  train_state, _ = utils.prepare_model_train_state(
     config_dict, ckpt_path, _global, False
   )
   if _global:

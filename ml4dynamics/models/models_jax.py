@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import jax
+from ml4dynamics.models.transformer1d import Transformer1D
 import jax.numpy as jnp
 from flax import linen as nn
 from flax.training.train_state import TrainState
