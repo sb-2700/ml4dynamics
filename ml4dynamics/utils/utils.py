@@ -418,14 +418,21 @@ def prepare_unet_train_state(
     rng1, rng2 = random.split(rng)
     init_rngs = {'params': rng1, 'dropout': rng2}
     if not load_dict:
-        params = model.init(
-            init_rngs, jnp.ones(input_shape, dtype=jnp.float64)
+      if config.case == "ks":
+        #init 1D UNet
+        params = unet.init(
+          init_rngs, jnp.ones([1, nx, input_features], dtype=jnp.float64)
         )
+      else:
+        params = model.init(
+          init_rngs, jnp.ones(input_shape, dtype=jnp.float64)
+        )
+      
     train_state = CustomTrainState.create(
-        apply_fn=model.apply,
-        params=params["params"],
-        tx=optimizer,
-        batch_stats=params.get("batch_stats", {})
+      apply_fn=model.apply,
+      params=params["params"],
+      tx=optimizer,
+      batch_stats=params.get("batch_stats", {})
     )
   else:
     mlp = MLP(output_features)
