@@ -462,6 +462,137 @@ def prepare_unet_train_state(
   return train_state, schedule
 
 
+def prepare_model_train_state(
+  config_dict: ml_collections.ConfigDict,
+  load_dict: str = None,
+  is_global: bool = True,
+  is_training: bool = True
+):
+  config = Box(config_dict)
+  rng = random.PRNGKey(config.sim.seed)
+  n_sample = int(config.sim.T / config.sim.dt * 0.8)
+  inputs_labels = config.train.input
+  if inputs_labels == "global":
+    epochs = config.train.epochs_global
+    decay = config.train.decay_global
+    batch_size = config.train.batch_size_global
+  else:
+    epochs = config.train.epochs_local
+    decay = config.train.decay_local
+    batch_size = config.train.batch_size_local
+  if config.case == "ns_channel":
+    nx = config.sim.nx
+    ny = config.sim.ny
+    input_features = 2
+    output_features = 1
+    DIM = 2
+  else:
+    nx = ny = config.sim.n // config.sim.rx
+    if config.case == "react_diff":
+      input_features = 2
+      output_features = 2
+      DIM = 2
+    elif config.case == "ns_hit":
+      if is_global:
+        input_features = 1
+      else:
+        input_features = inputs_labels if isinstance(inputs_labels, int)\
+          else len(inputs_labels)
+      output_features = 1
+      DIM = 2
+    elif config.case == "ks":
+      if is_global:
+        input_features = 1
+      else:
+        input_features = inputs_labels if isinstance(inputs_labels, int)\
+          else len(inputs_labels)
+      output_features = 1
+      DIM = 1
+  if load_dict:
+    with open(f"{load_dict}", "rb") as f:
+      params = pickle.load(f)
+  step_per_epoch = n_sample * config.sim.case_num // batch_size + 1
+  schedule = optax.piecewise_constant_schedule(
+    init_value=config.train.lr,
+    boundaries_and_scales={
+      int(b): 0.1
+      for b in jnp.arange(
+        decay * step_per_epoch, epochs * step_per_epoch, decay * step_per_epoch
+      )
+    }
+  )
+  optimizer = optax.adam(schedule)
+  arch = getattr(config.train, 'arch', 'unet')
+  if is_global:
+    if arch == 'transformer1d' and config.case == 'ks':
+      model = Transformer1D(
+        input_features=input_features,
+        output_features=output_features,
+        model_dim=getattr(config.train, 'model_dim', 128),
+        num_heads=getattr(config.train, 'num_heads', 4),
+        num_layers=getattr(config.train, 'num_layers', 4),
+        dim_feedforward=getattr(config.train, 'dim_feedforward', 256),
+        dropout_prob=getattr(config.train, 'dropout_prob', 0.1),
+        input_dropout_prob=getattr(config.train, 'input_dropout_prob', 0.0),
+        max_len=nx
+      )
+      rng1, rng2 = random.split(rng)
+      init_rngs = {'params': rng1, 'dropout': rng2}
+      if not load_dict:
+        params = model.init(init_rngs, jnp.ones([1, nx, input_features], dtype=jnp.float64))
+      train_state = CustomTrainState.create(
+        apply_fn=model.apply,
+        params=params["params"],
+        tx=optimizer,
+        batch_stats=params.get("batch_stats", {})
+      )
+    else:
+      unet = UNet(
+        input_features=input_features,
+        output_features=output_features,
+        kernel_size=config.train.kernel_size,
+        DIM=DIM,
+        training=is_training,
+      )
+      rng1, rng2 = random.split(rng)
+      init_rngs = {'params': rng1, 'dropout': rng2}
+      if not load_dict:
+        if config.case == "ks":
+          # init 1D UNet
+          params = unet.init(
+            init_rngs, jnp.ones([1, nx, input_features], dtype=jnp.float64)
+          )
+        else:
+          params = unet.init(
+            init_rngs, jnp.ones([1, nx, ny, input_features], dtype=jnp.float64)
+          )
+      train_state = CustomTrainState.create(
+        apply_fn=unet.apply,
+        params=params["params"],
+        tx=optimizer,
+        batch_stats=params["batch_stats"]
+      )
+  else:
+    mlp = MLP(output_features)
+    if not load_dict:
+      params = mlp.init(
+        random.PRNGKey(0), np.zeros((1, input_features), dtype=jnp.float64)
+      )
+    train_state = TrainState.create(
+      apply_fn=mlp.apply,
+      params=params,
+      tx=optimizer,
+    )
+  flat_params = traverse_util.flatten_dict(train_state.params)
+  for _, value in flat_params.items():
+    if isinstance(value, jnp.ndarray) and value.dtype != jnp.float64:
+      breakpoint()
+      raise Exception(
+        f"Parameter {value} is not in float64, please check the model"
+      )
+  return train_state, schedule
+
+
 def data_stratification(config_dict: ml_collections.ConfigDict):
   config = Box(config_dict)
   # stratify the data to balance it
@@ -1444,7 +1575,7 @@ def a_posteriori_analysis(
       dx = L / N2
       u_x = (jnp.roll(input, 1) - jnp.roll(input, -1)) / dx / 2
       u_xx = ((jnp.roll(input, 1) + jnp.roll(input, -1)) - 2 * input) / dx**2
-      u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
+      u_xxxx = ((jnp.roll(input, 2) + jnproll(input, -2)) -\
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
           dx**4
       if config.train.input == "u":
