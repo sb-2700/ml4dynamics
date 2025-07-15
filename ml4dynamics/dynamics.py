@@ -151,10 +151,19 @@ class dynamics(object):
 
   def run_simulation(self, x, iter: callable):
     step_num = self.step_num
-    self.x_hist = np.zeros([step_num, *x.shape])
-    for i in range(step_num):
-      self.x_hist[i] = x
-      x = iter(x)
+    # For ns_hit case, handle both real and spectral inputs
+    if hasattr(self, 'CN_real') and iter == self.CN_real:
+        # If using CN_real, input is in real space
+        self.x_hist = np.zeros([step_num, *x.shape])
+        for i in range(step_num):
+            self.x_hist[i] = x
+            x = iter(x)
+    else:
+        # For spectral methods or other cases
+        self.x_hist = np.zeros([step_num, *x.shape])
+        for i in range(step_num):
+            self.x_hist[i] = x
+            x = iter(x)
 
     # self.check_simulation()
 
@@ -1079,7 +1088,20 @@ class ns_hit(dynamics):
     return w_hat
 
   def CN_real(self, w):
-    return jnp.fft.irfft2(self.CN(jnp.fft.rfft2(w[..., 0])))[..., None]
+    # Handle both 2D and 3D inputs
+    if w.ndim == 3:
+        # Input is (N, N, 1)
+        w = w[..., 0]
+    elif w.ndim != 2:
+        raise ValueError(f"Input should be 2D or 3D, got shape {w.shape}")
+    
+    # Convert to spectral space, apply CN, convert back
+    w_hat = jnp.fft.rfft2(w)
+    w_hat = self.CN(w_hat)
+    w = jnp.fft.irfft2(w_hat)
+    
+    # Return with channel dimension
+    return w[..., None]
 
   def CN_adj(self, lambda_, i):
     # CN scheme for the dual variable \lambda

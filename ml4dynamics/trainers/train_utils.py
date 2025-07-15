@@ -96,7 +96,15 @@ def run_simulation_coarse_grid_correction(
 
   @jax.jit
   def iter(x: jnp.array, expert: jnp.array = 0):
-    x_next = _iter(x)
+    # For ns_hit case, reshape 1D input to 2D
+    if hasattr(model, 'CN_real') and _iter == model.CN_real:
+        N = int(jnp.sqrt(x.shape[0]))  # Assuming x is square
+        x_2d = x.reshape(N, N)
+        x_next = _iter(x_2d)
+        x_next = x_next.reshape(-1)  # Flatten back to 1D
+    else:
+        x_next = _iter(x)
+    
     if type_ == "pad":
       x = jnp.concatenate([x, jnp.zeros((1, 1))], axis=0)
     correction = forward_fn(x.reshape(1, *x.shape))
