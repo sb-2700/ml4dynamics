@@ -709,7 +709,7 @@ class PositionalEncoding(nn.Module):
 def scaled_dot_product(q, k, v, mask=None):
   d_k = q.shape[-1]
   attn_logits = jnp.matmul(q, jnp.swapaxes(k, -2, -1))
-  attn_logits = attn_logits / math.sqrt(d_k)
+  attn_logits = attn_logits / jnp.sqrt(d_k)
   if mask is not None:
     attn_logits = jnp.where(mask == 0, -9e15, attn_logits)
   attention = nn.softmax(attn_logits, axis=-1)
