@@ -423,7 +423,7 @@ def prepare_unet_train_state(
       )
     train_state = TrainState.create(
       apply_fn=mlp.apply,
-      params=params,
+      params=params["params"],
       tx=optimizer,
     )
 
