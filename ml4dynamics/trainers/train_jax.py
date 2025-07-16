@@ -120,7 +120,7 @@ def main():
     #   """TODO: no architecture check for the models"""
     #   load_dict = None
     load_dict = None
-    train_state, schedule = utils.prepare_model_train_state(
+    train_state, schedule = prepare_model_train_state(
       config_dict, load_dict, _global
     )
     flat_params = traverse_util.flatten_dict(train_state.params)
@@ -142,7 +142,7 @@ def main():
     if mode == "tr":
       # add tangent-space regularization
       lambda_ = config.train.lambda_
-      ae_train_state, _ = utils.prepare_model_train_state(
+      ae_train_state, _ = prepare_model_train_state(
         config_dict, f"ckpts/{pde}/{dataset}_ae_unet.pkl", True, False
       )
       ae_fn = partial(
@@ -258,7 +258,7 @@ def main():
           inputs_ = inputs[:, :-1]
           outputs_ = outputs[:, :-1]
     one_traj_length = inputs.shape[0] // config.sim.case_num
-    train_state, schedule = utils.prepare_model_train_state(
+    train_state, schedule = prepare_model_train_state(
       config_dict, ckpt_path, _global, False
     )
     if _global:
