@@ -1,4 +1,4 @@
-# Copyright 2024 The Flax Authors.
+# Copyright 2024 The Flax Authors.(https://flax.readthedocs.io/en/latest/api_reference/flax.errors.html#flax
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
