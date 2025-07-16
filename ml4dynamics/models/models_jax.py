@@ -696,7 +696,7 @@ class PositionalEncoding(nn.Module):
     #Create a matrix of shape (max_len, d_model) with positional encodings
     pe = jnp.zeros((self.max_len, self.d_model))
     position = jnp.arange(0, self.max_len, dtype=jnp.float32)[:, None]
-    div_term = jnp.exp(jnp.arange(0, self.d_model, 2) * (-jnp.log(10000,0) / self.d_model))
+    div_term = jnp.exp(jnp.arange(0, self.d_model, 2) * (-jnp.log(10000.0) / self.d_model))
     pe[:, 0::2] = jnp.sin(position * div_term)
     pe[:, 1::2] = jnp.cos(position * div_term)
     pe = pe[None]
