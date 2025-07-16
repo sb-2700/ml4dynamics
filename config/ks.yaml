@@ -16,7 +16,7 @@ work_dir: ${hydra:runtime.cwd}
 case: ks
 
 model:
-  name: unet
+  name: transformer1d
   num_layers: 4
   d_model: 64
   num_heads: 4
