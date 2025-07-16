@@ -496,7 +496,7 @@ def prepare_transformer_train_state(
     init_rngs = {'params': rng1, 'dropout': rng2}
     if not load_dict:
         params = transformer.init(
-            init_rngs, jnp.ones([1, seq_len, input_features], dtype=jnp.float64)
+            init_rngs, jnp.ones([1, seq_len, input_features], dtype=jnp.float32)
         )
     else:
         with open(f"{load_dict}", "rb") as f:
