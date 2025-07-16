@@ -437,6 +437,79 @@ def prepare_unet_train_state(
   return train_state, schedule
 
 
+def prepare_transformer_train_state(
+    config_dict: ml_collections.ConfigDict,
+    load_dict: str = None,
+    is_global: bool = True,
+    is_training: bool = True
+):
+    """Prepare train state for Transformer1D model."""
+    from ml4dynamics.models.models_jax import Transformer1D, CustomTrainState
+    config = Box(config_dict)
+    rng = random.PRNGKey(config.sim.seed)
+    n_sample = int(config.sim.T / config.sim.dt * 0.8)
+    inputs_labels = config.train.input
+    if inputs_labels == "global":
+        epochs = config.train.epochs_global
+        decay = config.train.decay_global
+        batch_size = config.train.batch_size_global
+    else:
+        epochs = config.train.epochs_local
+        decay = config.train.decay_local
+        batch_size = config.train.batch_size_local
+    if config.case == "ks":
+        nx = config.sim.n // config.sim.rx
+        input_features = 1 if is_global else (inputs_labels if isinstance(inputs_labels, int) else len(inputs_labels))
+        output_features = 1
+        seq_len = nx
+    else:
+        raise NotImplementedError("Transformer1D currently only set up for KS case.")
+    step_per_epoch = n_sample * config.sim.case_num // batch_size + 1
+    schedule = optax.piecewise_constant_schedule(
+        init_value=config.train.lr,
+        boundaries_and_scales={
+            int(b): 0.1
+            for b in jnp.arange(
+                decay * step_per_epoch, epochs * step_per_epoch, decay * step_per_epoch
+            )
+        }
+    )
+    optimizer = optax.adam(schedule)
+    # Transformer1D hyperparameters from config
+    num_layers = getattr(config.model, "num_layers", 4)
+    d_model = getattr(config.model, "d_model", 64)
+    num_heads = getattr(config.model, "num_heads", 4)
+    dim_feedforward = getattr(config.model, "dim_feedforward", 128)
+    dropout_prob = getattr(config.model, "dropout_prob", 0.1)
+    max_len = getattr(config.model, "max_len", seq_len)
+    transformer = Transformer1D(
+        num_layers=num_layers,
+        input_dim=input_features,
+        output_dim=output_features,
+        d_model=d_model,
+        num_heads=num_heads,
+        dim_feedforward=dim_feedforward,
+        dropout_prob=dropout_prob,
+        max_len=max_len
+    )
+    rng1, rng2 = random.split(rng)
+    init_rngs = {'params': rng1, 'dropout': rng2}
+    if not load_dict:
+        params = transformer.init(
+            init_rngs, jnp.ones([1, seq_len, input_features], dtype=jnp.float64)
+        )
+    else:
+        with open(f"{load_dict}", "rb") as f:
+            params = pickle.load(f)
+    train_state = CustomTrainState.create(
+        apply_fn=transformer.apply,
+        params=params["params"],
+        tx=optimizer,
+        batch_stats=params.get("batch_stats", {})
+    )
+    return train_state, schedule
+
+
 def data_stratification(config_dict: ml_collections.ConfigDict):
   config = Box(config_dict)
   # stratify the data to balance it

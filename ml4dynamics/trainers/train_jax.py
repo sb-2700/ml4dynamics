@@ -16,9 +16,16 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 from ml4dynamics.utils import utils
+from ml4dynamics.utils.utils import prepare_unet_train_state, prepare_transformer_train_state
 
 
 def main():
+
+  def prepare_model_train_state(config_dict, load_dict, is_global=True, is_training=True):
+    if config_dict["model"]["name"] == "transformer1d":
+      return utils.prepare_transformer_train_state(config_dict, load_dict, is_global, is_training)
+    else:
+      return utils.prepare_unet_train_state(config_dict, load_dict, is_global, is_training)
 
   def train(
     mode: str,
@@ -113,7 +120,7 @@ def main():
     #   """TODO: no architecture check for the models"""
     #   load_dict = None
     load_dict = None
-    train_state, schedule = utils.prepare_unet_train_state(
+    train_state, schedule = utils.prepare_model_train_state(
       config_dict, load_dict, _global
     )
     flat_params = traverse_util.flatten_dict(train_state.params)
@@ -135,7 +142,7 @@ def main():
     if mode == "tr":
       # add tangent-space regularization
       lambda_ = config.train.lambda_
-      ae_train_state, _ = utils.prepare_unet_train_state(
+      ae_train_state, _ = utils.prepare_model_train_state(
         config_dict, f"ckpts/{pde}/{dataset}_ae_unet.pkl", True, False
       )
       ae_fn = partial(
@@ -251,7 +258,7 @@ def main():
           inputs_ = inputs[:, :-1]
           outputs_ = outputs[:, :-1]
     one_traj_length = inputs.shape[0] // config.sim.case_num
-    train_state, schedule = utils.prepare_unet_train_state(
+    train_state, schedule = utils.prepare_model_train_state(
       config_dict, ckpt_path, _global, False
     )
     if _global:

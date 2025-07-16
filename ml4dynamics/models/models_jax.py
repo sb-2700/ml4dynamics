@@ -585,3 +585,134 @@ class UNet(nn.Module):
       # y = nn.softplus(y)
 
     return y
+
+
+"""Transformer model definitions."""
+
+class Transformer1D(nn.Module):
+  num_layers: int
+  input_dim: int  # input feature dimension
+  output_dim: int  # output feature dimension
+  d_model: int  # dimension of the model
+  num_heads: int
+  dim_feedforward: int
+  dropout_prob: float
+  max_len: int = 2048 
+
+  def setup(self):
+    self.input_proj = nn.Dense(self.d_model)
+    self.positional_encoding = PositionalEncoding(d_model=self.d_model, max_len=self.max_len)
+    self.layers = [EncoderBlock(self.d_model, self.num_heads, self.dim_feedforward, self.dropout_prob) for _ in range(self.num_layers)]
+    self.output_proj = nn.Dense(self.output_dim)
+
+  def __call__(self, x, mask=None, train=True): #full self attention
+    x = self.input_proj(x)  # Project input to model dimension
+    x = self.positional_encoding(x)  # Add positional encoding
+    for l in self.layers:
+      x = l(x, mask=mask, train=train)
+    x = self.output_proj(x)  # Project back to output dimension
+    return x
+
+#A single transformer block. Has MultiHeadAttention and a FeedForward layer (MLP)
+
+#then do linear --> ReLU --> dropout --> linear --> add --> LayerNorm
+class EncoderBlock(nn.Module):
+  input_dim: int  #input dimension equals output dimension because of residual connections
+  num_heads: int
+  dim_feedforward: int
+  dropout_prob: float
+
+  def setup(self):
+    #Attention layer
+    #input --> attention --> dropout --> add (residual) --> LayerNorm
+    self.self_attn = MultiHeadAttention(embed_dim=self.input_dim, num_heads=self.num_heads)
+
+    #2 Layer MLP
+    self.linear = [
+      nn.Dense(self.dim_feedforward),
+      nn.Dropout(self.dropout_prob),
+      nn.relu,
+      nn.Dense(self.input_dim),
+    ]
+
+    #Layers to apply in between the main layers
+    self.norm1 = nn.LayerNorm()
+    self.norm2 = nn.LayerNorm()
+    self.dropout = nn.Dropout(self.dropout_prob)
+
+  def __call__(self, x, mask=None, train=True):
+    #Attention part
+    attn_out, _ = self.self_attn(x, mask=mask)
+    x = x + self.dropout(attn_out, deterministic=not train)
+    x = self.norm1(x)
+
+    #MLP part
+    linear_out = x
+    for l in self.linear:
+      linear_out = l(linear_out) if not isinstance(l, nn.Dropout) else l(linear_out, deterministic=not train)
+    x = x + self.dropout(linear_out, deterministic=not train)
+    x = self.norm2(x)
+
+    return x
+
+class MultiHeadAttention(nn.Module):
+  embed_dim: int #Output dimension
+  num_heads: int #number of parallel heads (h)
+
+  def setup(self):
+    #Stack all weight matrices 1...h and W^Q, W^K, W^V together for efficiency
+    self.qkv_proj = nn.Dense(self.embed_dim * 3,
+                            kernel_init=nn.initializers.xavier_uniform(), #Weights with Xavier uniform init
+                            bias_init=nn.initializers.zeros
+                            )  #Biases with zeros init
+    self.o_proj = nn.Dense(self.embed_dim,
+                            kernel_init=nn.initializers.xavier_uniform(),
+                            bias_init=nn.initializers.zeros)
+                    
+  def __call__(self, x, mask=None):
+    batch_size, seq_length, embed_dim = x.shape
+    if mask is not None:
+      mask = expand_mask(mask)
+    qkv = self.qkv_proj(x)
+
+    #Separate Q,K,V from linear output
+    qkv = qkv.reshape(batch_size, seq_length, self.num_heads, -1)
+    qkv = qkv.transpose(0, 2, 1, 3)  # (batch_size, num_heads, seq_length, dims)
+    q, k, v = jnp.split(qkv, 3, axis=-1)
+
+    #Determine value outputs
+    values, attention = scaled_dot_product(q, k, v, mask=mask)
+    values = values.transpose(0, 2, 1, 3)  # (batch_size, seq_length, num_heads, dims)
+    values = values.reshape(batch_size, seq_length, embed_dim)
+    o = self.o_proj(values)
+
+    return o, attention
+
+class PositionalEncoding(nn.Module):
+  d_model: int #Hidden dimensionality of the input
+  max_len: int = 2048 #Maximum length of the input sequence - needed???
+
+  def setup(self):
+    #Create a matrix of shape (max_len, d_model) with positional encodings
+    pe = jnp.zeros((self.max_len, self.d_model))
+    position = jnp.arange(0, self.max_len, dtype=jnp.float32)[:, None]
+    div_term = jnp.exp(jnp.arange(0, self.d_model, 2) * (-jnp.log(10000,0) / self.d_model))
+    pe[:, 0::2] = jnp.sin(position * div_term)
+    pe[:, 1::2] = jnp.cos(position * div_term)
+    pe = pe[None]
+    self.pe = jax.device_put(pe)
+
+  def __call__(self, x):
+    x = x + self.pe[:, :x.shape[1]]
+    return x
+
+def scaled_dot_product(q, k, v, mask=None):
+  d_k = q.shape[-1]
+  attn_logits = jnp.matmul(q, jnp.swapaxes(k, -2, -1))
+  attn_logits = attn_logits / math.sqrt(d_k)
+  if mask is not None:
+    attn_logits = jnp.where(mask == 0, -9e15, attn_logits)
+  attention = nn.softmax(attn_logits, axis=-1)
+  values = jnp.matmul(attention, v)
+  return values, attention
+
