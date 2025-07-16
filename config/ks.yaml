@@ -16,7 +16,7 @@ work_dir: ${hydra:runtime.cwd}
 case: ks
 
 model:
-  name: transformer1d
+  name: unet
   num_layers: 4
   d_model: 64
   num_heads: 4
@@ -52,9 +52,9 @@ train:
   # sgs: filter
   sgs: correction
   kernel_size: 3
-  input: ["u", "u_x", "u_xx"]
+  #input: ["u", "u_x", "u_xx"]
   # input: 3
-  # input: global
+  input: global
   bins: 50
   subsample: 200
   mode: regression # regression, gaussian, generative
