@@ -711,8 +711,10 @@ def scaled_dot_product(q, k, v, mask=None):
   attn_logits = jnp.matmul(q, jnp.swapaxes(k, -2, -1))
   attn_logits = attn_logits / jnp.sqrt(d_k)
   if mask is not None:
-    attn_logits = jnp.where(mask == 0, -9e15, attn_logits)
-  attention = nn.softmax(attn_logits, axis=-1)
+    attn_logits = jnp.where(mask == 0, 0, attn_logits)
+  # Removed softmax for computational efficiency in regression tasks
+  # Using raw attention weights without normalization
+  attention = attn_logits
   values = jnp.matmul(attention, v)
   return values, attention
 

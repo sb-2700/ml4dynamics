@@ -358,7 +358,11 @@ def main():
   start = time()
   if _global:
     batch_size = config.train.batch_size_global
-    arch = "unet"
+    # Determine architecture based on model configuration
+    if config.model.name == "transformer1d":
+      arch = "transformer"
+    else:
+      arch = "unet"
   else:
     batch_size = config.train.batch_size_local
     arch = "mlp"
