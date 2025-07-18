@@ -30,39 +30,40 @@ def _create_box_filter(N1, N2, r, BC):
 
 
 def _create_gaussian_filter(N1, N2, r, BC):
-  """Create Gaussian filter operator"""
+  """Create Gaussian filter operator using same edge logic as box filter"""
   res_op = jnp.zeros((N2, N1))
   
-  # Gaussian kernel width (adjust as needed)
-  sigma = r / 3.0  # More conservative: narrower Gaussian
+  # Gaussian kernel width
+  sigma = r / 3.0
   
-  # Vectorized computation
-  i_indices = jnp.arange(N2)
-  j_indices = jnp.arange(N1)
+  # Use same stencil size as box filter
+  stencil_size = 7
   
-  # Create meshgrid for vectorized computation
-  I, J = jnp.meshgrid(i_indices, j_indices, indexing='ij')
+  for i in range(N2):
+    # Same logic as box filter: start at i * r
+    start_idx = i * r
+    end_idx = min(start_idx + stencil_size, N1)  # Don't go beyond array bounds
+    
+    # Create Gaussian weights for this stencil
+    center = start_idx + stencil_size // 2  # Center of stencil
+    for j in range(start_idx, end_idx):
+      distance = abs(j - center)
+      weight = jnp.exp(-0.5 * (distance / sigma)**2)
+      res_op = res_op.at[i, j].set(weight)
   
-  # Centers of coarse grid cells
-  centers = I * r + r // 2
+  # Handle periodic BC same way as box filter
+  if BC == "periodic":
+    # Last row wraps around (same as box filter)
+    i = N2 - 1
+    for j in range(3):  # First 3 points, same as box filter
+      distance = abs(j - (stencil_size // 2))  # Distance from center of stencil
+      weight = jnp.exp(-0.5 * (distance / sigma)**2)
+      res_op = res_op.at[i, j].set(weight)
   
-  if BC == "Dirichlet-Neumann":
-    # Handle boundaries by truncating Gaussian
-    distances = jnp.abs(J - centers)
-  else:  # periodic
-    # Handle periodic wrapping
-    distances = jnp.minimum(jnp.abs(J - centers), N1 - jnp.abs(J - centers))
-  
-  # Compute Gaussian weights with cutoff
-  weights = jnp.where(
-    distances <= 2 * r,  # Only apply Gaussian within 2*r distance
-    jnp.exp(-0.5 * (distances / sigma)**2),
-    0.0
-  )
-  
-  # Normalize each row to sum to 1
-  row_sums = jnp.sum(weights, axis=1, keepdims=True)
-  res_op = weights / row_sums
+  # Normalize each row to sum to 1, with safety check
+  row_sums = jnp.sum(res_op, axis=1, keepdims=True)
+  # Add small epsilon to avoid division by very small numbers
+  res_op = res_op / (row_sums + 1e-12)
   return res_op
 
 
