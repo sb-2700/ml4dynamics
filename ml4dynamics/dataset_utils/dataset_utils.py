@@ -34,7 +34,7 @@ def _create_gaussian_filter(N1, N2, r, BC):
   res_op = jnp.zeros((N2, N1))
   
   # Gaussian kernel width (adjust as needed)
-  sigma = r / 2.0  # Standard deviation in grid units
+  sigma = r / 3.0  # More conservative: narrower Gaussian
   
   # Vectorized computation
   i_indices = jnp.arange(N2)
@@ -53,8 +53,12 @@ def _create_gaussian_filter(N1, N2, r, BC):
     # Handle periodic wrapping
     distances = jnp.minimum(jnp.abs(J - centers), N1 - jnp.abs(J - centers))
   
-  # Compute Gaussian weights
-  weights = jnp.exp(-0.5 * (distances / sigma)**2)
+  # Compute Gaussian weights with cutoff
+  weights = jnp.where(
+    distances <= 2 * r,  # Only apply Gaussian within 2*r distance
+    jnp.exp(-0.5 * (distances / sigma)**2),
+    0.0
+  )
   
   # Normalize each row to sum to 1
   row_sums = jnp.sum(weights, axis=1, keepdims=True)
