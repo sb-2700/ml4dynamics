@@ -588,6 +588,7 @@ class UNet(nn.Module):
 
 
 """Transformer model definitions."""
+''' https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/JAX/tutorial6/Transformers_and_MHAttention.html '''
 
 class Transformer1D(nn.Module):
   num_layers: int
