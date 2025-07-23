@@ -182,6 +182,8 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
       raise ValueError(f"Unknown filter_type: {filter_type}")
     
     int_op = jnp.linalg.pinv(res_op)
+    print('res_op: ', res_op)
+    print('int_op: ', int_op)
     assert jnp.allclose(res_op @ int_op, jnp.eye(N2))  #atol=1e-3
     assert jnp.allclose(res_op.sum(axis=-1), jnp.ones(N2)) #atol=1e-6
 
