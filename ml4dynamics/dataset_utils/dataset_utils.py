@@ -3,6 +3,28 @@ import jax.numpy as jnp
 import ml_collections
 from box import Box
 
+def calc_correction(rd_fine, rd_coarse, nx: float, r: int, uv: jnp.ndarray):
+  """
+  Args:
+    uv: shape = [nx, nx, 2]
+  """
+  next_step_fine = rd_fine.adi(uv)
+  tmp = jnp.zeros((nx // r, nx // r, 2))
+  for k in range(r):
+    for j in range(r):
+      tmp += uv[k::r, j::r]
+  tmp = tmp / (r**2)
+  next_step_coarse = rd_coarse.adi(tmp)
+  next_step_coarse_interp = jnp.concatenate(
+    [
+      jnp.kron(next_step_coarse[..., 0], jnp.ones((r, r)))[..., None],
+      jnp.kron(next_step_coarse[..., 1], jnp.ones((r, r)))[..., None],
+    ],
+    axis=2
+  )
+
+  return next_step_fine - next_step_coarse_interp
+
 
 def _create_box_filter(N1, N2, r, BC):
   """Create box filter (averaging) operator"""
@@ -34,7 +56,7 @@ def _create_gaussian_filter(N1, N2, r, BC):
   res_op = jnp.zeros((N2, N1))
   
   # Gaussian kernel width
-  sigma = r / 3.0
+  sigma = r / 2.0
   
   # Use same stencil size as box filter
   stencil_size = 7
@@ -133,29 +155,6 @@ def _create_smooth_spectral_filter_nonperiodic(N1, N2, r):
   return res_op
 
 
-def calc_correction(rd_fine, rd_coarse, nx: float, r: int, uv: jnp.ndarray):
-  """
-  Args:
-    uv: shape = [nx, nx, 2]
-  """
-  next_step_fine = rd_fine.adi(uv)
-  tmp = jnp.zeros((nx // r, nx // r, 2))
-  for k in range(r):
-    for j in range(r):
-      tmp += uv[k::r, j::r]
-  tmp = tmp / (r**2)
-  next_step_coarse = rd_coarse.adi(tmp)
-  next_step_coarse_interp = jnp.concatenate(
-    [
-      jnp.kron(next_step_coarse[..., 0], jnp.ones((r, r)))[..., None],
-      jnp.kron(next_step_coarse[..., 1], jnp.ones((r, r)))[..., None],
-    ],
-    axis=2
-  )
-
-  return next_step_fine - next_step_coarse_interp
-
-
 def res_int_fn(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
@@ -183,8 +182,8 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
       raise ValueError(f"Unknown filter_type: {filter_type}")
     
     int_op = jnp.linalg.pinv(res_op)
-    assert jnp.allclose(res_op @ int_op, jnp.eye(N2), atol=1e-3)
-    assert jnp.allclose(res_op.sum(axis=-1), jnp.ones(N2), atol=1e-6)
+    assert jnp.allclose(res_op @ int_op, jnp.eye(N2))  #atol=1e-3
+    assert jnp.allclose(res_op.sum(axis=-1), jnp.ones(N2)) #atol=1e-6
 
     @jax.jit
     def res_fn(x):
