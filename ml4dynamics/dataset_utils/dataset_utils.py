@@ -53,38 +53,51 @@ def _create_box_filter(N1, N2, r, BC):
 def _create_gaussian_filter(N1, N2, r, BC):
   """Create Gaussian filter operator using same edge logic as box filter"""
   res_op = jnp.zeros((N2, N1))
-  
-  # Gaussian kernel width
-  sigma = r / 2.0
-  
-  # Use same stencil size as box filter
-  stencil_size = 7
-  
-  for i in range(N2):
-    # Same logic as box filter: start at i * r
-    start_idx = i * r
-    end_idx = min(start_idx + stencil_size, N1)  # Don't go beyond array bounds
-    
-    # Create Gaussian weights for this stencil
-    center = start_idx + stencil_size // 2  # Center of stencil
-    for j in range(start_idx, end_idx):
-      distance = abs(j - center)
-      weight = jnp.exp(-0.5 * (distance / sigma)**2)
-      res_op = res_op.at[i, j].set(weight)
-  
-  # Handle periodic BC same way as box filter
-  if BC == "periodic":
-    # Last row wraps around (same as box filter)
-    i = N2 - 1
-    for j in range(3):  # First 3 points, same as box filter
-      distance = abs(j - (stencil_size // 2))  # Distance from center of stencil
-      weight = jnp.exp(-0.5 * (distance / sigma)**2)
-      res_op = res_op.at[i, j].set(weight)
-  
-  # Normalize each row to sum to 1, with safety check
-  row_sums = jnp.sum(res_op, axis=1, keepdims=True)
-  # Add small epsilon to avoid division by very small numbers
-  res_op = res_op / (row_sums + 1e-12)
+  # Use same stencil size and logic as box filter, but with Gaussian weights
+  if r == 2:
+    raise Exception("Deprecated...")
+  elif r == 4:
+    stencil_size = 13  # larger stencil (2*r+5)
+    sigma = r  # slightly wider for smoother filter
+    for i in range(N2):
+      start = i * r - (stencil_size // 2 - r // 2)
+      end = start + stencil_size
+      idxs = jnp.arange(start, end)
+      valid = (idxs >= 0) & (idxs < N1)
+      idxs = idxs[valid]
+      center = i * r
+      distances = idxs - center
+      weights = jnp.exp(-0.5 * (distances / sigma) ** 2)
+      weights = weights / (jnp.sum(weights))
+      for k, j in enumerate(idxs):
+        res_op = res_op.at[i, j].set(weights[k])
+    if BC == "periodic":
+      # Last row wraps around (same as box filter)
+      i = N2 - 1
+      start = i * r - (stencil_size // 2 - r // 2)
+      idxs = jnp.arange(0, stencil_size // 2)
+      center = i * r
+      distances = idxs - center
+      weights = jnp.exp(-0.5 * (distances / sigma) ** 2)
+      weights = weights / (jnp.sum(weights))
+      for k, j in enumerate(idxs):
+        res_op = res_op.at[i, j].set(weights[k])
+    # No need to normalize again; already normalized per row
+  elif r == 8:
+    stencil_size = 21  # larger stencil (2*r+5)
+    sigma = r  # slightly wider for smoother filter
+    for i in range(N2):
+      start = i * r + 3 - (stencil_size // 2 - r // 2)
+      end = start + stencil_size
+      idxs = jnp.arange(start, end)
+      valid = (idxs >= 0) & (idxs < N1)
+      idxs = idxs[valid]
+      center = i * r + 3
+      distances = idxs - center
+      weights = jnp.exp(-0.5 * (distances / sigma) ** 2)
+      weights = weights / (jnp.sum(weights) + 1e-12)
+      for k, j in enumerate(idxs):
+        res_op = res_op.at[i, j].set(weights[k])
   return res_op
 
 
@@ -170,6 +183,7 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
     if filter_type == "box":
       # Original box filter implementation
       res_op = _create_box_filter(N1, N2, r, BC)
+      res_op /= r
     elif filter_type == "gaussian":
       res_op = _create_gaussian_filter(N1, N2, r, BC)
     elif filter_type == "spectral":
@@ -177,7 +191,6 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
     else:
       raise ValueError(f"Unknown filter_type: {filter_type}")
     
-    res_op /= r
     int_op = jnp.zeros((N1, N2))
     int_op = jnp.linalg.pinv(res_op)
     print('res_op: ', res_op)
