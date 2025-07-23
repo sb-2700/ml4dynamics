@@ -106,10 +106,12 @@ def _create_spectral_filter(N1, N2, r, BC):
   if BC == "Dirichlet-Neumann":
     # For non-periodic BC, use DCT-based spectral filter
     # This is more complex - for now, fall back to a smooth approximation
-    return _create_smooth_spectral_filter_nonperiodic(N1, N2, r)
+    res_op = _create_smooth_spectral_filter_nonperiodic(N1, N2, r)
   else:
     # For periodic BC, use FFT-based spectral filter
-    return _create_spectral_filter_periodic(N1, N2, r)
+    res_op = _create_spectral_filter_periodic(N1, N2, r)
+  # Normalize so each row sums to r, matching box/gaussian filter convention
+  return res_op
 
 
 def _create_spectral_filter_periodic(N1, N2, r):
@@ -142,28 +144,20 @@ def _create_spectral_filter_periodic(N1, N2, r):
 def _create_smooth_spectral_filter_nonperiodic(N1, N2, r):
   """Smooth spectral-like filter for non-periodic BC"""
   res_op = jnp.zeros((N2, N1))
-  
-  # Vectorized computation
-  i_indices = jnp.arange(N2)
-  j_indices = jnp.arange(N1)
-  
-  # Create meshgrid for vectorized computation
-  I, J = jnp.meshgrid(i_indices, j_indices, indexing='ij')
-  
-  # Centers of coarse grid cells
-  centers = I * r + r // 2
-  distances = jnp.abs(J - centers)
-  
-  # Smooth cutoff function (approximates sinc-like behavior)
-  weights = jnp.where(
-    distances <= r,
-    0.5 * (1 + jnp.cos(jnp.pi * distances / r)),
-    0.0
-  )
-  
-  # Normalize each row to sum to 1
-  row_sums = jnp.sum(weights, axis=1, keepdims=True)
-  res_op = weights / row_sums
+  stencil_size = 2 * r + 1
+  for i in range(N2):
+    center = i * r + r // 2
+    start = center - r
+    end = center + r + 1
+    idxs = jnp.arange(start, end)
+    valid = (idxs >= 0) & (idxs < N1)
+    idxs = idxs[valid]
+    distances = idxs - center
+    weights = 0.5 * (1 + jnp.cos(jnp.pi * distances / r))
+    weights = weights / (jnp.sum(weights))
+    for k, j in enumerate(idxs):
+      res_op = res_op.at[i, j].set(weights[k])
+  # Normalize so each row sums to r, matching box/gaussian filter convention
   return res_op
 
 
