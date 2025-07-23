@@ -57,7 +57,7 @@ train:
   epochs_global: 400
   decay_global: 100 # number of epochs to decay the learning rate
   batch_size_global: 200
-  epochs_local: 800
+  epochs_local: 80
   decay_local: 200
   batch_size_local: 10000
   save: 100

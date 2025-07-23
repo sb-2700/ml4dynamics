@@ -47,7 +47,6 @@ def _create_box_filter(N1, N2, r, BC):
       res_op = res_op.at[i, i * r + 3:i * r + 12].set(1)
     res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 7].set(0)
   
-  res_op /= r
   return res_op
 
 
@@ -168,9 +167,6 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
       N1 = config.sim.n - 1
     N2 = N1 // r
     
-    res_op = jnp.zeros((N2, N1))
-    int_op = jnp.zeros((N1, N2))
-    
     if filter_type == "box":
       # Original box filter implementation
       res_op = _create_box_filter(N1, N2, r, BC)
@@ -181,6 +177,8 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
     else:
       raise ValueError(f"Unknown filter_type: {filter_type}")
     
+    res_op /= r
+    int_op = jnp.zeros((N1, N2))
     int_op = jnp.linalg.pinv(res_op)
     print('res_op: ', res_op)
     print('int_op: ', int_op)
