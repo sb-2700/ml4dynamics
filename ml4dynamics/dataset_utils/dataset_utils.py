@@ -57,8 +57,8 @@ def _create_gaussian_filter(N1, N2, r, BC):
   if r == 2:
     raise Exception("Deprecated...")
   elif r == 4:
-    stencil_size = 13  # larger stencil (2*r+5)
-    sigma = r  # slightly wider for smoother filter
+    sigma = r // 2  # slightly wider for smoother filter
+    stencil_size = (6 * sigma) + 1
     for i in range(N2):
       start = i * r - (stencil_size // 2 - r // 2)
       end = start + stencil_size
