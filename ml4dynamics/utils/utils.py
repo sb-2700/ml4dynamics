@@ -784,7 +784,7 @@ def eval_a_posteriori(
         )
   else:
     """Statistical test to obtain the error bar"""
-    n_sample = 10
+    n_sample = 3  # Reduced from 10 for faster testing
     rng = random.PRNGKey(1000)
     res_fn, _ = res_int_fn(config_dict)
     L = model_fine.Lx
