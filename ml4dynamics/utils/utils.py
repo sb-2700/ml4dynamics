@@ -564,23 +564,18 @@ def eval_a_priori(
       im_list, None, [3, n_plot], None, f"results/fig/{fig_name}.png", 100
     )
 
-  # Save train_loss to metrics.yaml if available
-  # This block assumes you are already collecting other metrics elsewhere in the code
-  import os
-  metrics_path = "results/metrics.yaml"
-  if os.path.exists(metrics_path):
-    import yaml
-    with open(metrics_path, "r") as f:
-      try:
-        metrics = yaml.safe_load(f) or {}
-      except Exception:
-        metrics = {}
-  else:
-    metrics = {}
-  metrics["train_loss"] = train_loss
-  with open(metrics_path, "w") as f:
-    import yaml
-    yaml.dump(metrics, f)
+    # im_array = np.zeros((2, n_plot, *(outputs[0, ..., 0].T).shape))
+    # title_array1 = []
+    # title_array2 = []
+    # for j in range(n_plot):
+    #   im_array[0, j] = inputs[index_array[j], ..., 0].T
+    #   im_array[1, j] = outputs[index_array[j], ..., 0].T
+    #   title_array1.append(f"{inputs[index_array[j], ..., 0].max():.1e}")
+    #   title_array2.append(f"{outputs[index_array[j], ..., 0].max():.1e}")
+    # plot_with_horizontal_colorbar(
+    #   im_array, (12, 6), title_array1 + title_array2,
+    #   f"results/fig/dataset1.png", 100
+    # )
 
   plt.hist(
     inputs.reshape(-1), bins=100, density=True, alpha=0.3, label="inputs"
@@ -868,17 +863,6 @@ def eval_a_posteriori(
     ["truth", "baseline", "ours"],
     f"results/fig/{fig_name}_stats.png",
   )
-
-  # --- Save metrics for automation script ---
-  import yaml
-  metrics = {
-      "train_loss": float('nan'),  # Replace with actual train loss if available
-      "l2_list": l2_list.tolist() if hasattr(l2_list, 'tolist') else l2_list,
-      "first_moment_list": first_moment_list.tolist() if hasattr(first_moment_list, 'tolist') else first_moment_list,
-      "second_moment_list": second_moment_list.tolist() if hasattr(second_moment_list, 'tolist') else second_moment_list,
-  }
-  with open("results/metrics.yaml", "w") as f:
-      yaml.dump(metrics, f)
 
   breakpoint()
   return x_hist
