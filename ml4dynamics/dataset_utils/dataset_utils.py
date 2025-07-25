@@ -56,48 +56,95 @@ def _create_gaussian_filter(N1, N2, r, BC):
   # Use same stencil size and logic as box filter, but with Gaussian weights
   if r == 2:
     raise Exception("Deprecated...")
+
   elif r == 4:
-    sigma = r // 2  # slightly wider for smoother filter
+
+    sigma = r // 2 
     stencil_size = (6 * sigma) + 1
+    half_width = stencil_size // 2
+
     for i in range(N2):
-      start = i * r - (stencil_size // 2 - r // 2)
-      end = start + stencil_size
+      center = i * r
+      start = center - half_width
+      end = center + half_width + 1
+
+      # Ensure indices are within bounds
       idxs = jnp.arange(start, end)
       valid = (idxs >= 0) & (idxs < N1)
       idxs = idxs[valid]
-      center = i * r
+
+      # Calculate Gaussian weights
       distances = idxs - center
       weights = jnp.exp(-0.5 * (distances / sigma) ** 2)
-      weights = weights / (jnp.sum(weights))
+      weights = weights / (jnp.sum(weights) + 1e-12)  # Avoid division by zero
+
       for k, j in enumerate(idxs):
         res_op = res_op.at[i, j].set(weights[k])
+
     if BC == "periodic":
-      # Last row wraps around (same as box filter)
-      i = N2 - 1
-      start = i * r - (stencil_size // 2 - r // 2)
-      idxs = jnp.arange(0, stencil_size // 2)
-      center = i * r
-      distances = idxs - center
-      weights = jnp.exp(-0.5 * (distances / sigma) ** 2)
-      weights = weights / (jnp.sum(weights))
-      for k, j in enumerate(idxs):
-        res_op = res_op.at[i, j].set(weights[k])
-    # No need to normalize again; already normalized per row
+      # Handle periodic wraparound for all rows that need it
+      for i in range(N2):
+        center = i * r
+        start = center - half_width
+        end = center + half_width + 1
+        
+        # Check if we need wraparound (indices go outside [0, N1))
+        if start < 0 or end > N1:
+          # Collect all indices including wraparound
+          all_idxs = []
+          all_weights = []
+          
+          for idx in range(start, end):
+            if 0 <= idx < N1:
+              # Normal index
+              all_idxs.append(idx)
+            elif idx < 0:
+              # Wrap from left
+              wrapped_idx = idx + N1
+              all_idxs.append(wrapped_idx)
+            elif idx >= N1:
+              # Wrap from right
+              wrapped_idx = idx - N1
+              all_idxs.append(wrapped_idx)
+            
+            # Calculate weight using original distance
+            distance = idx - center
+            all_weights.append(jnp.exp(-0.5 * (distance / sigma) ** 2))
+          
+          if len(all_weights) > 0:
+            all_weights = jnp.array(all_weights)
+            all_weights = all_weights / (jnp.sum(all_weights) + 1e-12)
+            
+            # Clear the row first
+            res_op = res_op.at[i, :].set(0.0)
+            
+            # Set the wrapped weights
+            for k, j in enumerate(all_idxs):
+              res_op = res_op.at[i, j].set(all_weights[k])
+              
   elif r == 8:
+    sigma = r // 2  # sigma = 4
     stencil_size = 21  # larger stencil (2*r+5)
-    sigma = r  # slightly wider for smoother filter
+    half_width = stencil_size // 2
+    
     for i in range(N2):
-      start = i * r + 3 - (stencil_size // 2 - r // 2)
-      end = start + stencil_size
+      center = i * r + 3  # offset by 3 like original
+      start = center - half_width
+      end = center + half_width + 1
+
+      # Ensure indices are within bounds
       idxs = jnp.arange(start, end)
       valid = (idxs >= 0) & (idxs < N1)
       idxs = idxs[valid]
-      center = i * r + 3
+
+      # Calculate Gaussian weights
       distances = idxs - center
       weights = jnp.exp(-0.5 * (distances / sigma) ** 2)
-      weights = weights / (jnp.sum(weights) + 1e-12)
+      weights = weights / (jnp.sum(weights) + 1e-12)  # Avoid division by zero
+
       for k, j in enumerate(idxs):
         res_op = res_op.at[i, j].set(weights[k])
+
   return res_op
 
 
@@ -110,14 +157,14 @@ def _create_spectral_filter(N1, N2, r, BC):
   else:
     # For periodic BC, use FFT-based spectral filter
     res_op = _create_spectral_filter_periodic(N1, N2, r)
-  # Normalize so each row sums to r, matching box/gaussian filter convention
+  
   return res_op
 
 
 def _create_spectral_filter_periodic(N1, N2, r):
   """FFT-based spectral filter for periodic BC"""
   # Create filter in frequency domain then transform to spatial
-  cutoff_freq = N2 // 2  # Cutoff frequency for coarse grid
+  cutoff_freq = N2 // 2  # Cutoff frequency for coarse grid (Nyquist)
   
   res_op = jnp.zeros((N2, N1))
   for i in range(N2):
@@ -157,7 +204,6 @@ def _create_smooth_spectral_filter_nonperiodic(N1, N2, r):
     weights = weights / (jnp.sum(weights))
     for k, j in enumerate(idxs):
       res_op = res_op.at[i, j].set(weights[k])
-  # Normalize so each row sums to r, matching box/gaussian filter convention
   return res_op
 
 
