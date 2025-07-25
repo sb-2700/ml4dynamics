@@ -635,9 +635,12 @@ def eval_a_posteriori(
 
   step_num = model.step_num
   t_array = np.linspace(0, model.T, model.step_num)
-  stats_test = True
+  stats_test = True # see the comment below for the if-else statement
   if not stats_test:
-    """Test with the trajectory in the dataset"""
+    """Test with the trajectory in the dataset
+    Specifically, the ground truth trajectory is one of those in the
+    whole dataset, although it may not be fully in the training dataset.
+    """
     start = time()
     inputs = inputs[:step_num]
     outputs = outputs[:step_num]
@@ -757,7 +760,10 @@ def eval_a_posteriori(
           ["truth", "baseline", "ours"], fig_name
         )
   else:
-    """Statistical test to obtain the error bar"""
+    """Statistical test to obtain the error bar
+    Specifically, randomly generated in the initial condition to simulate
+    the ground truth trajectory, which is not in the whole dataset (with probability 0).
+    """
     n_sample = 10
     rng = random.PRNGKey(1000)
     res_fn, _ = res_int_fn(config_dict)
