@@ -17,7 +17,7 @@ case: ks
 
 sim:
   nu: 1
-  c: 1.7 #1.6 for non periodic
+  c: 0 #1.7 #1.6 for non periodic
   T: 400
   dt: .1
   L: 128
@@ -25,9 +25,9 @@ sim:
   rx: 4
   rt: 1
   init_scale: 1.
-  BC: Dirichlet-Neumann
-  filter_type: gaussian  # box, gaussian, spectral
-  # BC: periodic
+  #BC: Dirichlet-Neumann
+  filter_type: box  # box, gaussian, spectral
+  BC: periodic
   seed: 123
   case_num: 10       # number of simulations to perform
   warm_up: 200      # warm up step for simulation
