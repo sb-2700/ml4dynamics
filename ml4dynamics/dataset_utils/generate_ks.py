@@ -136,7 +136,8 @@ def main():
     "field represents the correction from the coarse grid simulation."
   }
 
-  with h5py.File(f"data/ks/{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}.h5", "w") as f:
+  filter_type = config.sim.filter_type
+  with h5py.File(f"data/ks/{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_{filter_type}.h5", "w") as f:
     metadata_group = f.create_group("metadata")
     for key, value in data["metadata"].items():
       metadata_group.create_dataset(key, data=value)

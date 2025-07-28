@@ -63,7 +63,8 @@ def load_data(
       bc = "pbc" if config.sim.BC == "periodic" else "dnbc"
       nu = config.sim.nu
       c = config.sim.c
-      dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}"
+      filter_type = config.sim.get('filter_type', 'box')  # default to box if not specified
+      dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_{filter_type}"
   h5_filename = f"data/{pde}/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
