@@ -16,8 +16,8 @@ work_dir: ${hydra:runtime.cwd}
 case: ks
 
 sim:
-  nu: 1
-  c: 0 #1.7 #1.6 for non periodic
+  nu: 2
+  c: 0 #1.6 for non periodic
   T: 400
   dt: .1
   L: 128
