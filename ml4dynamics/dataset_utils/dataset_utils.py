@@ -53,7 +53,7 @@ def _create_box_filter(N1, N2, r, BC):
 def _create_gaussian_filter(N1, N2, r, BC):
   """Create Gaussian filter operator using same edge logic as box filter"""
   res_op = jnp.zeros((N2, N1))
-  # Use same stencil size and logic as box filter, but with Gaussian weights
+
   if r == 2:
     raise Exception("Deprecated...")
 
@@ -64,86 +64,36 @@ def _create_gaussian_filter(N1, N2, r, BC):
     half_width = stencil_size // 2
 
     for i in range(N2):
-      center = i * r
-      start = center - half_width
-      end = center + half_width + 1
-
-      # Ensure indices are within bounds
-      idxs = jnp.arange(start, end)
-      valid = (idxs >= 0) & (idxs < N1)
-      idxs = idxs[valid]
-
-      # Calculate Gaussian weights
-      distances = idxs - center
-      weights = jnp.exp(-0.5 * (distances / sigma) ** 2)
-      weights = weights / (jnp.sum(weights) + 1e-12)  # Avoid division by zero
-
-      for k, j in enumerate(idxs):
-        res_op = res_op.at[i, j].set(weights[k])
-
-    if BC == "periodic":
-      # Handle periodic wraparound for all rows that need it
-      for i in range(N2):
         center = i * r
         start = center - half_width
         end = center + half_width + 1
-        
-        # Check if we need wraparound (indices go outside [0, N1))
-        if start < 0 or end > N1:
-          # Collect all indices including wraparound
-          all_idxs = []
-          all_weights = []
-          
-          for idx in range(start, end):
-            if 0 <= idx < N1:
-              # Normal index
-              all_idxs.append(idx)
-            elif idx < 0:
-              # Wrap from left
-              wrapped_idx = idx + N1
-              all_idxs.append(wrapped_idx)
-            elif idx >= N1:
-              # Wrap from right
-              wrapped_idx = idx - N1
-              all_idxs.append(wrapped_idx)
-            
-            # Calculate weight using original distance
-            distance = idx - center
-            all_weights.append(jnp.exp(-0.5 * (distance / sigma) ** 2))
-          
-          if len(all_weights) > 0:
-            all_weights = jnp.array(all_weights)
-            all_weights = all_weights / (jnp.sum(all_weights) + 1e-12)
-            
-            # Clear the row first
-            res_op = res_op.at[i, :].set(0.0)
-            
-            # Set the wrapped weights
-            for k, j in enumerate(all_idxs):
-              res_op = res_op.at[i, j].set(all_weights[k])
-              
+
+        weight_accum = {}  # dictionary to accumulate weights at each fine index
+
+        for j in range(start, end):
+            if BC == "periodic":
+                j_wrapped = j % N1
+            elif 0 <= j < N1:
+                j_wrapped = j
+            else:
+                continue  # skip out-of-bounds for Dirichlet-Neumann
+
+            distance = j - center  # always use unwrapped distance
+            weight = jnp.exp(-0.5 * (distance / sigma) ** 2)
+
+            # Accumulate (sum) weights in case of repeated indices
+            if j_wrapped in weight_accum:
+                weight_accum[j_wrapped] += weight
+            else:
+                weight_accum[j_wrapped] = weight
+
+        # Normalize the row
+        total_weight = sum(weight_accum.values()) + 1e-12
+        for j_wrapped, weight in weight_accum.items():
+            res_op = res_op.at[i, j_wrapped].set(weight / total_weight)
+
   elif r == 8:
-    sigma = r // 2  # sigma = 4
-    stencil_size = 21  # larger stencil (2*r+5)
-    half_width = stencil_size // 2
-    
-    for i in range(N2):
-      center = i * r + 3  # offset by 3 like original
-      start = center - half_width
-      end = center + half_width + 1
-
-      # Ensure indices are within bounds
-      idxs = jnp.arange(start, end)
-      valid = (idxs >= 0) & (idxs < N1)
-      idxs = idxs[valid]
-
-      # Calculate Gaussian weights
-      distances = idxs - center
-      weights = jnp.exp(-0.5 * (distances / sigma) ** 2)
-      weights = weights / (jnp.sum(weights) + 1e-12)  # Avoid division by zero
-
-      for k, j in enumerate(idxs):
-        res_op = res_op.at[i, j].set(weights[k])
+    raise Exception("Deprecated...")
 
   return res_op
 
