@@ -3,6 +3,7 @@ import math
 import pickle
 from functools import partial
 from time import time
+import os
 
 import h5py
 import jax
@@ -528,9 +529,7 @@ def eval_a_priori(
   train_loss = float(total_loss/count)
   print(f"train loss: {train_loss:.4e}")
   
-  # Save train_loss to results/train_losses.yaml
-  import os
-  import yaml
+# Save train_loss to results/train_losses.pkl
   os.makedirs("results", exist_ok=True)
   
   # Read current config to get filter_type
@@ -539,17 +538,17 @@ def eval_a_priori(
   filter_type = config["sim"]["filter_type"]
   
   # Load existing train losses or create new dict
-  train_losses_path = "results/train_losses.yaml"
+  train_losses_path = "results/train_losses.pkl"
   if os.path.exists(train_losses_path):
-    with open(train_losses_path, "r") as f:
-      train_losses = yaml.safe_load(f) or {}
+    with open(train_losses_path, "rb") as f:
+      train_losses = pickle.load(f)
   else:
     train_losses = {}
   
   # Save this filter's train loss
   train_losses[filter_type] = train_loss
-  with open(train_losses_path, "w") as f:
-    yaml.dump(train_losses, f)
+  with open(train_losses_path, "wb") as f:
+    pickle.dump(train_losses, f)
   
   total_loss = 0
   count = 0
@@ -883,9 +882,7 @@ def eval_a_posteriori(
       )
     )
     
-    # Save a posteriori metrics to results/aposteriori_metrics.yaml
-    import os
-    import yaml
+    # Save a posteriori metrics to results/aposteriori_metrics.pkl
     os.makedirs("results", exist_ok=True)
     
     # Read current config to get filter_type
@@ -899,10 +896,10 @@ def eval_a_posteriori(
     final_second_moment = second_moment_list[-1] if len(second_moment_list) > 0 else [float('nan'), float('nan')]
     
     # Load existing a posteriori metrics or create new dict
-    aposteriori_path = "results/aposteriori_metrics.yaml"
+    aposteriori_path = "results/aposteriori_metrics.pkl"
     if os.path.exists(aposteriori_path):
-      with open(aposteriori_path, "r") as f:
-        aposteriori_metrics = yaml.safe_load(f) or {}
+      with open(aposteriori_path, "rb") as f:
+        aposteriori_metrics = pickle.load(f)
     else:
       aposteriori_metrics = {}
     
@@ -916,8 +913,8 @@ def eval_a_posteriori(
       "second_moment_ours": float(final_second_moment[1]),
     }
     
-    with open(aposteriori_path, "w") as f:
-      yaml.dump(aposteriori_metrics, f)
+    with open(aposteriori_path, "wb") as f:
+      pickle.dump(aposteriori_metrics, f)
   
   viz_utils.plot_stats_aux(
     np.arange(inputs.shape[0]) * model.dt,

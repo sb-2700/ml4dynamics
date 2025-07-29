@@ -163,7 +163,7 @@ def _create_smooth_spectral_filter_nonperiodic(N1, N2, r):
           continue  # skip out-of-bounds for Dirichlet-Neumann
 
         distance = j - center  # always use unwrapped distance
-        # Use cosine weight instead of Gaussian
+        # Use sinc approximation
         weight = 0.5 * (1 + jnp.cos(jnp.pi * distance / r))
 
         # Accumulate (sum) weights in case of repeated indices
