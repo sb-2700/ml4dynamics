@@ -1,6 +1,7 @@
 import gc
 import math
 import pickle
+import yaml
 from functools import partial
 from time import time
 import os
@@ -848,7 +849,7 @@ def eval_a_posteriori(
     plt.plot(t_array, np.mean(corr2, axis=0), label="ours")
     plt.legend()
     plt.savefig(f"results/fig/{fig_name}_corr.png")
-    breakpoint()
+    #breakpoint()
     l2_list = np.array(l2_list)
     first_moment_list = np.array(first_moment_list)
     second_moment_list = np.array(second_moment_list)

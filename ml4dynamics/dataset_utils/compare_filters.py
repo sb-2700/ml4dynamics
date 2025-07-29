@@ -1,6 +1,8 @@
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
+import pickle
+import os
 
 def compare_filtered_fields():
     """Compare box and Gaussian filtered fields from the KS datasets"""
@@ -21,6 +23,20 @@ def compare_filtered_fields():
     
     print(f"Box filtered field shape: {box_filtered_field.shape}")
     print(f"Gaussian filtered field shape: {gauss_filtered_field.shape}")
+    
+    # Reshape the data back to (simulations, time_steps, spatial_points, channels)
+    num_sims = 10  # from config case_num
+    time_steps_per_sim = box_filtered_field.shape[0] // num_sims  # e.g., 40000 // 10 = 4000
+    
+    box_filtered_field = box_filtered_field.reshape(num_sims, time_steps_per_sim, -1, 1)
+    gauss_filtered_field = gauss_filtered_field.reshape(num_sims, time_steps_per_sim, -1, 1)
+    box_filter_stress = box_filter_stress.reshape(num_sims, time_steps_per_sim, -1, 1)
+    gauss_filter_stress = gauss_filter_stress.reshape(num_sims, time_steps_per_sim, -1, 1)
+    box_correction_stress = box_correction_stress.reshape(num_sims, time_steps_per_sim, -1, 1)
+    gauss_correction_stress = gauss_correction_stress.reshape(num_sims, time_steps_per_sim, -1, 1)
+    
+    print(f"Reshaped box filtered field shape: {box_filtered_field.shape}")
+    print(f"Reshaped gaussian filtered field shape: {gauss_filtered_field.shape}")
     
     # Calculate differences
     field_diff = gauss_filtered_field - box_filtered_field
@@ -51,46 +67,46 @@ def compare_filtered_fields():
     sim_idx = 0
     
     # Row 1: Filtered fields
-    im1 = axes[0,0].imshow(box_filtered_field[sim_idx, :, :].T, aspect='auto', cmap='RdBu_r')
+    im1 = axes[0,0].imshow(box_filtered_field[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
     axes[0,0].set_title('Box Filtered Field')
     axes[0,0].set_ylabel('Space')
     plt.colorbar(im1, ax=axes[0,0])
     
-    im2 = axes[0,1].imshow(gauss_filtered_field[sim_idx, :, :].T, aspect='auto', cmap='RdBu_r')
+    im2 = axes[0,1].imshow(gauss_filtered_field[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
     axes[0,1].set_title('Gaussian Filtered Field')
     plt.colorbar(im2, ax=axes[0,1])
     
-    im3 = axes[0,2].imshow(field_diff[sim_idx, :, :].T, aspect='auto', cmap='RdBu_r')
+    im3 = axes[0,2].imshow(field_diff[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
     axes[0,2].set_title('Difference (Gauss - Box)')
     plt.colorbar(im3, ax=axes[0,2])
     
     # Row 2: Filter stresses
-    im4 = axes[1,0].imshow(box_filter_stress[sim_idx, :, :].T, aspect='auto', cmap='RdBu_r')
+    im4 = axes[1,0].imshow(box_filter_stress[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
     axes[1,0].set_title('Box Filter Stress')
     axes[1,0].set_ylabel('Space')
     plt.colorbar(im4, ax=axes[1,0])
     
-    im5 = axes[1,1].imshow(gauss_filter_stress[sim_idx, :, :].T, aspect='auto', cmap='RdBu_r')
+    im5 = axes[1,1].imshow(gauss_filter_stress[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
     axes[1,1].set_title('Gaussian Filter Stress')
     plt.colorbar(im5, ax=axes[1,1])
     
-    im6 = axes[1,2].imshow(filter_stress_diff[sim_idx, :, :].T, aspect='auto', cmap='RdBu_r')
+    im6 = axes[1,2].imshow(filter_stress_diff[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
     axes[1,2].set_title('Filter Stress Difference')
     plt.colorbar(im6, ax=axes[1,2])
     
     # Row 3: Correction stresses
-    im7 = axes[2,0].imshow(box_correction_stress[sim_idx, :, :].T, aspect='auto', cmap='RdBu_r')
+    im7 = axes[2,0].imshow(box_correction_stress[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
     axes[2,0].set_title('Box Correction Stress')
     axes[2,0].set_ylabel('Space')
     axes[2,0].set_xlabel('Time')
     plt.colorbar(im7, ax=axes[2,0])
     
-    im8 = axes[2,1].imshow(gauss_correction_stress[sim_idx, :, :].T, aspect='auto', cmap='RdBu_r')
+    im8 = axes[2,1].imshow(gauss_correction_stress[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
     axes[2,1].set_title('Gaussian Correction Stress')
     axes[2,1].set_xlabel('Time')
     plt.colorbar(im8, ax=axes[2,1])
     
-    im9 = axes[2,2].imshow(correction_stress_diff[sim_idx, :, :].T, aspect='auto', cmap='RdBu_r')
+    im9 = axes[2,2].imshow(correction_stress_diff[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
     axes[2,2].set_title('Correction Stress Difference')
     axes[2,2].set_xlabel('Time')
     plt.colorbar(im9, ax=axes[2,2])
@@ -104,30 +120,30 @@ def compare_filtered_fields():
     mid_point = box_filtered_field.shape[2] // 2  # Middle spatial point
     
     plt.subplot(2, 2, 1)
-    plt.plot(box_filtered_field[sim_idx, :, mid_point], 'b-', label='Box', alpha=0.7)
-    plt.plot(gauss_filtered_field[sim_idx, :, mid_point], 'r-', label='Gaussian', alpha=0.7)
+    plt.plot(box_filtered_field[sim_idx, :, mid_point, 0], 'b-', label='Box', alpha=0.7)
+    plt.plot(gauss_filtered_field[sim_idx, :, mid_point, 0], 'r-', label='Gaussian', alpha=0.7)
     plt.title(f'Filtered Field at Spatial Point {mid_point}')
     plt.xlabel('Time Steps')
     plt.legend()
     plt.grid(True)
     
     plt.subplot(2, 2, 2)
-    plt.plot(field_diff[sim_idx, :, mid_point], 'g-')
+    plt.plot(field_diff[sim_idx, :, mid_point, 0], 'g-')
     plt.title('Filtered Field Difference')
     plt.xlabel('Time Steps')
     plt.grid(True)
     
     plt.subplot(2, 2, 3)
-    plt.plot(box_filter_stress[sim_idx, :, mid_point], 'b-', label='Box', alpha=0.7)
-    plt.plot(gauss_filter_stress[sim_idx, :, mid_point], 'r-', label='Gaussian', alpha=0.7)
+    plt.plot(box_filter_stress[sim_idx, :, mid_point, 0], 'b-', label='Box', alpha=0.7)
+    plt.plot(gauss_filter_stress[sim_idx, :, mid_point, 0], 'r-', label='Gaussian', alpha=0.7)
     plt.title('Filter Stress Time Series')
     plt.xlabel('Time Steps')
     plt.legend()
     plt.grid(True)
     
     plt.subplot(2, 2, 4)
-    plt.plot(box_correction_stress[sim_idx, :, mid_point], 'b-', label='Box', alpha=0.7)
-    plt.plot(gauss_correction_stress[sim_idx, :, mid_point], 'r-', label='Gaussian', alpha=0.7)
+    plt.plot(box_correction_stress[sim_idx, :, mid_point, 0], 'b-', label='Box', alpha=0.7)
+    plt.plot(gauss_correction_stress[sim_idx, :, mid_point, 0], 'r-', label='Gaussian', alpha=0.7)
     plt.title('Correction Stress Time Series')
     plt.xlabel('Time Steps')
     plt.legend()
