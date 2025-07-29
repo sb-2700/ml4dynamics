@@ -139,21 +139,47 @@ def _create_spectral_filter_periodic(N1, N2, r):
 
 
 def _create_smooth_spectral_filter_nonperiodic(N1, N2, r):
-  """Smooth spectral-like filter for non-periodic BC"""
+  """Smooth spectral-like filter for non-periodic BC using same structure as Gaussian filter"""
   res_op = jnp.zeros((N2, N1))
-  stencil_size = 2 * r + 1
-  for i in range(N2):
-    center = i * r + r // 2
-    start = center - r
-    end = center + r + 1
-    idxs = jnp.arange(start, end)
-    valid = (idxs >= 0) & (idxs < N1)
-    idxs = idxs[valid]
-    distances = idxs - center
-    weights = 0.5 * (1 + jnp.cos(jnp.pi * distances / r))
-    weights = weights / (jnp.sum(weights))
-    for k, j in enumerate(idxs):
-      res_op = res_op.at[i, j].set(weights[k])
+  
+  if r == 2:
+    raise Exception("Deprecated...")
+
+  elif r == 4:
+    stencil_size = 2 * r + 1  # 9
+    half_width = stencil_size // 2  # 4
+
+    for i in range(N2):
+      center = i * r
+      start = center - half_width
+      end = center + half_width + 1
+
+      weight_accum = {}  # dictionary to accumulate weights at each fine index
+
+      for j in range(start, end):
+        if 0 <= j < N1:
+          j_wrapped = j
+        else:
+          continue  # skip out-of-bounds for Dirichlet-Neumann
+
+        distance = j - center  # always use unwrapped distance
+        # Use cosine weight instead of Gaussian
+        weight = 0.5 * (1 + jnp.cos(jnp.pi * distance / r))
+
+        # Accumulate (sum) weights in case of repeated indices
+        if j_wrapped in weight_accum:
+          weight_accum[j_wrapped] += weight
+        else:
+          weight_accum[j_wrapped] = weight
+
+      # Normalize the row
+      total_weight = sum(weight_accum.values()) + 1e-12
+      for j_wrapped, weight in weight_accum.items():
+          res_op = res_op.at[i, j_wrapped].set(weight / total_weight)
+
+  elif r == 8:
+    raise Exception("Deprecated...")
+
   return res_op
 
 
