@@ -8,8 +8,10 @@ def compare_filtered_fields():
     """Compare box and Gaussian filtered fields from the KS datasets"""
     
     # Load both datasets
-    box_file = "data/ks/dnbc_nu1.0_c1.6_n10_box.h5"
-    gaussian_file = "data/ks/dnbc_nu1.0_c1.6_n10_gaussian.h5"
+    #box_file = "data/ks/dnbc_nu1.0_c1.6_n10_box.h5"
+    #gaussian_file = "data/ks/dnbc_nu1.0_c1.6_n10_gaussian.h5"
+    box_file = "data/ks/pbc_nu1.0_c0.0_n10_box.h5"
+    gaussian_file = "data/ks/pbc_nu1.0_c0.0_n10_gaussian.h5"
     
     with h5py.File(box_file, "r") as f_box:
         box_filtered_field = f_box["data"]["inputs"][:]  
@@ -215,26 +217,22 @@ def compare_errors():
         ("2nd Moment", ax4, "second_moment"),
     ]
     
-    x = np.arange(3)  # 3 bars: baseline, box, gaussian
+    x = np.arange(4)  # 4 bars: box_baseline, box, gaussian_baseline, gaussian
     width = 0.6  # Width of bars
     
     for title, ax, metric in metric_groups:
-        # Get baseline value (should be identical for both filters, so take from box)
-        # If box doesn't exist, try gaussian
-        baseline_val = float('nan')
-        if "box" in aposteriori_metrics:
-            baseline_val = aposteriori_metrics["box"].get(f"{metric}_baseline", float('nan'))
-        elif "gaussian" in aposteriori_metrics:
-            baseline_val = aposteriori_metrics["gaussian"].get(f"{metric}_baseline", float('nan'))
+        # Get separate baseline values for box and gaussian
+        box_baseline_val = aposteriori_metrics.get("box", {}).get(f"{metric}_baseline", float('nan'))
+        gaussian_baseline_val = aposteriori_metrics.get("gaussian", {}).get(f"{metric}_baseline", float('nan'))
         
         # Get box and gaussian "ours" values
         box_val = aposteriori_metrics.get("box", {}).get(f"{metric}_ours", float('nan'))
         gaussian_val = aposteriori_metrics.get("gaussian", {}).get(f"{metric}_ours", float('nan'))
         
-        # Create 3 bars: baseline, box, gaussian
-        values = [baseline_val, box_val, gaussian_val]
-        labels = ['Baseline', 'Box', 'Gaussian']
-        colors = ['gray', 'skyblue', 'lightcoral']
+        # Create 4 bars: box_baseline, box, gaussian_baseline, gaussian
+        values = [box_baseline_val, box_val, gaussian_baseline_val, gaussian_val]
+        labels = ['Box\nBaseline', 'Box', 'Gaussian\nBaseline', 'Gaussian']
+        colors = ['lightgray', 'skyblue', 'lightgray', 'lightcoral']
         
         bars = ax.bar(x, values, width, color=colors, alpha=0.7)
         

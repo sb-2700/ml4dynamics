@@ -12,9 +12,9 @@ def test_gaussian_filter_comparison():
     """Compare manual Gaussian filter against OpenCV implementation"""
     
     # Test parameters
-    N1 = 64  # Fine grid size
+    N1 = 256  # Fine grid size (matches your actual data)
     r = 4    # Coarsening factor
-    N2 = N1 // r  # Coarse grid size (16)
+    N2 = N1 // r  # Coarse grid size (64)
     BC = "Dirichlet-Neumann"  # Non-periodic for now
     
     print(f"Testing with N1={N1}, N2={N2}, r={r}, BC={BC}")
@@ -188,7 +188,7 @@ def test_periodic_case():
     print("TESTING PERIODIC BOUNDARY CONDITIONS")
     print("="*50)
     
-    N1 = 64
+    N1 = 256
     r = 4
     N2 = N1 // r
     BC = "periodic"

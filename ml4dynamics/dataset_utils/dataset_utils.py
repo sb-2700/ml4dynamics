@@ -112,29 +112,22 @@ def _create_spectral_filter(N1, N2, r, BC):
 
 
 def _create_spectral_filter_periodic(N1, N2, r):
-  """FFT-based spectral filter for periodic BC"""
-  # Create filter in frequency domain then transform to spatial
-  cutoff_freq = N2 // 2  # Cutoff frequency for coarse grid (Nyquist)
-  
+  """FFT-based spectral filter for periodic BCs (sharp cutoff in frequency space)"""
   res_op = jnp.zeros((N2, N1))
+  cutoff = N2 // 2
+
+  freqs = jnp.fft.fftfreq(N1) * N1
+  mask = jnp.abs(freqs) <= cutoff
+
   for i in range(N2):
-    # Create impulse at coarse grid location
     impulse = jnp.zeros(N1)
     impulse = impulse.at[i * r].set(1.0)
-    
-    # Apply spectral filter in frequency domain
     impulse_hat = jnp.fft.fft(impulse)
-    # Low-pass filter: keep low frequencies, zero high frequencies
-    filtered_hat = jnp.where(
-      jnp.abs(jnp.fft.fftfreq(N1) * N1) <= cutoff_freq,
-      impulse_hat, 0.0
-    )
-    filtered = jnp.real(jnp.fft.ifft(filtered_hat))
-    res_op = res_op.at[i, :].set(filtered)
-  
-  # Normalize
-  row_sums = jnp.sum(res_op, axis=1, keepdims=True)
-  res_op = res_op / row_sums
+    filtered = jnp.fft.ifft(impulse_hat * mask).real
+    res_op = res_op.at[i].set(filtered)
+
+  # Normalize rows to sum to 1
+  res_op = res_op / jnp.sum(res_op, axis=1, keepdims=True)
   return res_op
 
 
