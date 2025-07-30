@@ -199,54 +199,59 @@ def compare_errors():
     train_vals = [train_losses.get(f, float('nan')) for f in filters]
     
     bars1 = ax1.bar(filters, train_vals, color=['skyblue', 'lightcoral'])
-    ax1.set_title('A Priori Training Loss Comparison')
+    ax1.set_title('A Priori Loss')
     ax1.set_ylabel('Training Loss')
-    ax1.set_yscale('log')  # Use log scale for better visualization
     
-    # Add value labels on bars
+    # Add value labels on bars - shorter format
     for i, (bar, val) in enumerate(zip(bars1, train_vals)):
         if not np.isnan(val):
-            ax1.text(bar.get_x() + bar.get_width()/2, val, f"{val:.2e}", 
-                    ha='center', va='bottom', fontsize=10)
+            ax1.text(bar.get_x() + bar.get_width()/2, val, f"{val:.1e}", 
+                    ha='center', va='bottom', fontsize=7)
     
-    # Plots 2-4: A Posteriori Metrics (baseline vs ours for box and gaussian)
+    # Plots 2-4: A Posteriori Metrics (baseline, box, gaussian for each metric)
     metric_groups = [
-        ("l2_baseline", "l2_ours", "L2 Error", ax2),
-        ("first_moment_baseline", "first_moment_ours", "1st Moment Error", ax3),
-        ("second_moment_baseline", "second_moment_ours", "2nd Moment Error", ax4),
+        ("L2 Error", ax2, "l2"),
+        ("1st Moment", ax3, "first_moment"), 
+        ("2nd Moment", ax4, "second_moment"),
     ]
     
-    x = np.arange(len(filters))
-    width = 0.35  # Width of bars
+    x = np.arange(3)  # 3 bars: baseline, box, gaussian
+    width = 0.6  # Width of bars
     
-    for base_key, ours_key, title, ax in metric_groups:
-        baseline_vals = [aposteriori_metrics.get(f, {}).get(base_key, float('nan')) for f in filters]
-        ours_vals = [aposteriori_metrics.get(f, {}).get(ours_key, float('nan')) for f in filters]
+    for title, ax, metric in metric_groups:
+        # Get baseline value (should be identical for both filters, so take from box)
+        # If box doesn't exist, try gaussian
+        baseline_val = float('nan')
+        if "box" in aposteriori_metrics:
+            baseline_val = aposteriori_metrics["box"].get(f"{metric}_baseline", float('nan'))
+        elif "gaussian" in aposteriori_metrics:
+            baseline_val = aposteriori_metrics["gaussian"].get(f"{metric}_baseline", float('nan'))
         
-        bars_baseline = ax.bar(x - width/2, baseline_vals, width, label='Baseline', color='gray', alpha=0.7)
-        bars_ours = ax.bar(x + width/2, ours_vals, width, label='Ours', color=['skyblue', 'lightcoral'])
+        # Get box and gaussian "ours" values
+        box_val = aposteriori_metrics.get("box", {}).get(f"{metric}_ours", float('nan'))
+        gaussian_val = aposteriori_metrics.get("gaussian", {}).get(f"{metric}_ours", float('nan'))
+        
+        # Create 3 bars: baseline, box, gaussian
+        values = [baseline_val, box_val, gaussian_val]
+        labels = ['Baseline', 'Box', 'Gaussian']
+        colors = ['gray', 'skyblue', 'lightcoral']
+        
+        bars = ax.bar(x, values, width, color=colors, alpha=0.7)
         
         ax.set_xticks(x)
-        ax.set_xticklabels(filters)
+        ax.set_xticklabels(labels)
         ax.set_title(title)
         ax.set_ylabel('Error')
-        ax.legend()
-        ax.set_yscale('log')  # Use log scale for better visualization
         
         # Add value labels on bars
-        for i, (bar, val) in enumerate(zip(bars_baseline, baseline_vals)):
+        for i, (bar, val) in enumerate(zip(bars, values)):
             if not np.isnan(val):
-                ax.text(bar.get_x() + bar.get_width()/2, val, f"{val:.2e}", 
-                       ha='center', va='bottom', fontsize=8, rotation=45)
-        
-        for i, (bar, val) in enumerate(zip(bars_ours, ours_vals)):
-            if not np.isnan(val):
-                ax.text(bar.get_x() + bar.get_width()/2, val, f"{val:.2e}", 
-                       ha='center', va='bottom', fontsize=8, rotation=45)
+                ax.text(bar.get_x() + bar.get_width()/2, val, f"{val:.1e}", 
+                       ha='center', va='bottom', fontsize=7)
     
-    plt.suptitle('Filter Error Comparison: A Priori and A Posteriori Metrics')
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    plt.savefig('filter_error_comparison.png', dpi=300, bbox_inches='tight')
+    plt.suptitle('Filter Comparison: A Priori and A Posteriori Metrics', fontsize=14)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.93])  # Leave more space for title and labels
+    plt.savefig('filter_error_comparison.png', dpi=300, bbox_inches='tight', facecolor='white')
     plt.show()
     
     # Print numerical comparison
