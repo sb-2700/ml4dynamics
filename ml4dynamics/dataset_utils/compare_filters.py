@@ -209,21 +209,18 @@ def compare_errors():
             train_vals.append(train_losses.get(f, float('nan')))
             train_stds.append(0.0)
     
-    # Calculate SEM (Standard Error of Mean) for error bars
-    train_sems = []
+    # Calculate error bars using std
+    train_errs = []
     for i, f in enumerate(filters):
         loss_data = train_losses.get(f, {})
         if isinstance(loss_data, dict):
-            # New format with mean/std/n_batches
             std_val = loss_data.get('std', 0.0)
-            n_batches = loss_data.get('n_batches', 1)
-            sem = std_val / np.sqrt(n_batches) if not np.isnan(std_val) and std_val > 0 and n_batches > 0 else 0
-            train_sems.append(sem)
+            train_errs.append(std_val if not np.isnan(std_val) and std_val > 0 else 0)
         else:
             # Old format has no std info
-            train_sems.append(0)
+            train_errs.append(0)
     
-    bars1 = ax1.bar(filters, train_vals, color=['skyblue', 'lightcoral'], yerr=train_sems, capsize=3)
+    bars1 = ax1.bar(filters, train_vals, color=['skyblue', 'lightcoral'], yerr=train_errs, capsize=3)
     ax1.set_title('A Priori Loss')
     ax1.set_ylabel('Training Loss')
     
@@ -266,14 +263,13 @@ def compare_errors():
         values = [box_baseline_val, box_val, gaussian_baseline_val, gaussian_val]
         stds = [box_baseline_std, box_std, gaussian_baseline_std, gaussian_std]
         
-        # Calculate SEM for error bars (assuming 10 samples from a posteriori evaluation)
-        n_samples = 10
-        sems = [std / np.sqrt(n_samples) if not np.isnan(std) and std > 0 else 0 for std in stds]
+        # Use std directly for error bars (not SEM)
+        errs = [std if not np.isnan(std) and std > 0 else 0 for std in stds]
         
         labels = ['Box\nBaseline', 'Box', 'Gaussian\nBaseline', 'Gaussian']
         colors = ['lightgray', 'skyblue', 'lightgray', 'lightcoral']
         
-        bars = ax.bar(x, values, width, color=colors, alpha=0.7, yerr=sems, capsize=3)
+        bars = ax.bar(x, values, width, color=colors, alpha=0.7, yerr=errs, capsize=3)
         
         ax.set_xticks(x)
         ax.set_xticklabels(labels)

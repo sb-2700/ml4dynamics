@@ -41,10 +41,10 @@ plot:
 
 train:
   stratify: False
-  # sgs: filter
-  sgs: correction
+  sgs: filter
+  # sgs: correction
   kernel_size: 3
-  #input: ["u", "u_x", "u_xx"]
+  # input: ["u", "u_x", "u_xx"]
   # input: 3
   input: global
   bins: 50
