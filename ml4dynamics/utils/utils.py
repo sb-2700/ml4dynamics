@@ -913,6 +913,11 @@ def eval_a_posteriori(
     final_first_moment = first_moment_list[-1] if len(first_moment_list) > 0 else [float('nan'), float('nan')]
     final_second_moment = second_moment_list[-1] if len(second_moment_list) > 0 else [float('nan'), float('nan')]
     
+    # Calculate means across all valid samples (for saving to pickle)
+    l2_mean = np.mean(l2_valid, axis=0) if len(l2_valid) > 0 else [float('nan'), float('nan')]
+    first_moment_mean = np.mean(first_moment_valid, axis=0) if len(first_moment_valid) > 0 else [float('nan'), float('nan')]
+    second_moment_mean = np.mean(second_moment_valid, axis=0) if len(second_moment_valid) > 0 else [float('nan'), float('nan')]
+    
     # Load existing a posteriori metrics or create new dict
     aposteriori_path = "results/aposteriori_metrics.pkl"
     if os.path.exists(aposteriori_path):
@@ -921,18 +926,18 @@ def eval_a_posteriori(
     else:
       aposteriori_metrics = {}
     
-    # Save this filter's a posteriori metrics (original final values + std)
+    # Save this filter's a posteriori metrics (means and stds across all samples)
     aposteriori_metrics[filter_type] = {
-      "l2_baseline": float(final_l2[0]),
-      "l2_ours": float(final_l2[1]),
+      "l2_baseline": float(l2_mean[0]),
+      "l2_ours": float(l2_mean[1]),
       "l2_baseline_std": float(l2_std[0]),
       "l2_ours_std": float(l2_std[1]),
-      "first_moment_baseline": float(final_first_moment[0]),
-      "first_moment_ours": float(final_first_moment[1]),
+      "first_moment_baseline": float(first_moment_mean[0]),
+      "first_moment_ours": float(first_moment_mean[1]),
       "first_moment_baseline_std": float(first_moment_std[0]),
       "first_moment_ours_std": float(first_moment_std[1]),
-      "second_moment_baseline": float(final_second_moment[0]),
-      "second_moment_ours": float(final_second_moment[1]),
+      "second_moment_baseline": float(second_moment_mean[0]),
+      "second_moment_ours": float(second_moment_mean[1]),
       "second_moment_baseline_std": float(second_moment_std[0]),
       "second_moment_ours_std": float(second_moment_std[1]),
     }
