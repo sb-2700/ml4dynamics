@@ -8,10 +8,10 @@ def compare_filtered_fields():
     """Compare box and Gaussian filtered fields from the KS datasets"""
     
     # Load both datasets
-    #box_file = "data/ks/dnbc_nu1.0_c1.6_n10_box.h5"
-    #gaussian_file = "data/ks/dnbc_nu1.0_c1.6_n10_gaussian.h5"
-    box_file = "data/ks/pbc_nu1.0_c0.0_n10_box.h5"
-    gaussian_file = "data/ks/pbc_nu1.0_c0.0_n10_gaussian.h5"
+    box_file = "data/ks/dnbc_nu1.0_c1.6_n10_box.h5"
+    gaussian_file = "data/ks/dnbc_nu1.0_c1.6_n10_gaussian.h5"
+    #box_file = "data/ks/pbc_nu1.0_c0.0_n10_box.h5"
+    #gaussian_file = "data/ks/pbc_nu1.0_c0.0_n10_gaussian.h5"
     
     with h5py.File(box_file, "r") as f_box:
         box_filtered_field = f_box["data"]["inputs"][:]  
@@ -50,7 +50,6 @@ def compare_filtered_fields():
     print(f"Max absolute difference: {np.max(np.abs(field_diff)):.6f}")
     print(f"RMS difference: {np.sqrt(np.mean(field_diff**2)):.6f}")
     print(f"Mean difference: {np.mean(field_diff):.6f}")
-    print(f"Std of difference: {np.std(field_diff):.6f}")
     
     print("\n=== FILTER STRESS COMPARISON ===")
     print(f"Max absolute difference: {np.max(np.abs(filter_stress_diff)):.6f}")
@@ -285,7 +284,6 @@ def compare_errors():
         for i, (bar, val) in enumerate(zip(bars, values)):
             if not np.isnan(val):
                 ax.text(bar.get_x() + bar.get_width()/2, val, f"{val:.1e}", 
-                       ha='center', va='bottom', fontsize=7) 
                        ha='center', va='bottom', fontsize=7)
     
     plt.suptitle('Filter Comparison: A Priori and A Posteriori Metrics', fontsize=14)
