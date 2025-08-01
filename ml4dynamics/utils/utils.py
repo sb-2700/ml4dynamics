@@ -520,14 +520,18 @@ def eval_a_priori(
   fig_name: str = None,
 ):
 
+  batch_losses = []
   total_loss = 0
   count = 0
   for batch_inputs, batch_outputs in train_dataloader:
     predict = forward_fn(jnp.array(batch_inputs))
     loss = jnp.mean((predict - jnp.array(batch_outputs))**2)
+    batch_losses.append(float(loss))
     total_loss += loss
     count += 1
+  
   train_loss = float(total_loss/count)
+  train_loss_std = float(np.std(batch_losses)) if len(batch_losses) > 1 else 0.0
   print(f"train loss: {train_loss:.4e}")
   
 # Save train_loss to results/train_losses.pkl
@@ -546,8 +550,12 @@ def eval_a_priori(
   else:
     train_losses = {}
   
-  # Save this filter's train loss
-  train_losses[filter_type] = train_loss
+  # Save this filter's train loss (mean, std, and batch count)
+  train_losses[filter_type] = {
+    'mean': train_loss,
+    'std': train_loss_std,
+    'n_batches': count
+  }
   with open(train_losses_path, "wb") as f:
     pickle.dump(train_losses, f)
   
@@ -681,7 +689,7 @@ def eval_a_posteriori(
     # uv0 = jnp.real(jnp.fft.fftn(u_fft, axes=(1, 2))) / nx
     print(f"simulation takes {time() - start:.2f}s...")
     if jnp.any(jnp.isnan(x_hist)) or jnp.any(jnp.isinf(x_hist)):
-      print("similation contains NaN!")
+      print("simulation contains NaN!")
     print(
       "baseline:",
       jnp.mean(jnp.linalg.norm(inputs - model.x_hist[..., None], axis=(1, 2)))
@@ -883,6 +891,15 @@ def eval_a_posteriori(
       )
     )
     
+    # Calculate mean and std for saving (but keep using final values for compatibility)
+    l2_valid = l2_list[~np.isnan(l2_list).any(axis=1)]
+    first_moment_valid = first_moment_list[~np.isnan(first_moment_list).any(axis=1)]
+    second_moment_valid = second_moment_list[~np.isnan(second_moment_list).any(axis=1)]
+    
+    l2_std = np.std(l2_valid, axis=0) if len(l2_valid) > 0 else [float('nan'), float('nan')]
+    first_moment_std = np.std(first_moment_valid, axis=0) if len(first_moment_valid) > 0 else [float('nan'), float('nan')]
+    second_moment_std = np.std(second_moment_valid, axis=0) if len(second_moment_valid) > 0 else [float('nan'), float('nan')]
+    
     # Save a posteriori metrics to results/aposteriori_metrics.pkl
     os.makedirs("results", exist_ok=True)
     
@@ -904,14 +921,20 @@ def eval_a_posteriori(
     else:
       aposteriori_metrics = {}
     
-    # Save this filter's a posteriori metrics
+    # Save this filter's a posteriori metrics (original final values + std)
     aposteriori_metrics[filter_type] = {
       "l2_baseline": float(final_l2[0]),
       "l2_ours": float(final_l2[1]),
+      "l2_baseline_std": float(l2_std[0]),
+      "l2_ours_std": float(l2_std[1]),
       "first_moment_baseline": float(final_first_moment[0]),
       "first_moment_ours": float(final_first_moment[1]),
+      "first_moment_baseline_std": float(first_moment_std[0]),
+      "first_moment_ours_std": float(first_moment_std[1]),
       "second_moment_baseline": float(final_second_moment[0]),
       "second_moment_ours": float(final_second_moment[1]),
+      "second_moment_baseline_std": float(second_moment_std[0]),
+      "second_moment_ours_std": float(second_moment_std[1]),
     }
     
     with open(aposteriori_path, "wb") as f:

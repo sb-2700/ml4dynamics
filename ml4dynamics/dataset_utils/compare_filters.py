@@ -198,9 +198,33 @@ def compare_errors():
     
     # Plot 1: A Priori Training Loss Comparison
     filters = ["box", "gaussian"]  # Focus on box vs gaussian
-    train_vals = [train_losses.get(f, float('nan')) for f in filters]
+    train_vals = []
+    train_stds = []
+    for f in filters:
+        if isinstance(train_losses.get(f), dict):
+            # New format with mean/std
+            train_vals.append(train_losses[f].get('mean', float('nan')))
+            train_stds.append(train_losses[f].get('std', float('nan')))
+        else:
+            # Old format (single value)
+            train_vals.append(train_losses.get(f, float('nan')))
+            train_stds.append(0.0)
     
-    bars1 = ax1.bar(filters, train_vals, color=['skyblue', 'lightcoral'])
+    # Calculate SEM (Standard Error of Mean) for error bars
+    train_sems = []
+    for i, f in enumerate(filters):
+        loss_data = train_losses.get(f, {})
+        if isinstance(loss_data, dict):
+            # New format with mean/std/n_batches
+            std_val = loss_data.get('std', 0.0)
+            n_batches = loss_data.get('n_batches', 1)
+            sem = std_val / np.sqrt(n_batches) if not np.isnan(std_val) and std_val > 0 and n_batches > 0 else 0
+            train_sems.append(sem)
+        else:
+            # Old format has no std info
+            train_sems.append(0)
+    
+    bars1 = ax1.bar(filters, train_vals, color=['skyblue', 'lightcoral'], yerr=train_sems, capsize=3)
     ax1.set_title('A Priori Loss')
     ax1.set_ylabel('Training Loss')
     
@@ -222,19 +246,35 @@ def compare_errors():
     
     for title, ax, metric in metric_groups:
         # Get separate baseline values for box and gaussian
-        box_baseline_val = aposteriori_metrics.get("box", {}).get(f"{metric}_baseline", float('nan'))
-        gaussian_baseline_val = aposteriori_metrics.get("gaussian", {}).get(f"{metric}_baseline", float('nan'))
+        box_data = aposteriori_metrics.get("box", {})
+        gaussian_data = aposteriori_metrics.get("gaussian", {})
+        
+        # Use original field names (no _mean suffix)
+        box_baseline_val = box_data.get(f"{metric}_baseline", float('nan'))
+        box_baseline_std = box_data.get(f"{metric}_baseline_std", 0.0)
+        
+        gaussian_baseline_val = gaussian_data.get(f"{metric}_baseline", float('nan'))
+        gaussian_baseline_std = gaussian_data.get(f"{metric}_baseline_std", 0.0)
         
         # Get box and gaussian "ours" values
-        box_val = aposteriori_metrics.get("box", {}).get(f"{metric}_ours", float('nan'))
-        gaussian_val = aposteriori_metrics.get("gaussian", {}).get(f"{metric}_ours", float('nan'))
+        box_val = box_data.get(f"{metric}_ours", float('nan'))
+        box_std = box_data.get(f"{metric}_ours_std", 0.0)
+        
+        gaussian_val = gaussian_data.get(f"{metric}_ours", float('nan'))
+        gaussian_std = gaussian_data.get(f"{metric}_ours_std", 0.0)
         
         # Create 4 bars: box_baseline, box, gaussian_baseline, gaussian
         values = [box_baseline_val, box_val, gaussian_baseline_val, gaussian_val]
+        stds = [box_baseline_std, box_std, gaussian_baseline_std, gaussian_std]
+        
+        # Calculate SEM for error bars (assuming 10 samples from a posteriori evaluation)
+        n_samples = 10
+        sems = [std / np.sqrt(n_samples) if not np.isnan(std) and std > 0 else 0 for std in stds]
+        
         labels = ['Box\nBaseline', 'Box', 'Gaussian\nBaseline', 'Gaussian']
         colors = ['lightgray', 'skyblue', 'lightgray', 'lightcoral']
         
-        bars = ax.bar(x, values, width, color=colors, alpha=0.7)
+        bars = ax.bar(x, values, width, color=colors, alpha=0.7, yerr=sems, capsize=3)
         
         ax.set_xticks(x)
         ax.set_xticklabels(labels)
@@ -245,6 +285,7 @@ def compare_errors():
         for i, (bar, val) in enumerate(zip(bars, values)):
             if not np.isnan(val):
                 ax.text(bar.get_x() + bar.get_width()/2, val, f"{val:.1e}", 
+                       ha='center', va='bottom', fontsize=7) 
                        ha='center', va='bottom', fontsize=7)
     
     plt.suptitle('Filter Comparison: A Priori and A Posteriori Metrics', fontsize=14)
@@ -256,18 +297,35 @@ def compare_errors():
     print("\n=== NUMERICAL COMPARISON ===")
     print("A Priori (Training Loss):")
     for f in filters:
-        val = train_losses.get(f, float('nan'))
-        print(f"  {f}: {val:.6e}")
+        loss_data = train_losses.get(f, {})
+        if isinstance(loss_data, dict):
+            # New format with mean/std
+            mean_val = loss_data.get('mean', float('nan'))
+            std_val = loss_data.get('std', float('nan'))
+            print(f"  {f}: {mean_val:.6e} ± {std_val:.6e}")
+        else:
+            # Old format (single value)
+            print(f"  {f}: {loss_data:.6e}")
     
     print("\nA Posteriori Metrics:")
     for metric in ["l2", "first_moment", "second_moment"]:
         print(f"\n{metric.upper()}:")
         for f in filters:
             if f in aposteriori_metrics:
-                baseline = aposteriori_metrics[f].get(f"{metric}_baseline", float('nan'))
-                ours = aposteriori_metrics[f].get(f"{metric}_ours", float('nan'))
-                improvement = (baseline - ours) / baseline * 100 if not np.isnan(baseline) and not np.isnan(ours) else float('nan')
-                print(f"  {f}: Baseline={baseline:.6e}, Ours={ours:.6e}, Improvement={improvement:.1f}%")
+                data = aposteriori_metrics[f]
+                
+                # Use original field names (no _mean suffix)
+                baseline_val = data.get(f"{metric}_baseline", float('nan'))
+                baseline_std = data.get(f"{metric}_baseline_std", 0.0)
+                ours_val = data.get(f"{metric}_ours", float('nan'))
+                ours_std = data.get(f"{metric}_ours_std", 0.0)
+                
+                improvement = (baseline_val - ours_val) / baseline_val * 100 if not np.isnan(baseline_val) and not np.isnan(ours_val) else float('nan')
+                
+                print(f"  {f}:")
+                print(f"    Baseline: {baseline_val:.6e} ± {baseline_std:.6e}")
+                print(f"    Ours:     {ours_val:.6e} ± {ours_std:.6e}")
+                print(f"    Improvement: {improvement:.1f}%")
 
 def main():
     """Run both filtered field comparison and error comparison"""
