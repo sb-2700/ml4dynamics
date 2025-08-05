@@ -4,21 +4,20 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 
-def compare_stencil_fields(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian"):
-    """Compare filtered fields and correction stresses across different stencil sizes
+def compare_stencil_fields(stencil_sizes=[3, 5, 7, 9, 11]):
+    """Compare filtered fields and correction stresses across different stencil sizes for box filter
     
     Args:
         stencil_sizes: List of stencil sizes to compare
-        filter_type: Type of filter to use ("box", "gaussian", "spectral")
     """
     
-    # Define file paths for each stencil size
-    # Assuming naming convention: data/ks/pbc_nu1.0_c0.0_n10_{filter_type}_s{stencil_size}.h5
+    # Define file paths for each stencil size (box filter only)
+    # Assuming naming convention: data/ks/pbc_nu1.0_c0.0_n10_box_s{stencil_size}.h5
     stencil_files = {}
     for size in stencil_sizes:
-        stencil_files[size] = f"data/ks/pbc_nu1.0_c0.0_n10_{filter_type}_s{size}.h5"
+        stencil_files[size] = f"data/ks/pbc_nu1.0_c0.0_n10_box_s{size}.h5"
     
-    print(f"Comparing {filter_type} filter with stencil sizes: {stencil_sizes}")
+    print(f"Comparing box filter with stencil sizes: {stencil_sizes}")
     
     # Load datasets dynamically
     data = {}
@@ -153,7 +152,7 @@ def compare_stencil_fields(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
         # Row 1: Filtered fields (consistent scale)
         im = axes[0,i].imshow(data[stencil_size]['filtered_field'][sim_idx, :, :, 0].T, 
                             aspect='auto', cmap='RdBu_r', vmin=field_min, vmax=field_max)
-        axes[0,i].set_title(f'Stencil {stencil_size}\nFiltered Field')
+        axes[0,i].set_title(f'Box Filter (s={stencil_size})\nFiltered Field')
         if i == 0:
             axes[0,i].set_ylabel('Space')
         plt.colorbar(im, ax=axes[0,i])
@@ -161,7 +160,7 @@ def compare_stencil_fields(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
         # Row 2: Filter stresses (consistent scale)
         im = axes[1,i].imshow(data[stencil_size]['filter_stress'][sim_idx, :, :, 0].T, 
                             aspect='auto', cmap='RdBu_r', vmin=filter_stress_min, vmax=filter_stress_max)
-        axes[1,i].set_title(f'Stencil {stencil_size}\nFilter Stress')
+        axes[1,i].set_title(f'Box Filter (s={stencil_size})\nFilter Stress')
         if i == 0:
             axes[1,i].set_ylabel('Space')
         plt.colorbar(im, ax=axes[1,i])
@@ -169,7 +168,7 @@ def compare_stencil_fields(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
         # Row 3: Correction stresses (consistent scale)
         im = axes[2,i].imshow(data[stencil_size]['correction_stress'][sim_idx, :, :, 0].T, 
                             aspect='auto', cmap='RdBu_r', vmin=correction_stress_min, vmax=correction_stress_max)
-        axes[2,i].set_title(f'Stencil {stencil_size}\nCorrection Stress')
+        axes[2,i].set_title(f'Box Filter (s={stencil_size})\nCorrection Stress')
         if i == 0:
             axes[2,i].set_ylabel('Space')
         axes[2,i].set_xlabel('Time')
@@ -200,7 +199,7 @@ def compare_stencil_fields(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
     
     plt.tight_layout()
     stencil_str = "_".join([str(s) for s in stencil_sizes])
-    plt.savefig(f'stencil_comparison_{filter_type}_{stencil_str}.png', dpi=300, bbox_inches='tight')
+    plt.savefig(f'stencil_comparison_box_{stencil_str}.png', dpi=300, bbox_inches='tight')
     plt.show()
     
     # Return the data for further analysis
@@ -210,15 +209,14 @@ def compare_stencil_fields(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
     }
     return result
 
-def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian"):
-    """Compare a priori and a posteriori errors across different stencil sizes
+def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11]):
+    """Compare a priori and a posteriori errors across different stencil sizes for box filter
     
     Args:
         stencil_sizes: List of stencil sizes to compare
-        filter_type: Type of filter used ("box", "gaussian", "spectral")
     """
     
-    print(f"\n=== LOADING ERROR METRICS FOR {filter_type.upper()} FILTER ===")
+    print(f"\n=== LOADING ERROR METRICS FOR BOX FILTER ===")
     print(f"Comparing stencil sizes: {stencil_sizes}")
     
     # Load a priori errors from pickle file
@@ -242,15 +240,16 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
         aposteriori_metrics = {}
     
     # Helper function to find the correct key for a stencil size
-    def find_stencil_key(stencil_size, filter_type, data_dict):
-        # Try different key formats
+    def find_stencil_key(stencil_size, data_dict):
+        # Try different key formats (box filter only)
         possible_keys = [
-            f"{filter_type}_s{stencil_size}_pbc",  # New format with stencil and BC
-            f"{filter_type}_s{stencil_size}",      # Format with stencil
-            f"{filter_type}_{stencil_size}_pbc",   # Alternative format
-            f"{filter_type}_{stencil_size}",       # Alternative format
-            f"s{stencil_size}_{filter_type}_pbc",  # Another format
-            f"s{stencil_size}_{filter_type}",      # Another format
+            f"box_pbc_s{stencil_size}",       # New format with stencil and BC
+            f"box_s{stencil_size}_pbc",       # Alternative format
+            f"box_s{stencil_size}",           # Format with stencil
+            f"box_{stencil_size}_pbc",        # Alternative format
+            f"box_{stencil_size}",            # Alternative format
+            f"s{stencil_size}_box_pbc",       # Another format
+            f"s{stencil_size}_box",           # Another format
         ]
         
         for key in possible_keys:
@@ -259,7 +258,7 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
         
         # Fallback: look for partial matches
         for key in data_dict.keys():
-            if str(stencil_size) in key and filter_type in key:
+            if str(stencil_size) in key and "box" in key:
                 return key
         
         return None
@@ -268,13 +267,13 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
     available_stencils = []
     for s in stencil_sizes:
         # Check if we have either a priori or a posteriori data
-        train_key = find_stencil_key(s, filter_type, train_losses)
-        apost_key = find_stencil_key(s, filter_type, aposteriori_metrics)
+        train_key = find_stencil_key(s, train_losses)
+        apost_key = find_stencil_key(s, aposteriori_metrics)
         
         if train_key or apost_key:
             available_stencils.append(s)
         else:
-            print(f"Warning: No data found for stencil size {s} with {filter_type} filter")
+            print(f"Warning: No data found for stencil size {s} with box filter")
     
     if len(available_stencils) < 2:
         print(f"Insufficient data for comparison. Available stencils: {available_stencils}")
@@ -293,7 +292,7 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
     available_train_stencils = []
     
     for s in stencil_sizes:
-        key = find_stencil_key(s, filter_type, train_losses)
+        key = find_stencil_key(s, train_losses)
         if key:
             loss_data = train_losses[key]
             if isinstance(loss_data, dict):
@@ -315,7 +314,7 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
                     marker='o', capsize=5, capthick=2, linewidth=2, markersize=8)
         ax1.set_xlabel('Stencil Size')
         ax1.set_ylabel('A Priori Loss (MSE)')
-        ax1.set_title(f'A Priori Loss vs Stencil Size\n({filter_type.capitalize()} Filter)')
+        ax1.set_title('A Priori Loss vs Stencil Size\n(Box Filter)')
         ax1.grid(True, alpha=0.3)
         ax1.set_yscale('log')
         
@@ -339,7 +338,7 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
         available_apost_stencils = []
         
         for s in stencil_sizes:
-            key = find_stencil_key(s, filter_type, aposteriori_metrics)
+            key = find_stencil_key(s, aposteriori_metrics)
             if key:
                 data = aposteriori_metrics[key]
                 
@@ -369,7 +368,7 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
             
             ax.set_xlabel('Stencil Size')
             ax.set_ylabel(f'{title}')
-            ax.set_title(f'{title} vs Stencil Size\n({filter_type.capitalize()} Filter)')
+            ax.set_title(f'{title} vs Stencil Size\n(Box Filter)')
             ax.grid(True, alpha=0.3)
             ax.set_yscale('log')
             ax.legend()
@@ -382,18 +381,18 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
                                textcoords="offset points", xytext=(0,-20), 
                                ha='center', fontsize=7, color='blue')
     
-    plt.suptitle(f'Stencil Size Comparison: A Priori and A Posteriori Metrics\n({filter_type.capitalize()} Filter)', fontsize=14)
+    plt.suptitle('Box Filter: A Priori and A Posteriori Metrics vs Stencil Size', fontsize=14)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     
     stencil_str = "_".join([str(s) for s in stencil_sizes])
-    plt.savefig(f'stencil_error_comparison_{filter_type}_{stencil_str}.png', dpi=300, bbox_inches='tight', facecolor='white')
+    plt.savefig(f'stencil_error_comparison_box_{stencil_str}.png', dpi=300, bbox_inches='tight', facecolor='white')
     plt.show()
     
     # Print numerical comparison
-    print(f"\n=== NUMERICAL COMPARISON ({filter_type.upper()} FILTER) ===")
+    print(f"\n=== NUMERICAL COMPARISON (BOX FILTER) ===")
     print("A Priori (Training Loss):")
     for s in available_train_stencils:
-        key = find_stencil_key(s, filter_type, train_losses)
+        key = find_stencil_key(s, train_losses)
         if key:
             loss_data = train_losses[key]
             if isinstance(loss_data, dict):
@@ -407,7 +406,7 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
     for metric in ["l2", "first_moment", "second_moment"]:
         print(f"\n{metric.upper()}:")
         for s in stencil_sizes:
-            key = find_stencil_key(s, filter_type, aposteriori_metrics)
+            key = find_stencil_key(s, aposteriori_metrics)
             if key:
                 data = aposteriori_metrics[key]
                 
@@ -425,20 +424,19 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian
             else:
                 print(f"  Stencil {s}: No data found")
 
-def main(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian"):
-    """Run both stencil field comparison and error comparison
+def main(stencil_sizes=[3, 5, 7, 9, 11]):
+    """Run both stencil field comparison and error comparison for box filter
     
     Args:
         stencil_sizes: List of stencil sizes to compare
-        filter_type: Type of filter to use ("box", "gaussian", "spectral")
     """
-    print(f"=== STENCIL SIZE COMPARISON FOR {filter_type.upper()} FILTER ===")
+    print(f"=== BOX FILTER STENCIL SIZE COMPARISON ===")
     print(f"Stencil sizes: {stencil_sizes}")
     
     # Field and stress comparison
     print("\n=== FILTERED FIELD AND SGS STRESS COMPARISON ===")
     try:
-        field_results = compare_stencil_fields(stencil_sizes, filter_type)
+        field_results = compare_stencil_fields(stencil_sizes)
     except Exception as e:
         print(f"Error in field comparison: {e}")
         field_results = None
@@ -447,30 +445,13 @@ def main(stencil_sizes=[3, 5, 7, 9, 11], filter_type="gaussian"):
     print("\n" + "="*60)
     print("=== ERROR METRICS COMPARISON ===")
     try:
-        compare_stencil_errors(stencil_sizes, filter_type)
+        compare_stencil_errors(stencil_sizes)
     except Exception as e:
         print(f"Error in metrics comparison: {e}")
     
     return field_results
 
-# Example usage functions
-def compare_gaussian_stencils(stencil_sizes=[3, 5, 7, 9, 11]):
-    """Compare Gaussian filter across different stencil sizes"""
-    return main(stencil_sizes, "gaussian")
-
-def compare_box_stencils(stencil_sizes=[3, 5, 7, 9, 11]):
-    """Compare Box filter across different stencil sizes"""
-    return main(stencil_sizes, "box")
-
-def compare_spectral_stencils(stencil_sizes=[3, 5, 7, 9, 11]):
-    """Compare Spectral filter across different stencil sizes"""
-    return main(stencil_sizes, "spectral")
-
-# Run the comparison
+# Run the comparison for box filter
 if __name__ == "__main__":
-    # Default comparison - Gaussian filter with common stencil sizes
-    results = compare_gaussian_stencils([3, 5, 7, 9, 11])
-    
-    # Uncomment to compare other filter types:
-    # results = compare_box_stencils([3, 5, 7, 9, 11])
-    # results = compare_spectral_stencils([3, 5, 7, 9, 11])
+    # Box filter stencil comparison with common sizes
+    results = main([3, 5, 7, 9, 11])
