@@ -26,21 +26,33 @@ def calc_correction(rd_fine, rd_coarse, nx: float, r: int, uv: jnp.ndarray):
   return next_step_fine - next_step_coarse_interp
 
 
-def _create_box_filter(N1, N2, r, BC):
-  """Create box filter (averaging) operator"""
+def _create_box_filter(N1, N2, r, BC, s):
+  """Create box filter (averaging) operator
+  
+  Args:
+    N1: fine grid size
+    N2: coarse grid size  
+    r: coarsening ratio
+    BC: boundary condition ("periodic" or "Dirichlet-Neumann")
+    s: stencil size (must be odd)
+  """
+  if s % 2 == 0:
+    raise ValueError("Stencil size must be odd")
+    
   res_op = jnp.zeros((N2, N1))
+  half_stencil = s // 2
   
   if r == 2:
     raise Exception("Deprecated...")
     res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r].set(1)
     res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 2].set(1)
   elif r == 4:
-    # stencil = 7
+    # stencil = s (configurable)
     for i in range(N2):
-      res_op = res_op.at[i, i * r:i * r + 7].set(1)
+      res_op = res_op.at[i, i * r:i * r + s].set(1)
     if BC == "periodic":
-      res_op = res_op.at[-1, :3].set(1)
-    res_op /= 7 / 4
+      res_op = res_op.at[-1, :s-r].set(1)
+    res_op /= s / 4
   elif r == 8:
     # stencil = 12
     for i in range(N2):
@@ -113,21 +125,37 @@ def _create_spectral_filter(N1, N2, r, BC):
 
 def _create_spectral_filter_periodic(N1, N2, r):
   """FFT-based spectral filter for periodic BCs (sharp cutoff in frequency space)"""
-  res_op = jnp.zeros((N2, N1))
+  # For spectral filtering, we want to:
+  # 1. FFT the fine grid data
+  # 2. Keep only the low frequencies that fit on coarse grid  
+  # 3. IFFT and subsample
+  
+  # The cutoff should be based on the coarse grid Nyquist frequency
   cutoff = N2 // 2
-
-  freqs = jnp.fft.fftfreq(N1) * N1
-  mask = jnp.abs(freqs) <= cutoff
-
+  
+  # Create the spectral filter as a matrix operation
+  res_op = jnp.zeros((N2, N1))
+  
   for i in range(N2):
+    # Create a unit impulse at the i-th coarse grid point
     impulse = jnp.zeros(N1)
     impulse = impulse.at[i * r].set(1.0)
+    
+    # Apply spectral filtering:
+    # 1. FFT of the impulse
     impulse_hat = jnp.fft.fft(impulse)
-    filtered = jnp.fft.ifft(impulse_hat * mask).real
-    res_op = res_op.at[i].set(filtered)
-
-  # Normalize rows to sum to 1
-  res_op = res_op / jnp.sum(res_op, axis=1, keepdims=True)
+    
+    # 2. Create frequency mask - keep low frequencies only
+    freqs = jnp.fft.fftfreq(N1, 1.0) * N1  # frequency indices
+    mask = jnp.abs(freqs) <= cutoff
+    
+    # 3. Apply filter and transform back
+    filtered_hat = impulse_hat * mask
+    filtered = jnp.fft.ifft(filtered_hat).real
+    
+    # 4. The filtered impulse gives us the i-th row of the restriction operator
+    res_op = res_op.at[i].set(filtered[::r])  # subsample every r points
+  
   return res_op
 
 
@@ -183,6 +211,11 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
   if config.case == "ks":
     BC = config.sim.BC
     filter_type = config.sim.get('filter_type', 'box')  # default to box filter
+    stencil_size = config.sim.get('stencil_size', 7)  # default to 7 for backward compatibility
+    
+    if stencil_size % 2 == 0:
+      raise ValueError("Stencil size must be odd")
+    
     if BC == "periodic":
       N1 = config.sim.n
     elif BC == "Dirichlet-Neumann":
@@ -190,8 +223,8 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
     N2 = N1 // r
     
     if filter_type == "box":
-      # Original box filter implementation
-      res_op = _create_box_filter(N1, N2, r, BC)
+      # Updated box filter implementation with stencil size parameter
+      res_op = _create_box_filter(N1, N2, r, BC, stencil_size)
       res_op /= r
     elif filter_type == "gaussian":
       res_op = _create_gaussian_filter(N1, N2, r, BC)

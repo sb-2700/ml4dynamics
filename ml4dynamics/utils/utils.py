@@ -66,7 +66,8 @@ def load_data(
       nu = config.sim.nu
       c = config.sim.c
       filter_type = config.sim.get('filter_type', 'box')  # default to box if not specified
-      dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_{filter_type}"
+      stencil_size = config.sim.get('stencil_size', 7)  # default to 7 for backward compatibility
+      dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_{filter_type}_s{stencil_size}"
   h5_filename = f"data/{pde}/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
@@ -537,10 +538,15 @@ def eval_a_priori(
 # Save train_loss to results/train_losses.pkl
   os.makedirs("results", exist_ok=True)
   
-  # Read current config to get filter_type
+  # Read current config to get filter_type, boundary condition, and stencil size
   with open("config/ks.yaml", "r") as f:
     config = yaml.safe_load(f)
   filter_type = config["sim"]["filter_type"]
+  bc = "pbc" if config["sim"]["BC"] == "periodic" else "dnbc"
+  stencil_size = config["sim"].get("stencil_size", 7)  # default to 7 for backward compatibility
+  
+  # Create compound key that includes filter type, boundary condition, and stencil size
+  filter_bc_s_key = f"{filter_type}_{bc}_s{stencil_size}"
   
   # Load existing train losses or create new dict
   train_losses_path = "results/train_losses.pkl"
@@ -551,7 +557,8 @@ def eval_a_priori(
     train_losses = {}
   
   # Save this filter's train loss (mean, std, and batch count)
-  train_losses[filter_type] = {
+  # Use compound key that includes filter type, boundary condition, and stencil size
+  train_losses[filter_bc_s_key] = {
     'mean': train_loss,
     'std': train_loss_std,
     'n_batches': count
@@ -903,10 +910,15 @@ def eval_a_posteriori(
     # Save a posteriori metrics to results/aposteriori_metrics.pkl
     os.makedirs("results", exist_ok=True)
     
-    # Read current config to get filter_type
+    # Read current config to get filter_type, boundary condition, and stencil size
     with open("config/ks.yaml", "r") as f:
       config = yaml.safe_load(f)
     filter_type = config["sim"]["filter_type"]
+    bc = "pbc" if config["sim"]["BC"] == "periodic" else "dnbc"
+    stencil_size = config["sim"].get("stencil_size", 7)  # default to 7 for backward compatibility
+    
+    # Create compound key that includes filter type, boundary condition, and stencil size
+    filter_bc_s_key = f"{filter_type}_{bc}_s{stencil_size}"
     
     # Get final values from the metric lists (last sample)
     final_l2 = l2_list[-1] if len(l2_list) > 0 else [float('nan'), float('nan')]
@@ -927,7 +939,8 @@ def eval_a_posteriori(
       aposteriori_metrics = {}
     
     # Save this filter's a posteriori metrics (means and stds across all samples)
-    aposteriori_metrics[filter_type] = {
+    # Use compound key that includes filter type, boundary condition, and stencil size
+    aposteriori_metrics[filter_bc_s_key] = {
       "l2_baseline": float(l2_mean[0]),
       "l2_ours": float(l2_mean[1]),
       "l2_baseline_std": float(l2_std[0]),

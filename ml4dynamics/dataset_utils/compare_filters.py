@@ -4,180 +4,302 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 
-def compare_filtered_fields():
-    """Compare box and Gaussian filtered fields from the KS datasets"""
+def compare_filtered_fields(filters=["box", "gaussian"]):
+    """Compare filtered fields from the KS datasets
     
-    # Load both datasets
-    box_file = "data/ks/dnbc_nu1.0_c1.6_n10_box.h5"
-    gaussian_file = "data/ks/dnbc_nu1.0_c1.6_n10_gaussian.h5"
-    #box_file = "data/ks/pbc_nu1.0_c0.0_n10_box.h5"
-    #gaussian_file = "data/ks/pbc_nu1.0_c0.0_n10_gaussian.h5"
+    Args:
+        filters: List of filter types to compare. Options: ["box", "gaussian", "spectral"]
+                Can be any subset of these filters.
+    """
     
-    with h5py.File(box_file, "r") as f_box:
-        box_filtered_field = f_box["data"]["inputs"][:]  
-        box_filter_stress = f_box["data"]["outputs_filter"][:]
-        box_correction_stress = f_box["data"]["outputs_correction"][:]
-        
-    with h5py.File(gaussian_file, "r") as f_gauss:
-        gauss_filtered_field = f_gauss["data"]["inputs"][:]  
-        gauss_filter_stress = f_gauss["data"]["outputs_filter"][:]
-        gauss_correction_stress = f_gauss["data"]["outputs_correction"][:]
+    # Define file paths for each filter type
+   # filter_files = {
+   #     "box": "data/ks/dnbc_nu1.0_c1.6_n10_box.h5",
+   #     "gaussian": "data/ks/dnbc_nu1.0_c1.6_n10_gaussian.h5", 
+    #    "spectral": "data/ks/dnbc_nu1.0_c1.6_n10_spectral.h5"
+   # }
     
-    print(f"Box filtered field shape: {box_filtered_field.shape}")
-    print(f"Gaussian filtered field shape: {gauss_filtered_field.shape}")
+    # Alternative files (commented out for now)
+    filter_files = {
+        "box": "data/ks/pbc_nu1.0_c0.0_n10_box.h5",
+        "gaussian": "data/ks/pbc_nu1.0_c0.0_n10_gaussian.h5",
+        "spectral": "data/ks/pbc_nu1.0_c0.0_n10_spectral.h5"  # Add this when available
+        }
+    
+    # Validate filters
+    valid_filters = ["box", "gaussian", "spectral"]
+    filters = [f for f in filters if f in valid_filters]
+    if len(filters) < 2:
+        raise ValueError(f"Need at least 2 filters to compare. Valid options: {valid_filters}")
+    
+    print(f"Comparing filters: {filters}")
+    
+    # Load datasets dynamically
+    data = {}
+    for filter_name in filters:
+        file_path = filter_files[filter_name]
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Dataset not found: {file_path}")
+            
+        with h5py.File(file_path, "r") as f:
+            data[filter_name] = {
+                'filtered_field': f["data"]["inputs"][:],
+                'filter_stress': f["data"]["outputs_filter"][:],
+                'correction_stress': f["data"]["outputs_correction"][:]
+            }
+    
+    # Print shapes
+    for filter_name in filters:
+        print(f"{filter_name.capitalize()} filtered field shape: {data[filter_name]['filtered_field'].shape}")
     
     # Reshape the data back to (simulations, time_steps, spatial_points, channels)
     num_sims = 10  # from config case_num
-    time_steps_per_sim = box_filtered_field.shape[0] // num_sims  # e.g., 40000 // 10 = 4000
+    time_steps_per_sim = data[filters[0]]['filtered_field'].shape[0] // num_sims
     
-    box_filtered_field = box_filtered_field.reshape(num_sims, time_steps_per_sim, -1, 1)
-    gauss_filtered_field = gauss_filtered_field.reshape(num_sims, time_steps_per_sim, -1, 1)
-    box_filter_stress = box_filter_stress.reshape(num_sims, time_steps_per_sim, -1, 1)
-    gauss_filter_stress = gauss_filter_stress.reshape(num_sims, time_steps_per_sim, -1, 1)
-    box_correction_stress = box_correction_stress.reshape(num_sims, time_steps_per_sim, -1, 1)
-    gauss_correction_stress = gauss_correction_stress.reshape(num_sims, time_steps_per_sim, -1, 1)
+    for filter_name in filters:
+        for key in data[filter_name]:
+            original_shape = data[filter_name][key].shape
+            data[filter_name][key] = data[filter_name][key].reshape(num_sims, time_steps_per_sim, -1, 1)
     
-    print(f"Reshaped box filtered field shape: {box_filtered_field.shape}")
-    print(f"Reshaped gaussian filtered field shape: {gauss_filtered_field.shape}")
+    print(f"Reshaped to: {data[filters[0]]['filtered_field'].shape}")
     
-    # Calculate differences
-    field_diff = gauss_filtered_field - box_filtered_field
-    filter_stress_diff = gauss_filter_stress - box_filter_stress
-    correction_stress_diff = gauss_correction_stress - box_correction_stress
+    # Calculate pairwise differences (using first filter as reference)
+    ref_filter = filters[0]
+    differences = {}
     
-    # Print statistics
-    print("\n=== FILTERED FIELD COMPARISON ===")
-    print(f"Max absolute difference: {np.max(np.abs(field_diff)):.6f}")
-    print(f"RMS difference: {np.sqrt(np.mean(field_diff**2)):.6f}")
-    print(f"Mean difference: {np.mean(field_diff):.6f}")
+    for i, filter_name in enumerate(filters[1:], 1):
+        diff_key = f"{filter_name}_vs_{ref_filter}"
+        differences[diff_key] = {
+            'field_diff': data[filter_name]['filtered_field'] - data[ref_filter]['filtered_field'],
+            'filter_stress_diff': data[filter_name]['filter_stress'] - data[ref_filter]['filter_stress'],
+            'correction_stress_diff': data[filter_name]['correction_stress'] - data[ref_filter]['correction_stress']
+        }
     
-    print("\n=== FILTER STRESS COMPARISON ===")
-    print(f"Max absolute difference: {np.max(np.abs(filter_stress_diff)):.6f}")
-    print(f"RMS difference: {np.sqrt(np.mean(filter_stress_diff**2)):.6f}")
-    print(f"Mean difference: {np.mean(filter_stress_diff):.6f}")
+    # Print statistics for each comparison
+    for diff_key, diffs in differences.items():
+        print(f"\n=== {diff_key.upper()} COMPARISON ===")
+        
+        print("FILTERED FIELD COMPARISON:")
+        field_diff = diffs['field_diff']
+        print(f"  Max absolute difference: {np.max(np.abs(field_diff)):.6f}")
+        print(f"  RMS difference: {np.sqrt(np.mean(field_diff**2)):.6f}")
+        print(f"  Mean difference: {np.mean(field_diff):.6f}")
+        
+        print("FILTER STRESS COMPARISON:")
+        filter_stress_diff = diffs['filter_stress_diff']
+        print(f"  Max absolute difference: {np.max(np.abs(filter_stress_diff)):.6f}")
+        print(f"  RMS difference: {np.sqrt(np.mean(filter_stress_diff**2)):.6f}")
+        print(f"  Mean difference: {np.mean(filter_stress_diff):.6f}")
+        
+        print("CORRECTION STRESS COMPARISON:")
+        correction_stress_diff = diffs['correction_stress_diff']
+        print(f"  Max absolute difference: {np.max(np.abs(correction_stress_diff)):.6f}")
+        print(f"  RMS difference: {np.sqrt(np.mean(correction_stress_diff**2)):.6f}")
+        print(f"  Mean difference: {np.mean(correction_stress_diff):.6f}")
     
-    print("\n=== CORRECTION STRESS COMPARISON ===")
-    print(f"Max absolute difference: {np.max(np.abs(correction_stress_diff)):.6f}")
-    print(f"RMS difference: {np.sqrt(np.mean(correction_stress_diff**2)):.6f}")
-    print(f"Mean difference: {np.mean(correction_stress_diff):.6f}")
+    # Calculate global min/max for consistent color scales
+    print("Calculating global color scale ranges...")
     
-    # Create visualizations
-    fig, axes = plt.subplots(3, 3, figsize=(15, 12))
+    sim_idx = 0  # First simulation
     
-    # First simulation, all time steps
-    sim_idx = 0
+    # Global ranges for each data type
+    field_min = float('inf')
+    field_max = float('-inf')
+    filter_stress_min = float('inf') 
+    filter_stress_max = float('-inf')
+    correction_stress_min = float('inf')
+    correction_stress_max = float('-inf')
     
-    # Row 1: Filtered fields
-    im1 = axes[0,0].imshow(box_filtered_field[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
-    axes[0,0].set_title('Box Filtered Field')
-    axes[0,0].set_ylabel('Space')
-    plt.colorbar(im1, ax=axes[0,0])
+    # Also calculate ranges for differences
+    field_diff_min = float('inf')
+    field_diff_max = float('-inf')
+    filter_diff_min = float('inf')
+    filter_diff_max = float('-inf')
+    correction_diff_min = float('inf')
+    correction_diff_max = float('-inf')
     
-    im2 = axes[0,1].imshow(gauss_filtered_field[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
-    axes[0,1].set_title('Gaussian Filtered Field')
-    plt.colorbar(im2, ax=axes[0,1])
+    # Find global ranges across all filters
+    for filter_name in filters:
+        # Individual filter ranges
+        field_data = data[filter_name]['filtered_field'][sim_idx, :, :, 0]
+        filter_stress_data = data[filter_name]['filter_stress'][sim_idx, :, :, 0]
+        correction_stress_data = data[filter_name]['correction_stress'][sim_idx, :, :, 0]
+        
+        field_min = min(field_min, np.min(field_data))
+        field_max = max(field_max, np.max(field_data))
+        filter_stress_min = min(filter_stress_min, np.min(filter_stress_data))
+        filter_stress_max = max(filter_stress_max, np.max(filter_stress_data))
+        correction_stress_min = min(correction_stress_min, np.min(correction_stress_data))
+        correction_stress_max = max(correction_stress_max, np.max(correction_stress_data))
     
-    im3 = axes[0,2].imshow(field_diff[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
-    axes[0,2].set_title('Difference (Gauss - Box)')
-    plt.colorbar(im3, ax=axes[0,2])
+    # Find global ranges for differences
+    for diff_key, diffs in differences.items():
+        field_diff_data = diffs['field_diff'][sim_idx, :, :, 0]
+        filter_diff_data = diffs['filter_stress_diff'][sim_idx, :, :, 0]
+        correction_diff_data = diffs['correction_stress_diff'][sim_idx, :, :, 0]
+        
+        field_diff_min = min(field_diff_min, np.min(field_diff_data))
+        field_diff_max = max(field_diff_max, np.max(field_diff_data))
+        filter_diff_min = min(filter_diff_min, np.min(filter_diff_data))
+        filter_diff_max = max(filter_diff_max, np.max(filter_diff_data))
+        correction_diff_min = min(correction_diff_min, np.min(correction_diff_data))
+        correction_diff_max = max(correction_diff_max, np.max(correction_diff_data))
     
-    # Row 2: Filter stresses
-    im4 = axes[1,0].imshow(box_filter_stress[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
-    axes[1,0].set_title('Box Filter Stress')
-    axes[1,0].set_ylabel('Space')
-    plt.colorbar(im4, ax=axes[1,0])
+    print(f"Filtered field range: [{field_min:.3f}, {field_max:.3f}]")
+    print(f"Filter stress range: [{filter_stress_min:.3e}, {filter_stress_max:.3e}]")
+    print(f"Correction stress range: [{correction_stress_min:.3e}, {correction_stress_max:.3e}]")
+    print(f"Field diff range: [{field_diff_min:.3e}, {field_diff_max:.3e}]")
+    print(f"Filter diff range: [{filter_diff_min:.3e}, {filter_diff_max:.3e}]")
+    print(f"Correction diff range: [{correction_diff_min:.3e}, {correction_diff_max:.3e}]")
     
-    im5 = axes[1,1].imshow(gauss_filter_stress[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
-    axes[1,1].set_title('Gaussian Filter Stress')
-    plt.colorbar(im5, ax=axes[1,1])
+    # Create visualizations - adapt to number of filters
+    n_filters = len(filters)
+    n_comparisons = len(differences)
     
-    im6 = axes[1,2].imshow(filter_stress_diff[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
-    axes[1,2].set_title('Filter Stress Difference')
-    plt.colorbar(im6, ax=axes[1,2])
+    # For visualization, we'll show all filters + differences
+    n_cols = n_filters + n_comparisons
+    fig, axes = plt.subplots(3, n_cols, figsize=(5*n_cols, 12))
     
-    # Row 3: Correction stresses
-    im7 = axes[2,0].imshow(box_correction_stress[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
-    axes[2,0].set_title('Box Correction Stress')
-    axes[2,0].set_ylabel('Space')
-    axes[2,0].set_xlabel('Time')
-    plt.colorbar(im7, ax=axes[2,0])
+    # Handle single column case
+    if n_cols == 1:
+        axes = axes.reshape(-1, 1)
     
-    im8 = axes[2,1].imshow(gauss_correction_stress[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
-    axes[2,1].set_title('Gaussian Correction Stress')
-    axes[2,1].set_xlabel('Time')
-    plt.colorbar(im8, ax=axes[2,1])
+    # Plot individual filter results with consistent color scales
+    for i, filter_name in enumerate(filters):
+        # Row 1: Filtered fields (consistent scale)
+        im = axes[0,i].imshow(data[filter_name]['filtered_field'][sim_idx, :, :, 0].T, 
+                            aspect='auto', cmap='RdBu_r', vmin=field_min, vmax=field_max)
+        axes[0,i].set_title(f'{filter_name.capitalize()} Filtered Field')
+        if i == 0:
+            axes[0,i].set_ylabel('Space')
+        plt.colorbar(im, ax=axes[0,i])
+        
+        # Row 2: Filter stresses (consistent scale)
+        im = axes[1,i].imshow(data[filter_name]['filter_stress'][sim_idx, :, :, 0].T, 
+                            aspect='auto', cmap='RdBu_r', vmin=filter_stress_min, vmax=filter_stress_max)
+        axes[1,i].set_title(f'{filter_name.capitalize()} Filter Stress')
+        if i == 0:
+            axes[1,i].set_ylabel('Space')
+        plt.colorbar(im, ax=axes[1,i])
+        
+        # Row 3: Correction stresses (consistent scale)
+        im = axes[2,i].imshow(data[filter_name]['correction_stress'][sim_idx, :, :, 0].T, 
+                            aspect='auto', cmap='RdBu_r', vmin=correction_stress_min, vmax=correction_stress_max)
+        axes[2,i].set_title(f'{filter_name.capitalize()} Correction Stress')
+        if i == 0:
+            axes[2,i].set_ylabel('Space')
+        axes[2,i].set_xlabel('Time')
+        plt.colorbar(im, ax=axes[2,i])
     
-    im9 = axes[2,2].imshow(correction_stress_diff[sim_idx, :, :, 0].T, aspect='auto', cmap='RdBu_r')
-    axes[2,2].set_title('Correction Stress Difference')
-    axes[2,2].set_xlabel('Time')
-    plt.colorbar(im9, ax=axes[2,2])
+    # Plot difference comparisons with consistent scales for differences
+    for i, (diff_key, diffs) in enumerate(differences.items()):
+        col_idx = n_filters + i
+        
+        # Row 1: Field differences (consistent diff scale)
+        im = axes[0,col_idx].imshow(diffs['field_diff'][sim_idx, :, :, 0].T, 
+                                  aspect='auto', cmap='RdBu_r', vmin=field_diff_min, vmax=field_diff_max)
+        axes[0,col_idx].set_title(f'Field Diff: {diff_key.replace("_vs_", " vs ")}')
+        plt.colorbar(im, ax=axes[0,col_idx])
+        
+        # Row 2: Filter stress differences (consistent diff scale)
+        im = axes[1,col_idx].imshow(diffs['filter_stress_diff'][sim_idx, :, :, 0].T, 
+                                  aspect='auto', cmap='RdBu_r', vmin=filter_diff_min, vmax=filter_diff_max)
+        axes[1,col_idx].set_title(f'Filter Stress Diff: {diff_key.replace("_vs_", " vs ")}')
+        plt.colorbar(im, ax=axes[1,col_idx])
+        
+        # Row 3: Correction stress differences (consistent diff scale)
+        im = axes[2,col_idx].imshow(diffs['correction_stress_diff'][sim_idx, :, :, 0].T, 
+                                  aspect='auto', cmap='RdBu_r', vmin=correction_diff_min, vmax=correction_diff_max)
+        axes[2,col_idx].set_title(f'Correction Stress Diff: {diff_key.replace("_vs_", " vs ")}')
+        axes[2,col_idx].set_xlabel('Time')
+        plt.colorbar(im, ax=axes[2,col_idx])
     
     plt.tight_layout()
-    plt.savefig('filter_comparison.png', dpi=300, bbox_inches='tight')
+    filter_names_str = "_".join(filters)
+    plt.savefig(f'filter_comparison_{filter_names_str}.png', dpi=300, bbox_inches='tight')
     plt.show()
     
     # Time series comparison at a specific spatial location
     plt.figure(figsize=(12, 8))
-    mid_point = box_filtered_field.shape[2] // 2  # Middle spatial point
+    mid_point = data[filters[0]]['filtered_field'].shape[2] // 2  # Middle spatial point
     
-    plt.subplot(2, 2, 1)
-    plt.plot(box_filtered_field[sim_idx, :, mid_point, 0], 'b-', label='Box', alpha=0.7)
-    plt.plot(gauss_filtered_field[sim_idx, :, mid_point, 0], 'r-', label='Gaussian', alpha=0.7)
+    # Determine subplot layout based on number of filters
+    n_plots = min(4, len(filters) + 1)  # Max 4 subplots for readability
+    rows = 2
+    cols = 2
+    
+    # Plot 1: Filtered fields time series
+    plt.subplot(rows, cols, 1)
+    for filter_name in filters:
+        plt.plot(data[filter_name]['filtered_field'][sim_idx, :, mid_point, 0], 
+                label=filter_name.capitalize(), alpha=0.7)
     plt.title(f'Filtered Field at Spatial Point {mid_point}')
     plt.xlabel('Time Steps')
     plt.legend()
     plt.grid(True)
     
-    plt.subplot(2, 2, 2)
-    plt.plot(field_diff[sim_idx, :, mid_point, 0], 'g-')
-    plt.title('Filtered Field Difference')
-    plt.xlabel('Time Steps')
-    plt.grid(True)
-    
-    plt.subplot(2, 2, 3)
-    plt.plot(box_filter_stress[sim_idx, :, mid_point, 0], 'b-', label='Box', alpha=0.7)
-    plt.plot(gauss_filter_stress[sim_idx, :, mid_point, 0], 'r-', label='Gaussian', alpha=0.7)
+    # Plot 2: Filter stress time series
+    plt.subplot(rows, cols, 2)
+    for filter_name in filters:
+        plt.plot(data[filter_name]['filter_stress'][sim_idx, :, mid_point, 0], 
+                label=filter_name.capitalize(), alpha=0.7)
     plt.title('Filter Stress Time Series')
     plt.xlabel('Time Steps')
     plt.legend()
     plt.grid(True)
     
-    plt.subplot(2, 2, 4)
-    plt.plot(box_correction_stress[sim_idx, :, mid_point, 0], 'b-', label='Box', alpha=0.7)
-    plt.plot(gauss_correction_stress[sim_idx, :, mid_point, 0], 'r-', label='Gaussian', alpha=0.7)
+    # Plot 3: Correction stress time series
+    plt.subplot(rows, cols, 3)
+    for filter_name in filters:
+        plt.plot(data[filter_name]['correction_stress'][sim_idx, :, mid_point, 0], 
+                label=filter_name.capitalize(), alpha=0.7)
     plt.title('Correction Stress Time Series')
     plt.xlabel('Time Steps')
     plt.legend()
     plt.grid(True)
     
+    # Plot 4: First difference time series (if we have differences)
+    if differences:
+        plt.subplot(rows, cols, 4)
+        first_diff_key = list(differences.keys())[0]
+        plt.plot(differences[first_diff_key]['field_diff'][sim_idx, :, mid_point, 0], 
+                label=f'Field Diff: {first_diff_key.replace("_vs_", " vs ")}')
+        plt.title('Field Difference Time Series')
+        plt.xlabel('Time Steps')
+        plt.legend()
+        plt.grid(True)
+    
     plt.tight_layout()
-    plt.savefig('filter_timeseries_comparison.png', dpi=300, bbox_inches='tight')
+    plt.savefig(f'filter_timeseries_comparison_{filter_names_str}.png', dpi=300, bbox_inches='tight')
     plt.show()
     
     # Return the data for further analysis if needed
-    return {
-        'box_filtered_field': box_filtered_field,
-        'gauss_filtered_field': gauss_filtered_field,
-        'field_diff': field_diff,
-        'box_filter_stress': box_filter_stress,
-        'gauss_filter_stress': gauss_filter_stress,
-        'filter_stress_diff': filter_stress_diff,
-        'box_correction_stress': box_correction_stress,
-        'gauss_correction_stress': gauss_correction_stress,
-        'correction_stress_diff': correction_stress_diff
-    }
+    result = {'data': data, 'differences': differences}
+    return result
 
-def compare_errors():
-    """Compare a priori and a posteriori errors between different filter types"""
+def compare_errors(filters=["box", "gaussian"]):
+    """Compare a priori and a posteriori errors between different filter types
+    
+    Args:
+        filters: List of filter types to compare. Options: ["box", "gaussian", "spectral"]
+    """
     
     print("\n=== LOADING ERROR METRICS ===")
+    
+    # Validate filters
+    valid_filters = ["box", "gaussian", "spectral"]
+    filters = [f for f in filters if f in valid_filters]
+    if len(filters) < 2:
+        raise ValueError(f"Need at least 2 filters to compare. Valid options: {valid_filters}")
+    
+    print(f"Comparing error metrics for filters: {filters}")
     
     # Load a priori errors from pickle file
     train_losses_path = "results/train_losses.pkl"
     if os.path.exists(train_losses_path):
         with open(train_losses_path, "rb") as f:
             train_losses = pickle.load(f)
-        print(f"A priori losses loaded: {train_losses}")
+        print(f"A priori losses loaded: {list(train_losses.keys())}")
     else:
         print(f"Warning: {train_losses_path} not found")
         train_losses = {}
@@ -187,40 +309,84 @@ def compare_errors():
     if os.path.exists(aposteriori_path):
         with open(aposteriori_path, "rb") as f:
             aposteriori_metrics = pickle.load(f)
-        print(f"A posteriori metrics loaded: {aposteriori_metrics}")
+        print(f"A posteriori metrics loaded: {list(aposteriori_metrics.keys())}")
     else:
         print(f"Warning: {aposteriori_path} not found")
         aposteriori_metrics = {}
     
-    # Create error comparison plots
+    # Filter out any requested filters that don't have data
+    # Note: Keys now include boundary condition, so we need to check for filter_bc format
+    available_filters = []
+    for f in filters:
+        # Check for both old format (just filter name) and new format (filter_bc)
+        filter_found = False
+        for key in list(train_losses.keys()) + list(aposteriori_metrics.keys()):
+            if key == f or key.startswith(f + "_"):
+                filter_found = True
+                break
+        
+        if filter_found:
+            available_filters.append(f)
+        else:
+            print(f"Warning: No data found for filter '{f}'")
+    
+    if len(available_filters) < 2:
+        print(f"Insufficient data for comparison. Available: {available_filters}")
+        return
+    
+    filters = available_filters
+    
+    # Helper function to find the correct key for a filter (handles both old and new format)
+    def find_filter_key(filter_name, data_dict):
+        # First try exact match (old format)
+        if filter_name in data_dict:
+            return filter_name
+        # Then try with boundary condition suffix (new format)
+        for key in data_dict.keys():
+            if key.startswith(filter_name + "_"):
+                return key
+        return None
+    
+    # Create error comparison plots - adapt layout to number of filters
+    n_filters = len(filters)
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
     
     # Plot 1: A Priori Training Loss Comparison
-    filters = ["box", "gaussian"]  # Focus on box vs gaussian
     train_vals = []
     train_stds = []
     for f in filters:
-        if isinstance(train_losses.get(f), dict):
+        # Find the correct key for this filter (handles both old and new format)
+        key = find_filter_key(f, train_losses)
+        if key and isinstance(train_losses.get(key), dict):
             # New format with mean/std
-            train_vals.append(train_losses[f].get('mean', float('nan')))
-            train_stds.append(train_losses[f].get('std', float('nan')))
-        else:
+            train_vals.append(train_losses[key].get('mean', float('nan')))
+            train_stds.append(train_losses[key].get('std', float('nan')))
+        elif key:
             # Old format (single value)
-            train_vals.append(train_losses.get(f, float('nan')))
+            train_vals.append(train_losses.get(key, float('nan')))
+            train_stds.append(0.0)
+        else:
+            train_vals.append(float('nan'))
             train_stds.append(0.0)
     
     # Calculate error bars using std
     train_errs = []
     for i, f in enumerate(filters):
-        loss_data = train_losses.get(f, {})
-        if isinstance(loss_data, dict):
-            std_val = loss_data.get('std', 0.0)
-            train_errs.append(std_val if not np.isnan(std_val) and std_val > 0 else 0)
+        key = find_filter_key(f, train_losses)
+        if key:
+            loss_data = train_losses.get(key, {})
+            if isinstance(loss_data, dict):
+                std_val = loss_data.get('std', 0.0)
+                train_errs.append(std_val if not np.isnan(std_val) and std_val > 0 else 0)
+            else:
+                # Old format has no std info
+                train_errs.append(0)
         else:
-            # Old format has no std info
             train_errs.append(0)
     
-    bars1 = ax1.bar(filters, train_vals, color=['skyblue', 'lightcoral'], yerr=train_errs, capsize=3)
+    # Use different colors for different numbers of filters
+    colors = ['skyblue', 'lightcoral', 'lightgreen', 'plum'][:n_filters]
+    bars1 = ax1.bar(filters, train_vals, color=colors, yerr=train_errs, capsize=3)
     ax1.set_title('A Priori Loss')
     ax1.set_ylabel('Training Loss')
     
@@ -230,49 +396,52 @@ def compare_errors():
             ax1.text(bar.get_x() + bar.get_width()/2, val, f"{val:.1e}", 
                     ha='center', va='bottom', fontsize=7)
     
-    # Plots 2-4: A Posteriori Metrics (baseline, box, gaussian for each metric)
+    # Plots 2-4: A Posteriori Metrics (baseline and ours for each filter)
     metric_groups = [
         ("L2 Error", ax2, "l2"),
         ("1st Moment", ax3, "first_moment"), 
         ("2nd Moment", ax4, "second_moment"),
     ]
     
-    x = np.arange(4)  # 4 bars: box_baseline, box, gaussian_baseline, gaussian
-    width = 0.6  # Width of bars
-    
     for title, ax, metric in metric_groups:
-        # Get separate baseline values for box and gaussian
-        box_data = aposteriori_metrics.get("box", {})
-        gaussian_data = aposteriori_metrics.get("gaussian", {})
+        # Create bars: baseline1, ours1, baseline2, ours2, ...
+        n_bars = n_filters * 2  # baseline + ours for each filter
+        x = np.arange(n_bars)
+        width = 0.6
         
-        # Use original field names (no _mean suffix)
-        box_baseline_val = box_data.get(f"{metric}_baseline", float('nan'))
-        box_baseline_std = box_data.get(f"{metric}_baseline_std", 0.0)
+        values = []
+        stds = []
+        labels = []
+        bar_colors = []
         
-        gaussian_baseline_val = gaussian_data.get(f"{metric}_baseline", float('nan'))
-        gaussian_baseline_std = gaussian_data.get(f"{metric}_baseline_std", 0.0)
-        
-        # Get box and gaussian "ours" values
-        box_val = box_data.get(f"{metric}_ours", float('nan'))
-        box_std = box_data.get(f"{metric}_ours_std", 0.0)
-        
-        gaussian_val = gaussian_data.get(f"{metric}_ours", float('nan'))
-        gaussian_std = gaussian_data.get(f"{metric}_ours_std", 0.0)
-        
-        # Create 4 bars: box_baseline, box, gaussian_baseline, gaussian
-        values = [box_baseline_val, box_val, gaussian_baseline_val, gaussian_val]
-        stds = [box_baseline_std, box_std, gaussian_baseline_std, gaussian_std]
+        for i, filter_name in enumerate(filters):
+            # Find the correct key for this filter (handles both old and new format)
+            key = find_filter_key(filter_name, aposteriori_metrics)
+            filter_data = aposteriori_metrics.get(key, {}) if key else {}
+            
+            # Baseline values
+            baseline_val = filter_data.get(f"{metric}_baseline", float('nan'))
+            baseline_std = filter_data.get(f"{metric}_baseline_std", 0.0)
+            values.extend([baseline_val])
+            stds.extend([baseline_std])
+            labels.extend([f'{filter_name.capitalize()}\nBaseline'])
+            bar_colors.extend(['lightgray'])
+            
+            # Ours values  
+            ours_val = filter_data.get(f"{metric}_ours", float('nan'))
+            ours_std = filter_data.get(f"{metric}_ours_std", 0.0)
+            values.extend([ours_val])
+            stds.extend([ours_std])
+            labels.extend([f'{filter_name.capitalize()}'])
+            bar_colors.extend([colors[i]])
         
         # Use std directly for error bars (not SEM)
         errs = [std if not np.isnan(std) and std > 0 else 0 for std in stds]
         
-        labels = ['Box\nBaseline', 'Box', 'Gaussian\nBaseline', 'Gaussian']
-        colors = ['lightgray', 'skyblue', 'lightgray', 'lightcoral']
-        
-        bars = ax.bar(x, values, width, color=colors, alpha=0.7, yerr=errs, capsize=3)
+        bars = ax.bar(x, values, width, color=bar_colors, alpha=0.7, yerr=errs, capsize=3)
         
         ax.set_xticks(x)
-        ax.set_xticklabels(labels)
+        ax.set_xticklabels(labels, rotation=45, ha='right')
         ax.set_title(title)
         ax.set_ylabel('Error')
         
@@ -280,33 +449,40 @@ def compare_errors():
         for i, (bar, val) in enumerate(zip(bars, values)):
             if not np.isnan(val):
                 ax.text(bar.get_x() + bar.get_width()/2, val, f"{val:.1e}", 
-                       ha='center', va='bottom', fontsize=7)
+                       ha='center', va='bottom', fontsize=6)
     
-    plt.suptitle('Filter Comparison: A Priori and A Posteriori Metrics', fontsize=14)
+    plt.suptitle(f'Filter Comparison: A Priori and A Posteriori Metrics ({", ".join([f.capitalize() for f in filters])})', fontsize=14)
     plt.tight_layout(rect=[0, 0.03, 1, 0.93])  # Leave more space for title and labels
-    plt.savefig('filter_error_comparison.png', dpi=300, bbox_inches='tight', facecolor='white')
+    
+    filter_names_str = "_".join(filters)
+    plt.savefig(f'filter_error_comparison_{filter_names_str}.png', dpi=300, bbox_inches='tight', facecolor='white')
     plt.show()
     
     # Print numerical comparison
     print("\n=== NUMERICAL COMPARISON ===")
     print("A Priori (Training Loss):")
     for f in filters:
-        loss_data = train_losses.get(f, {})
-        if isinstance(loss_data, dict):
-            # New format with mean/std
-            mean_val = loss_data.get('mean', float('nan'))
-            std_val = loss_data.get('std', float('nan'))
-            print(f"  {f}: {mean_val:.6e} ± {std_val:.6e}")
+        key = find_filter_key(f, train_losses)
+        if key:
+            loss_data = train_losses.get(key, {})
+            if isinstance(loss_data, dict):
+                # New format with mean/std
+                mean_val = loss_data.get('mean', float('nan'))
+                std_val = loss_data.get('std', float('nan'))
+                print(f"  {f}: {mean_val:.6e} ± {std_val:.6e}")
+            else:
+                # Old format (single value)
+                print(f"  {f}: {loss_data:.6e}")
         else:
-            # Old format (single value)
-            print(f"  {f}: {loss_data:.6e}")
+            print(f"  {f}: No data found")
     
     print("\nA Posteriori Metrics:")
     for metric in ["l2", "first_moment", "second_moment"]:
         print(f"\n{metric.upper()}:")
         for f in filters:
-            if f in aposteriori_metrics:
-                data = aposteriori_metrics[f]
+            key = find_filter_key(f, aposteriori_metrics)
+            if key:
+                data = aposteriori_metrics[key]
                 
                 # Use original field names (no _mean suffix)
                 baseline_val = data.get(f"{metric}_baseline", float('nan'))
@@ -320,18 +496,51 @@ def compare_errors():
                 print(f"    Baseline: {baseline_val:.6e} ± {baseline_std:.6e}")
                 print(f"    Ours:     {ours_val:.6e} ± {ours_std:.6e}")
                 print(f"    Improvement: {improvement:.1f}%")
+            else:
+                print(f"  {f}: No data found")
 
-def main():
-    """Run both filtered field comparison and error comparison"""
+def main(field_filters=["box", "gaussian"], error_filters=None):
+    """Run both filtered field comparison and error comparison
+    
+    Args:
+        field_filters: List of filters for field comparison. Options: ["box", "gaussian", "spectral"]
+        error_filters: List of filters for error comparison. If None, uses field_filters.
+    """
+    if error_filters is None:
+        error_filters = field_filters
+        
     print("=== FILTERED FIELD AND SGS STRESS COMPARISON ===")
-    field_results = compare_filtered_fields()
+    print(f"Field comparison filters: {field_filters}")
+    field_results = compare_filtered_fields(field_filters)
     
     print("\n" + "="*60)
     print("=== ERROR METRICS COMPARISON ===")
-    compare_errors()
+    print(f"Error comparison filters: {error_filters}")
+    compare_errors(error_filters)
     
     return field_results
 
+# Example usage functions
+def compare_all_three():
+    """Compare all three filter types: box, gaussian, and spectral"""
+    return main(["box", "gaussian", "spectral"])
+
+def compare_box_gaussian():
+    """Compare just box and gaussian filters"""
+    return main(["box", "gaussian"])
+
+def compare_box_spectral():
+    """Compare just box and spectral filters"""
+    return main(["box", "spectral"])
+
+def compare_gaussian_spectral():
+    """Compare just gaussian and spectral filters"""
+    return main(["gaussian", "spectral"])
+
 # Run the comparison
 if __name__ == "__main__":
-    results = main()
+    # Default comparison (box vs gaussian)
+    # results = main()
+    
+    # Compare all three filters
+    results = compare_all_three()
