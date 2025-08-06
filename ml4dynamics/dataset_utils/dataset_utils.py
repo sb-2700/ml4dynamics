@@ -47,12 +47,17 @@ def _create_box_filter(N1, N2, r, BC, s):
     res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r].set(1)
     res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 2].set(1)
   elif r == 4:
-    # stencil = s (configurable)
-    for i in range(N2):
-      res_op = res_op.at[i, i * r:i * r + s].set(1)
     if BC == "periodic":
-      res_op = res_op.at[-1, :s-r].set(1)
-    res_op /= s / 4
+      for i in range(N2):
+        start = i * r
+        for j in range(s):
+          idx = (start + j) % N1  # wrap around domain
+          res_op = res_op.at[i, idx].set(1)
+      res_op /= s / 4  # normalize to preserve energy scale
+    else:  # Dirichlet-Neumann
+      for i in range(N2):
+        res_op = res_op.at[i, i * r:i * r + s].set(1)
+      res_op /= s / 4
   elif r == 8:
     # stencil = 12
     for i in range(N2):
