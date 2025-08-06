@@ -296,9 +296,14 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11]):
         if key:
             loss_data = train_losses[key]
             if isinstance(loss_data, dict):
-                # New format with mean/std
-                mean_val = loss_data.get('mean', float('nan'))
-                std_val = loss_data.get('std', 0.0)
+                # Use relative MSE if available, otherwise fallback to absolute MSE
+                if 'rel_mse_mean' in loss_data:
+                    mean_val = loss_data.get('rel_mse_mean', float('nan'))
+                    std_val = loss_data.get('rel_mse_std', 0.0)
+                else:
+                    # Fallback to absolute MSE
+                    mean_val = loss_data.get('mean', float('nan'))
+                    std_val = loss_data.get('std', 0.0)
                 train_vals.append(mean_val)
                 train_errs.append(std_val if not np.isnan(std_val) and std_val > 0 else 0)
             else:
@@ -313,15 +318,24 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11]):
         ax1.errorbar(available_train_stencils, train_vals, yerr=train_errs, 
                     marker='o', capsize=5, capthick=2, linewidth=2, markersize=8)
         ax1.set_xlabel('Stencil Size')
-        ax1.set_ylabel('A Priori Loss (MSE)')
-        ax1.set_title('A Priori Loss vs Stencil Size\n(Box Filter)')
+        # Check if we're using relative MSE or absolute MSE
+        if train_losses and any('rel_mse_mean' in v for v in train_losses.values() if isinstance(v, dict)):
+            ax1.set_ylabel('A Priori Relative MSE')
+            ax1.set_title('A Priori Relative MSE vs Stencil Size\n(Box Filter)')
+        else:
+            ax1.set_ylabel('A Priori Loss (MSE)')
+            ax1.set_title('A Priori Loss vs Stencil Size\n(Box Filter)')
         ax1.grid(True, alpha=0.3)
         ax1.set_yscale('log')
         
         # Add value labels
         for x, y in zip(available_train_stencils, train_vals):
-            ax1.annotate(f'{y:.2e}', (x, y), textcoords="offset points", 
-                        xytext=(0,10), ha='center', fontsize=8)
+            if y < 1e-2:
+                ax1.annotate(f'{y:.2e}', (x, y), textcoords="offset points", 
+                            xytext=(0,10), ha='center', fontsize=8)
+            else:
+                ax1.annotate(f'{y:.3f}', (x, y), textcoords="offset points", 
+                            xytext=(0,10), ha='center', fontsize=8)
     
     # Plots 2-4: A Posteriori Metrics vs Stencil Size
     metric_info = [

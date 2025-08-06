@@ -522,17 +522,27 @@ def eval_a_priori(
 ):
 
   batch_losses = []
+  rel_mse_list = []  # relative mean square error list
   total_loss = 0
+  total_rmse = 0
   count = 0
   for batch_inputs, batch_outputs in train_dataloader:
     predict = forward_fn(jnp.array(batch_inputs))
-    loss = jnp.mean((predict - jnp.array(batch_outputs))**2)
-    batch_losses.append(float(loss))
-    total_loss += loss
+
+    target = jnp.array(batch_outputs)
+    mse = jnp.mean((predict - target)**2)
+    norm_factor = jnp.mean(target**2)
+    rel_mse = mse / (norm_factor + 1e-12)
+
+    batch_losses.append(float(mse))
+    rel_mse_list.append(float(rel_mse))  # this is rel_mse for the batch
+    total_loss += mse
     count += 1
   
   train_loss = float(total_loss/count)
   train_loss_std = float(np.std(batch_losses)) if len(batch_losses) > 1 else 0.0
+  mean_rel_mse = float(np.mean(rel_mse_list))  # avg rel_mse over all batches
+  rel_mse_std = float(np.std(rel_mse_list)) if len(rel_mse_list) > 1 else 0.0
   print(f"train loss: {train_loss:.4e}")
   
 # Save train_loss to results/train_losses.pkl
@@ -561,7 +571,9 @@ def eval_a_priori(
   train_losses[filter_bc_s_key] = {
     'mean': train_loss,
     'std': train_loss_std,
-    'n_batches': count
+    'n_batches': count,
+    'rel_mse_mean': mean_rel_mse,
+    'rel_mse_std': rel_mse_std
   }
   with open(train_losses_path, "wb") as f:
     pickle.dump(train_losses, f)

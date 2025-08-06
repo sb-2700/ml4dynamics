@@ -358,9 +358,15 @@ def compare_errors(filters=["box", "gaussian"]):
         # Find the correct key for this filter (handles both old and new format)
         key = find_filter_key(f, train_losses)
         if key and isinstance(train_losses.get(key), dict):
-            # New format with mean/std
-            train_vals.append(train_losses[key].get('mean', float('nan')))
-            train_stds.append(train_losses[key].get('std', float('nan')))
+            # Use relative MSE if available, otherwise fallback to absolute MSE
+            loss_data = train_losses[key]
+            if 'rel_mse_mean' in loss_data:
+                train_vals.append(loss_data.get('rel_mse_mean', float('nan')))
+                train_stds.append(loss_data.get('rel_mse_std', float('nan')))
+            else:
+                # Fallback to absolute MSE
+                train_vals.append(loss_data.get('mean', float('nan')))
+                train_stds.append(loss_data.get('std', float('nan')))
         elif key:
             # Old format (single value)
             train_vals.append(train_losses.get(key, float('nan')))
@@ -376,7 +382,11 @@ def compare_errors(filters=["box", "gaussian"]):
         if key:
             loss_data = train_losses.get(key, {})
             if isinstance(loss_data, dict):
-                std_val = loss_data.get('std', 0.0)
+                # Use rel_mse_std if available, otherwise std
+                if 'rel_mse_std' in loss_data:
+                    std_val = loss_data.get('rel_mse_std', 0.0)
+                else:
+                    std_val = loss_data.get('std', 0.0)
                 train_errs.append(std_val if not np.isnan(std_val) and std_val > 0 else 0)
             else:
                 # Old format has no std info
@@ -387,8 +397,13 @@ def compare_errors(filters=["box", "gaussian"]):
     # Use different colors for different numbers of filters
     colors = ['skyblue', 'lightcoral', 'lightgreen', 'plum'][:n_filters]
     bars1 = ax1.bar(filters, train_vals, color=colors, yerr=train_errs, capsize=3)
-    ax1.set_title('A Priori Loss')
-    ax1.set_ylabel('Training Loss')
+    # Check if we're using relative MSE or absolute MSE for the title
+    if train_losses and any('rel_mse_mean' in v for v in train_losses.values() if isinstance(v, dict)):
+        ax1.set_title('A Priori Relative MSE')
+        ax1.set_ylabel('Relative MSE')
+    else:
+        ax1.set_title('A Priori Loss')
+        ax1.set_ylabel('Training Loss')
     
     # Add value labels on bars - shorter format
     for i, (bar, val) in enumerate(zip(bars1, train_vals)):
