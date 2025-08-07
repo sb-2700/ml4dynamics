@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 
-def compare_stencil_fields(stencil_sizes=[3, 5, 7, 9, 11]):
+def compare_stencil_fields(stencil_sizes=[5, 7, 9, 11]):
     """Compare filtered fields and correction stresses across different stencil sizes for box filter
     
     Args:
@@ -56,32 +56,6 @@ def compare_stencil_fields(stencil_sizes=[3, 5, 7, 9, 11]):
     
     print(f"Reshaped to: {data[stencil_sizes[0]]['filtered_field'].shape}")
     
-    # Calculate pairwise differences (using smallest stencil as reference)
-    ref_stencil = min(stencil_sizes)
-    differences = {}
-    
-    for stencil_size in stencil_sizes:
-        if stencil_size != ref_stencil:
-            diff_key = f"s{stencil_size}_vs_s{ref_stencil}"
-            differences[diff_key] = {
-                'field_diff': data[stencil_size]['filtered_field'] - data[ref_stencil]['filtered_field'],
-                'filter_stress_diff': data[stencil_size]['filter_stress'] - data[ref_stencil]['filter_stress'],
-                'correction_stress_diff': data[stencil_size]['correction_stress'] - data[ref_stencil]['correction_stress']
-            }
-    
-    # Print statistics for each comparison
-    for diff_key, diffs in differences.items():
-        print(f"\n=== {diff_key.upper()} COMPARISON ===")
-        
-        field_diff = diffs['field_diff']
-        print(f"FILTERED FIELD: RMS diff = {np.sqrt(np.mean(field_diff**2)):.6e}")
-        
-        filter_stress_diff = diffs['filter_stress_diff']
-        print(f"FILTER STRESS: RMS diff = {np.sqrt(np.mean(filter_stress_diff**2)):.6e}")
-        
-        correction_stress_diff = diffs['correction_stress_diff']
-        print(f"CORRECTION STRESS: RMS diff = {np.sqrt(np.mean(correction_stress_diff**2)):.6e}")
-    
     # Calculate global min/max for consistent color scales
     print("\nCalculating global color scale ranges...")
     
@@ -94,14 +68,6 @@ def compare_stencil_fields(stencil_sizes=[3, 5, 7, 9, 11]):
     filter_stress_max = float('-inf')
     correction_stress_min = float('inf')
     correction_stress_max = float('-inf')
-    
-    # Also calculate ranges for differences
-    field_diff_min = float('inf')
-    field_diff_max = float('-inf')
-    filter_diff_min = float('inf')
-    filter_diff_max = float('-inf')
-    correction_diff_min = float('inf')
-    correction_diff_max = float('-inf')
     
     # Find global ranges across all stencil sizes
     for stencil_size in stencil_sizes:
@@ -116,35 +82,17 @@ def compare_stencil_fields(stencil_sizes=[3, 5, 7, 9, 11]):
         correction_stress_min = min(correction_stress_min, np.min(correction_stress_data))
         correction_stress_max = max(correction_stress_max, np.max(correction_stress_data))
     
-    # Find global ranges for differences
-    for diff_key, diffs in differences.items():
-        field_diff_data = diffs['field_diff'][sim_idx, :, :, 0]
-        filter_diff_data = diffs['filter_stress_diff'][sim_idx, :, :, 0]
-        correction_diff_data = diffs['correction_stress_diff'][sim_idx, :, :, 0]
-        
-        field_diff_min = min(field_diff_min, np.min(field_diff_data))
-        field_diff_max = max(field_diff_max, np.max(field_diff_data))
-        filter_diff_min = min(filter_diff_min, np.min(filter_diff_data))
-        filter_diff_max = max(filter_diff_max, np.max(filter_diff_data))
-        correction_diff_min = min(correction_diff_min, np.min(correction_diff_data))
-        correction_diff_max = max(correction_diff_max, np.max(correction_diff_data))
-    
     print(f"Filtered field range: [{field_min:.3f}, {field_max:.3f}]")
     print(f"Filter stress range: [{filter_stress_min:.3e}, {filter_stress_max:.3e}]")
     print(f"Correction stress range: [{correction_stress_min:.3e}, {correction_stress_max:.3e}]")
-    print(f"Field diff range: [{field_diff_min:.3e}, {field_diff_max:.3e}]")
-    print(f"Filter diff range: [{filter_diff_min:.3e}, {filter_diff_max:.3e}]")
-    print(f"Correction diff range: [{correction_diff_min:.3e}, {correction_diff_max:.3e}]")
     
-    # Create visualizations
+    # Create visualizations - only individual stencil results
     n_stencils = len(stencil_sizes)
-    n_comparisons = len(differences)
-    n_cols = n_stencils + n_comparisons
     
-    fig, axes = plt.subplots(3, n_cols, figsize=(5*n_cols, 12))
+    fig, axes = plt.subplots(3, n_stencils, figsize=(5*n_stencils, 12))
     
     # Handle single column case
-    if n_cols == 1:
+    if n_stencils == 1:
         axes = axes.reshape(-1, 1)
     
     # Plot individual stencil results with consistent color scales
@@ -174,42 +122,15 @@ def compare_stencil_fields(stencil_sizes=[3, 5, 7, 9, 11]):
         axes[2,i].set_xlabel('Time')
         plt.colorbar(im, ax=axes[2,i])
     
-    # Plot difference comparisons with consistent scales for differences
-    for i, (diff_key, diffs) in enumerate(differences.items()):
-        col_idx = n_stencils + i
-        
-        # Row 1: Field differences (consistent diff scale)
-        im = axes[0,col_idx].imshow(diffs['field_diff'][sim_idx, :, :, 0].T, 
-                                  aspect='auto', cmap='RdBu_r', vmin=field_diff_min, vmax=field_diff_max)
-        axes[0,col_idx].set_title(f'Field Diff: {diff_key.replace("_vs_", " vs ")}')
-        plt.colorbar(im, ax=axes[0,col_idx])
-        
-        # Row 2: Filter stress differences (consistent diff scale)
-        im = axes[1,col_idx].imshow(diffs['filter_stress_diff'][sim_idx, :, :, 0].T, 
-                                  aspect='auto', cmap='RdBu_r', vmin=filter_diff_min, vmax=filter_diff_max)
-        axes[1,col_idx].set_title(f'Filter Stress Diff: {diff_key.replace("_vs_", " vs ")}')
-        plt.colorbar(im, ax=axes[1,col_idx])
-        
-        # Row 3: Correction stress differences (consistent diff scale)
-        im = axes[2,col_idx].imshow(diffs['correction_stress_diff'][sim_idx, :, :, 0].T, 
-                                  aspect='auto', cmap='RdBu_r', vmin=correction_diff_min, vmax=correction_diff_max)
-        axes[2,col_idx].set_title(f'Correction Stress Diff: {diff_key.replace("_vs_", " vs ")}')
-        axes[2,col_idx].set_xlabel('Time')
-        plt.colorbar(im, ax=axes[2,col_idx])
-    
     plt.tight_layout()
     stencil_str = "_".join([str(s) for s in stencil_sizes])
     plt.savefig(f'stencil_comparison_box_{stencil_str}.png', dpi=300, bbox_inches='tight')
     plt.show()
     
     # Return the data for further analysis
-    result = {
-        'data': data, 
-        'differences': differences
-    }
-    return result
+    return {'data': data}
 
-def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11]):
+def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
     """Compare a priori and a posteriori errors across different stencil sizes for box filter
     
     Args:
@@ -315,8 +236,8 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11]):
             print(f"No a priori data for stencil {s}")
     
     if available_train_stencils:
-        ax1.errorbar(available_train_stencils, train_vals, yerr=train_errs, 
-                    marker='o', capsize=5, capthick=2, linewidth=2, markersize=8)
+        bars = ax1.bar(available_train_stencils, train_vals, yerr=train_errs, 
+                      capsize=5, alpha=0.7, color='skyblue', edgecolor='navy', linewidth=1.5)
         ax1.set_xlabel('Stencil Size')
         # Check if we're using relative MSE or absolute MSE
         if train_losses and any('rel_mse_mean' in v for v in train_losses.values() if isinstance(v, dict)):
@@ -326,16 +247,18 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11]):
             ax1.set_ylabel('A Priori Loss (MSE)')
             ax1.set_title('A Priori Loss vs Stencil Size\n(Box Filter)')
         ax1.grid(True, alpha=0.3)
-        ax1.set_yscale('log')
         
-        # Add value labels
-        for x, y in zip(available_train_stencils, train_vals):
+        # Add value labels on top of bars
+        for bar, y in zip(bars, train_vals):
+            height = bar.get_height()
             if y < 1e-2:
-                ax1.annotate(f'{y:.2e}', (x, y), textcoords="offset points", 
-                            xytext=(0,10), ha='center', fontsize=8)
+                ax1.annotate(f'{y:.2e}', xy=(bar.get_x() + bar.get_width()/2, height),
+                            xytext=(0, 3), textcoords="offset points", 
+                            ha='center', va='bottom', fontsize=8)
             else:
-                ax1.annotate(f'{y:.3f}', (x, y), textcoords="offset points", 
-                            xytext=(0,10), ha='center', fontsize=8)
+                ax1.annotate(f'{y:.3f}', xy=(bar.get_x() + bar.get_width()/2, height),
+                            xytext=(0, 3), textcoords="offset points", 
+                            ha='center', va='bottom', fontsize=8)
     
     # Plots 2-4: A Posteriori Metrics vs Stencil Size
     metric_info = [
@@ -372,28 +295,40 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11]):
                     available_apost_stencils.append(s)
         
         if available_apost_stencils:
-            # Plot baseline and ours on same axis
-            ax.errorbar(available_apost_stencils, baseline_vals, yerr=baseline_errs, 
-                       marker='s', capsize=5, capthick=2, linewidth=2, markersize=8, 
-                       label='Baseline (No NN)', color='gray', alpha=0.8)
-            ax.errorbar(available_apost_stencils, ours_vals, yerr=ours_errs, 
-                       marker='o', capsize=5, capthick=2, linewidth=2, markersize=8,
-                       label='With NN', color='blue')
+            # Use absolute values for all metrics to ensure positive values on log scale
+            baseline_vals_plot = [abs(x) for x in baseline_vals]
+            ours_vals_plot = [abs(x) for x in ours_vals]
+            
+            # Create grouped bar chart
+            x_pos = np.arange(len(available_apost_stencils))
+            width = 0.35
+            
+            # Plot baseline and ours bars side by side
+            bars1 = ax.bar(x_pos - width/2, baseline_vals_plot, width, yerr=baseline_errs, 
+                          capsize=5, alpha=0.7, label='Baseline (No NN)', 
+                          color='gray', edgecolor='black', linewidth=1)
+            bars2 = ax.bar(x_pos + width/2, ours_vals_plot, width, yerr=ours_errs, 
+                          capsize=5, alpha=0.7, label='With NN', 
+                          color='blue', edgecolor='darkblue', linewidth=1)
             
             ax.set_xlabel('Stencil Size')
-            ax.set_ylabel(f'{title}')
-            ax.set_title(f'{title} vs Stencil Size\n(Box Filter)')
+            ax.set_ylabel(f'|{title}|')  # Indicate absolute values for all metrics
+            ax.set_title(f'|{title}| vs Stencil Size\n(Box Filter, Absolute Values)')
+            ax.set_xticks(x_pos)
+            ax.set_xticklabels(available_apost_stencils)
             ax.grid(True, alpha=0.3)
             ax.set_yscale('log')
             ax.legend()
             
-            # Add improvement percentages
-            for i, (x, baseline, ours) in enumerate(zip(available_apost_stencils, baseline_vals, ours_vals)):
-                if not (np.isnan(baseline) or np.isnan(ours)) and baseline > 0:
+            # Add improvement percentages above the "With NN" bars
+            for i, (bar, baseline, ours) in enumerate(zip(bars2, baseline_vals, ours_vals)):
+                if not (np.isnan(baseline) or np.isnan(ours)) and baseline != 0:
                     improvement = (baseline - ours) / baseline * 100
-                    ax.annotate(f'{improvement:+.1f}%', (x, ours), 
-                               textcoords="offset points", xytext=(0,-20), 
-                               ha='center', fontsize=7, color='blue')
+                    height = bar.get_height()
+                    ax.annotate(f'{improvement:+.1f}%', 
+                               xy=(bar.get_x() + bar.get_width()/2, height),
+                               xytext=(0, 3), textcoords="offset points", 
+                               ha='center', va='bottom', fontsize=7, color='blue')
     
     plt.suptitle('Box Filter: A Priori and A Posteriori Metrics vs Stencil Size', fontsize=14)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
@@ -438,7 +373,7 @@ def compare_stencil_errors(stencil_sizes=[3, 5, 7, 9, 11]):
             else:
                 print(f"  Stencil {s}: No data found")
 
-def main(stencil_sizes=[3, 5, 7, 9, 11]):
+def main(stencil_sizes=[5, 7, 9, 11]):
     """Run both stencil field comparison and error comparison for box filter
     
     Args:
@@ -467,5 +402,5 @@ def main(stencil_sizes=[3, 5, 7, 9, 11]):
 
 # Run the comparison for box filter
 if __name__ == "__main__":
-    # Box filter stencil comparison with common sizes
-    results = main([3, 5, 7, 9, 11])
+    # Box filter stencil comparison with available stencil sizes (5, 7, 9, 11)
+    results = main([5, 7, 9, 11])
