@@ -557,5 +557,5 @@ if __name__ == "__main__":
     # Default comparison (box vs gaussian)
     # results = main()
     
-    # Compare all three filters
-    results = compare_all_three()
+    #results = compare_all_three()  # Compare all three filters
+    results = compare_box_spectral()  # Compare box and spectral filters

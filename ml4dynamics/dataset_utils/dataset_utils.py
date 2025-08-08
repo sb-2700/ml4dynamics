@@ -127,7 +127,7 @@ def _create_spectral_filter(N1, N2, r, BC):
   
   return res_op
 
-
+'''
 def _create_spectral_filter_periodic(N1, N2, r):
   """FFT-based spectral filter for periodic BCs (sharp cutoff in frequency space)"""
   # For spectral filtering, we want to:
@@ -161,6 +161,39 @@ def _create_spectral_filter_periodic(N1, N2, r):
     # 4. The filtered impulse gives us the i-th row of the restriction operator
     res_op = res_op.at[i].set(filtered[::r])  # subsample every r points
   
+  return res_op
+'''
+
+def _create_spectral_filter_periodic(N1, N2, r):
+  """
+  Create a spectral restriction operator res_op ∈ ℝ^{N2×N1}
+  by filtering identity rows (no impulses!) with a sharp low-pass mask.
+
+  Assumes periodic boundary conditions.
+  """
+  # Identity matrix of shape (N1, N1)
+  I = jnp.eye(N1)
+
+  # FFT of identity matrix (each row is a unit input)
+  I_hat = jnp.fft.fft(I, axis=1)
+
+  # Define cutoff frequency
+  cutoff = N2 // 2
+  freqs = jnp.fft.fftfreq(N1) * N1
+  mask = jnp.where(jnp.abs(freqs) <= cutoff, 1.0, 0.0)
+
+  # Apply spectral mask across all rows
+  I_hat_filtered = I_hat * mask  # broadcasted along rows
+
+  # Inverse FFT to get filtered signals (still (N1, N1))
+  filtered = jnp.fft.ifft(I_hat_filtered, axis=1).real
+
+  # Subsample every r-th row to form restriction operator
+  res_op = filtered[::r, :]
+
+  # Normalize each row to sum to 1 (mass-preserving)
+  res_op /= jnp.sum(res_op, axis=1, keepdims=True)
+
   return res_op
 
 
