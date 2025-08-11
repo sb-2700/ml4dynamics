@@ -1,5 +1,7 @@
 import jax
 import jax.numpy as jnp
+import numpy as np
+from scipy.ndimage import gaussian_filter1d
 import ml_collections
 from box import Box
 
@@ -66,7 +68,7 @@ def _create_box_filter(N1, N2, r, BC, s):
   
   return res_op
 
-
+'''
 def _create_gaussian_filter(N1, N2, r, BC):
   """Create Gaussian filter operator using same edge logic as box filter"""
   res_op = jnp.zeros((N2, N1))
@@ -113,7 +115,52 @@ def _create_gaussian_filter(N1, N2, r, BC):
     raise Exception("Deprecated...")
 
   return res_op
+'''
 
+def _create_gaussian_filter(N1, N2, r, BC):
+  """Create Gaussian filter operator, handling periodic and non-periodic BCs correctly."""
+  res_op = jnp.zeros((N2, N1))
+
+  sigma = r / 2
+  truncate = 3.0
+  stencil_size = int(2 * truncate * sigma + 1)
+
+  if BC == "periodic":
+    # Manual stencil logic (as before)
+    half_width = stencil_size // 2
+    for i in range(N2):
+      center = i * r
+      start = center - half_width
+      end = center + half_width + 1
+
+      weight_accum = {}
+
+      for j in range(start, end):
+        j_wrapped = j % N1
+        distance = j - center
+        weight = jnp.exp(-0.5 * (distance / sigma) ** 2)
+
+        if j_wrapped in weight_accum:
+          weight_accum[j_wrapped] += weight
+        else:
+          weight_accum[j_wrapped] = weight
+
+        total_weight = sum(weight_accum.values()) + 1e-12
+        for j_wrapped, weight in weight_accum.items():
+            res_op = res_op.at[i, j_wrapped].set(weight / total_weight)
+
+  elif BC == "Dirichlet-Neumann":
+      # Use scipy.ndimage for filtering with reflect BC
+      identity = np.eye(N1)
+      filtered_rows = gaussian_filter1d(identity, sigma=sigma, axis=1, mode='reflect', truncate=truncate)
+      
+      for i in range(N2):
+          res_op = res_op.at[i].set(filtered_rows[i * r])
+
+  else:
+      raise ValueError(f"Unsupported boundary condition: {BC}")
+
+  return res_op
 
 def _create_spectral_filter(N1, N2, r, BC):
   """Create spectral cutoff filter operator"""
@@ -249,10 +296,6 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
   if config.case == "ks":
     BC = config.sim.BC
     filter_type = config.sim.get('filter_type', 'box')  # default to box filter
-    stencil_size = config.sim.get('stencil_size', 7)  # default to 7 for backward compatibility
-    
-    if stencil_size % 2 == 0:
-      raise ValueError("Stencil size must be odd")
     
     if BC == "periodic":
       N1 = config.sim.n
@@ -261,6 +304,9 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
     N2 = N1 // r
     
     if filter_type == "box":
+      stencil_size = config.sim.get('stencil_size', 7)  # default to 7 for backward compatibility
+      if stencil_size % 2 == 0:
+        raise ValueError("Stencil size must be odd")
       # Updated box filter implementation with stencil size parameter
       res_op = _create_box_filter(N1, N2, r, BC, stencil_size)
       res_op /= r

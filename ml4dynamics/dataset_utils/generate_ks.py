@@ -137,8 +137,13 @@ def main():
   }
 
   filter_type = config.sim.filter_type
-  stencil_size = config.sim.get('stencil_size', 7)  # default to 7 for backward compatibility
-  with h5py.File(f"data/ks/{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_{filter_type}_s{stencil_size}.h5", "w") as f:
+  if filter_type == "box":
+    stencil_size = config.sim.get('stencil_size', 7)  # default to 7 for backward compatibility
+    filename = f"data/ks/{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_{filter_type}_s{stencil_size}.h5"
+  else:
+    filename = f"data/ks/{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_{filter_type}.h5"
+  
+  with h5py.File(filename, "w") as f:
     metadata_group = f.create_group("metadata")
     for key, value in data["metadata"].items():
       metadata_group.create_dataset(key, data=value)

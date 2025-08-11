@@ -66,8 +66,11 @@ def load_data(
       nu = config.sim.nu
       c = config.sim.c
       filter_type = config.sim.get('filter_type', 'box')  # default to box if not specified
-      stencil_size = config.sim.get('stencil_size', 7)  # default to 7 for backward compatibility
-      dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_{filter_type}_s{stencil_size}"
+      if filter_type == "box":
+        stencil_size = config.sim.get('stencil_size', 7)  # default to 7 for backward compatibility
+        dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_{filter_type}_s{stencil_size}"
+      else:
+        dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_{filter_type}"
   h5_filename = f"data/{pde}/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
@@ -521,29 +524,27 @@ def eval_a_priori(
   fig_name: str = None,
 ):
 
-  batch_losses = []
-  rel_mse_list = []  # relative mean square error list
-  total_loss = 0
-  total_rmse = 0
-  count = 0
+  all_preds = []
+  all_targets = []
+
   for batch_inputs, batch_outputs in train_dataloader:
     predict = forward_fn(jnp.array(batch_inputs))
+    all_preds.append(np.array(predict))    
+    all_targets.append(np.array(batch_outputs))
 
-    target = jnp.array(batch_outputs)
-    mse = jnp.mean((predict - target)**2)
-    norm_factor = jnp.mean(target**2)
-    rel_mse = mse / (norm_factor + 1e-12)
+  all_preds = np.concatenate(all_preds, axis=0)
+  all_targets = np.concatenate(all_targets, axis=0)
 
-    batch_losses.append(float(mse))
-    rel_mse_list.append(float(rel_mse))  # this is rel_mse for the batch
-    total_loss += mse
-    count += 1
-  
-  train_loss = float(total_loss/count)
-  train_loss_std = float(np.std(batch_losses)) if len(batch_losses) > 1 else 0.0
-  mean_rel_mse = float(np.mean(rel_mse_list))  # avg rel_mse over all batches
-  rel_mse_std = float(np.std(rel_mse_list)) if len(rel_mse_list) > 1 else 0.0
-  print(f"train loss: {train_loss:.4e}")
+  # === GLOBAL MSE and relative MSE ===
+  mse = jnp.mean((all_preds - all_targets) ** 2)
+  norm_factor = np.mean(all_targets ** 2)
+  rel_mse = mse / (norm_factor + 1e-12) 
+
+  #std across all samples for error bars
+  mse_std = np.std((all_preds - all_targets) ** 2)
+  rel_mse_std = np.std(((all_preds - all_targets) ** 2) / (norm_factor + 1e-12))
+
+  print(f"train loss: {mse:.4e}")
   
 # Save train_loss to results/train_losses.pkl
   os.makedirs("results", exist_ok=True)
@@ -553,10 +554,13 @@ def eval_a_priori(
     config = yaml.safe_load(f)
   filter_type = config["sim"]["filter_type"]
   bc = "pbc" if config["sim"]["BC"] == "periodic" else "dnbc"
-  stencil_size = config["sim"].get("stencil_size", 7)  # default to 7 for backward compatibility
   
-  # Create compound key that includes filter type, boundary condition, and stencil size
-  filter_bc_s_key = f"{filter_type}_{bc}_s{stencil_size}"
+  # Create compound key that includes filter type, boundary condition, and stencil size (only for box filter)
+  if filter_type == "box":
+    stencil_size = config["sim"].get("stencil_size", 7)  # default to 7 for backward compatibility
+    filter_bc_s_key = f"{filter_type}_{bc}_s{stencil_size}"
+  else:
+    filter_bc_s_key = f"{filter_type}_{bc}"
   
   # Load existing train losses or create new dict
   train_losses_path = "results/train_losses.pkl"
@@ -569,10 +573,10 @@ def eval_a_priori(
   # Save this filter's train loss (mean, std, and batch count)
   # Use compound key that includes filter type, boundary condition, and stencil size
   train_losses[filter_bc_s_key] = {
-    'mean': train_loss,
-    'std': train_loss_std,
+    'mean': mse,
+    'std': mse_std,
     'n_batches': count,
-    'rel_mse_mean': mean_rel_mse,
+    'rel_mse_mean': rel_mse,
     'rel_mse_std': rel_mse_std
   }
   with open(train_losses_path, "wb") as f:
@@ -927,10 +931,13 @@ def eval_a_posteriori(
       config = yaml.safe_load(f)
     filter_type = config["sim"]["filter_type"]
     bc = "pbc" if config["sim"]["BC"] == "periodic" else "dnbc"
-    stencil_size = config["sim"].get("stencil_size", 7)  # default to 7 for backward compatibility
     
-    # Create compound key that includes filter type, boundary condition, and stencil size
-    filter_bc_s_key = f"{filter_type}_{bc}_s{stencil_size}"
+    # Create compound key that includes filter type, boundary condition, and stencil size (only for box filter)
+    if filter_type == "box":
+      stencil_size = config["sim"].get("stencil_size", 7)  # default to 7 for backward compatibility
+      filter_bc_s_key = f"{filter_type}_{bc}_s{stencil_size}"
+    else:
+      filter_bc_s_key = f"{filter_type}_{bc}"
     
     # Get final values from the metric lists (last sample)
     final_l2 = l2_list[-1] if len(l2_list) > 0 else [float('nan'), float('nan')]

@@ -17,7 +17,7 @@ case: ks
 
 sim:
   nu: 1
-  c: 0 #1.6 for non periodic, 0 for periodic
+  c: 1.6 #1.6 for non periodic, 0 for periodic
   T: 400
   dt: .1
   L: 128
@@ -25,10 +25,10 @@ sim:
   rx: 4
   rt: 1
   init_scale: 1.
-  # BC: Dirichlet-Neumann
   filter_type: box  # box, gaussian, spectral
-  stencil_size: 11  # stencil size for box filtering (must be odd)
-  BC: periodic
+  stencil_size: 7  # stencil size for box filtering (must be odd)
+  #BC: periodic
+  BC: Dirichlet-Neumann
   seed: 123
   case_num: 10       # number of simulations to perform
   warm_up: 200      # warm up step for simulation
