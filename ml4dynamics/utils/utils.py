@@ -526,11 +526,14 @@ def eval_a_priori(
 
   all_preds = []
   all_targets = []
+  count = 0
 
   for batch_inputs, batch_outputs in train_dataloader:
     predict = forward_fn(jnp.array(batch_inputs))
     all_preds.append(np.array(predict))    
     all_targets.append(np.array(batch_outputs))
+
+    count += 1
 
   all_preds = np.concatenate(all_preds, axis=0)
   all_targets = np.concatenate(all_targets, axis=0)
