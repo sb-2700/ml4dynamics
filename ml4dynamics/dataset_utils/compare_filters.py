@@ -13,18 +13,18 @@ def compare_filtered_fields(filters=["box", "gaussian"]):
     """
     
     # Define file paths for each filter type
-    filter_files = {
-        "box": "data/ks/dnbc_nu1.0_c1.6_n10_box_s7.h5",
-        "gaussian": "data/ks/dnbc_nu1.0_c1.6_n10_gaussian.h5", 
-        "spectral": "data/ks/dnbc_nu1.0_c1.6_n10_spectral.h5"
-    }
+   # filter_files = {
+    #    "box": "data/ks/dnbc_nu1.0_c1.6_n10_box_s7.h5",
+   #     "gaussian": "data/ks/dnbc_nu1.0_c1.6_n10_gaussian.h5", 
+    #    "spectral": "data/ks/dnbc_nu1.0_c1.6_n10_spectral.h5"
+   # }
     
     # Alternative files (commented out for now)
-   # filter_files = {
-    #    "box": "data/ks/pbc_nu1.0_c0.0_n10_box_s7.h5",
-    #    "gaussian": "data/ks/pbc_nu1.0_c0.0_n10_gaussian.h5",
-    #    "spectral": "data/ks/pbc_nu1.0_c0.0_n10_spectral_s11.h5"  # Add this when available
-    #    }
+    filter_files = {
+        "box": "data/ks/pbc_nu1.0_c0.0_n10_box_s7.h5",
+        "gaussian": "data/ks/pbc_nu1.0_c0.0_n10_gaussian.h5",
+        "spectral": "data/ks/pbc_nu1.0_c0.0_n10_spectral.h5"  # Add this when available
+        }
     
     # Validate filters
     valid_filters = ["box", "gaussian", "spectral"]
@@ -310,6 +310,13 @@ def compare_errors(filters=["box", "gaussian"]):
     
     print("\n=== LOADING ERROR METRICS ===")
     
+    # Define file paths for each filter type (needed for parsing BC and stencil info)
+    filter_files = {
+        "box": "data/ks/pbc_nu1.0_c0.0_n10_box_s7.h5",
+        "gaussian": "data/ks/pbc_nu1.0_c0.0_n10_gaussian.h5",
+        "spectral": "data/ks/pbc_nu1.0_c0.0_n10_spectral.h5"
+    }
+    
     # Validate filters
     valid_filters = ["box", "gaussian", "spectral"]
     filters = [f for f in filters if f in valid_filters]
@@ -360,32 +367,56 @@ def compare_errors(filters=["box", "gaussian"]):
     
     filters = available_filters
     
-    # Helper function to find the correct key for a filter (handles both old and new format)
-    def find_filter_key(filter_name, data_dict):
-        """Find the correct key for a filter, prioritizing DNBC to match field files"""
-        # First try with dnbc boundary condition (to match our field files)
-        candidates_with_dnbc = [key for key in data_dict.keys() if key.startswith(filter_name + "_dnbc")]
-        if candidates_with_dnbc:
-            if filter_name == "box":
-                # For box filter, prefer keys with stencil size
-                candidates_with_stencil = [key for key in candidates_with_dnbc if "_s" in key]
-                if candidates_with_stencil:
-                    return max(candidates_with_stencil)  # Pick highest stencil size
-            return candidates_with_dnbc[0]
+    # Helper function to find the correct key for a filter by parsing the file path
+    def find_filter_key(filter_name, data_dict, file_path):
+        """Find the correct key by parsing the file path to extract filter type, BC, and stencil size"""
+        import re
         
-        # Fallback: try with pbc boundary condition 
-        if filter_name == "box":
-            candidates_with_stencil = [key for key in data_dict.keys() if key.startswith(filter_name + "_pbc_s")]
-            if candidates_with_stencil:
-                return max(candidates_with_stencil)
+        # Parse the file path to extract components
+        # Example: "data/ks/pbc_nu1.0_c0.0_n10_box_s7.h5"
+        # Extract: BC (pbc/dnbc), filter_type (box/gaussian/spectral), stencil_size (s7)
         
-        candidates_with_bc = [key for key in data_dict.keys() if key.startswith(filter_name + "_pbc") and "_s" not in key]
-        if candidates_with_bc:
-            return candidates_with_bc[0]
+        filename = file_path.split('/')[-1]  # Get just the filename
         
-        # Finally try exact match (old format)
-        if filter_name in data_dict:
-            return filter_name
+        # Extract boundary condition
+        if filename.startswith('pbc_'):
+            bc = 'pbc'
+        elif filename.startswith('dnbc_'):
+            bc = 'dnbc'
+        else:
+            # Fallback to trying both
+            bc = None
+        
+        # Extract stencil size (for box filter)
+        stencil_match = re.search(r'_s(\d+)\.h5$', filename)
+        stencil_size = stencil_match.group(1) if stencil_match else None
+        
+        # Construct the expected key based on parsed information
+        if bc and stencil_size and filter_name == "box":
+            # Box filter with BC and stencil size: "box_pbc_s7"
+            expected_key = f"{filter_name}_{bc}_s{stencil_size}"
+        elif bc and filter_name in ["gaussian", "spectral"]:
+            # Gaussian/spectral with BC: "gaussian_pbc"
+            expected_key = f"{filter_name}_{bc}"
+        else:
+            # Fallback to old format
+            expected_key = filter_name
+        
+        # Check if the expected key exists
+        if expected_key in data_dict:
+            return expected_key
+        
+        # If not found, try some fallbacks
+        fallback_keys = [
+            filter_name,  # Old format
+            f"{filter_name}_{bc}" if bc else None,  # With BC only
+            f"{filter_name}_pbc",  # Try PBC
+            f"{filter_name}_dnbc",  # Try DNBC
+        ]
+        
+        for key in fallback_keys:
+            if key and key in data_dict:
+                return key
         
         return None
     
@@ -395,52 +426,29 @@ def compare_errors(filters=["box", "gaussian"]):
     
     # Plot 1: A Priori Training Loss Comparison
     train_vals = []
-    train_stds = []
     print("\n=== A PRIORI KEY SELECTION ===")
     for f in filters:
         # Find the correct key for this filter (handles both old and new format)
-        key = find_filter_key(f, train_losses)
+        file_path = filter_files.get(f, "")
+        key = find_filter_key(f, train_losses, file_path)
         print(f"Filter '{f}': Using key '{key}' from train_losses")
         if key and isinstance(train_losses.get(key), dict):
             # Use relative MSE if available, otherwise fallback to absolute MSE
             loss_data = train_losses[key]
             if 'rel_mse_mean' in loss_data:
                 train_vals.append(loss_data.get('rel_mse_mean', float('nan')))
-                train_stds.append(loss_data.get('rel_mse_std', float('nan')))
             else:
                 # Fallback to absolute MSE
                 train_vals.append(loss_data.get('mean', float('nan')))
-                train_stds.append(loss_data.get('std', float('nan')))
         elif key:
             # Old format (single value)
             train_vals.append(train_losses.get(key, float('nan')))
-            train_stds.append(0.0)
         else:
             train_vals.append(float('nan'))
-            train_stds.append(0.0)
-    
-    # Calculate error bars using std
-    train_errs = []
-    for i, f in enumerate(filters):
-        key = find_filter_key(f, train_losses)
-        if key:
-            loss_data = train_losses.get(key, {})
-            if isinstance(loss_data, dict):
-                # Use rel_mse_std if available, otherwise std
-                if 'rel_mse_std' in loss_data:
-                    std_val = loss_data.get('rel_mse_std', 0.0)
-                else:
-                    std_val = loss_data.get('std', 0.0)
-                train_errs.append(std_val if not np.isnan(std_val) and std_val > 0 else 0)
-            else:
-                # Old format has no std info
-                train_errs.append(0)
-        else:
-            train_errs.append(0)
     
     # Use different colors for different numbers of filters
     colors = ['skyblue', 'lightcoral', 'lightgreen', 'plum'][:n_filters]
-    bars1 = ax1.bar(filters, train_vals, color=colors, yerr=train_errs, capsize=3)
+    bars1 = ax1.bar(filters, train_vals, color=colors)
     # Check if we're using relative MSE or absolute MSE for the title
     if train_losses and any('rel_mse_mean' in v for v in train_losses.values() if isinstance(v, dict)):
         ax1.set_title('A Priori Relative MSE')
@@ -476,7 +484,8 @@ def compare_errors(filters=["box", "gaussian"]):
         
         for i, filter_name in enumerate(filters):
             # Find the correct key for this filter (handles both old and new format)
-            key = find_filter_key(filter_name, aposteriori_metrics)
+            file_path = filter_files.get(filter_name, "")
+            key = find_filter_key(filter_name, aposteriori_metrics, file_path)
             if i == 0:  # Only print once per filter to avoid repetition
                 print(f"Filter '{filter_name}': Using key '{key}' from aposteriori_metrics")
             filter_data = aposteriori_metrics.get(key, {}) if key else {}
@@ -527,15 +536,15 @@ def compare_errors(filters=["box", "gaussian"]):
     print("\n=== NUMERICAL COMPARISON ===")
     print("A Priori (Training Loss):")
     for f in filters:
-        key = find_filter_key(f, train_losses)
+        file_path = filter_files.get(f, "")
+        key = find_filter_key(f, train_losses, file_path)
         if key:
             print(f"  {f}: Using key '{key}'")  # Debug: show which key is selected
             loss_data = train_losses.get(key, {})
             if isinstance(loss_data, dict):
                 # New format with mean/std
-                mean_val = loss_data.get('mean', float('nan'))
-                std_val = loss_data.get('std', float('nan'))
-                print(f"    Value: {mean_val:.6e} ± {std_val:.6e}")
+                mean_val = loss_data.get('rel_mse_mean', loss_data.get('mean', float('nan')))
+                print(f"    Value: {mean_val:.6e}")
             else:
                 # Old format (single value)
                 print(f"    Value: {loss_data:.6e}")
@@ -546,7 +555,8 @@ def compare_errors(filters=["box", "gaussian"]):
     for metric in ["l2", "first_moment", "second_moment"]:
         print(f"\n{metric.upper()}:")
         for f in filters:
-            key = find_filter_key(f, aposteriori_metrics)
+            file_path = filter_files.get(f, "")
+            key = find_filter_key(f, aposteriori_metrics, file_path)
             if key:
                 print(f"  {f}: Using key '{key}'")  # Debug: show which key is selected
                 data = aposteriori_metrics[key]
@@ -610,4 +620,4 @@ if __name__ == "__main__":
     # results = main()
     
     #results = compare_all_three()  # Compare all three filters
-    results = compare_box_gaussian()  # Compare box and spectral filters
+    results = compare_box_spectral()  # Compare box and spectral filters

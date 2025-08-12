@@ -11,7 +11,16 @@ def compare_stencil_fields(stencil_sizes=[5, 7, 9, 11]):
         stencil_sizes: List of stencil sizes to compare
     """
     
-    # Define file paths for each stencil size (box filter only)
+    #     print("A Priori (Training Loss):")
+    for s in stencil_sizes:
+        key = find_stencil_key(s, train_losses)
+        if key:
+            loss_data = train_losses[key]
+            if isinstance(loss_data, dict):
+                mean_val = loss_data.get('rel_mse_mean', loss_data.get('mean', float('nan')))
+                print(f"  Stencil {s}: {mean_val:.6e}")
+            else:
+                print(f"  Stencil {s}: {loss_data:.6e}") paths for each stencil size (box filter only)
     # Assuming naming convention: data/ks/pbc_nu1.0_c0.0_n10_box_s{stencil_size}.h5
     stencil_files = {}
     for size in stencil_sizes:
@@ -209,7 +218,6 @@ def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
     
     # Plot 1: A Priori Training Loss vs Stencil Size
     train_vals = []
-    train_errs = []
     available_train_stencils = []
     
     for s in stencil_sizes:
@@ -220,24 +228,20 @@ def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
                 # Use relative MSE if available, otherwise fallback to absolute MSE
                 if 'rel_mse_mean' in loss_data:
                     mean_val = loss_data.get('rel_mse_mean', float('nan'))
-                    std_val = loss_data.get('rel_mse_std', 0.0)
                 else:
                     # Fallback to absolute MSE
                     mean_val = loss_data.get('mean', float('nan'))
-                    std_val = loss_data.get('std', 0.0)
                 train_vals.append(mean_val)
-                train_errs.append(std_val if not np.isnan(std_val) and std_val > 0 else 0)
             else:
                 # Old format (single value)
                 train_vals.append(loss_data)
-                train_errs.append(0.0)
             available_train_stencils.append(s)
         else:
             print(f"No a priori data for stencil {s}")
     
     if available_train_stencils:
-        bars = ax1.bar(available_train_stencils, train_vals, yerr=train_errs, 
-                      capsize=5, alpha=0.7, color='skyblue', edgecolor='navy', linewidth=1.5)
+        bars = ax1.bar(available_train_stencils, train_vals, 
+                      alpha=0.7, color='skyblue', edgecolor='navy', linewidth=1.5)
         ax1.set_xlabel('Stencil Size')
         # Check if we're using relative MSE or absolute MSE
         if train_losses and any('rel_mse_mean' in v for v in train_losses.values() if isinstance(v, dict)):

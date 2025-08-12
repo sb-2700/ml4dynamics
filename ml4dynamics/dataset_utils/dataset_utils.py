@@ -4,6 +4,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 import ml_collections
 from box import Box
+from scipy.signal import resample
 
 def calc_correction(rd_fine, rd_coarse, nx: float, r: int, uv: jnp.ndarray):
   """
@@ -210,7 +211,7 @@ def _create_spectral_filter_periodic(N1, N2, r):
   
   return res_op
 '''
-
+'''
 def _create_spectral_filter_periodic(N1, N2, r):
   """
   Create a spectral restriction operator res_op ∈ ℝ^{N2×N1}
@@ -242,6 +243,71 @@ def _create_spectral_filter_periodic(N1, N2, r):
   res_op /= jnp.sum(res_op, axis=1, keepdims=True)
 
   return res_op
+'''
+'''
+def _create_spectral_filter_periodic(N1, N2, r):
+#Doesn't work  
+    """
+    Create a spectral restriction operator R ∈ ℝ^{N2×N1}
+    using explicit RFFT/IRFFT matrices and a sharp low-pass mask.
+    Periodic BCs.
+    """
+    # Step 1: Fine-grid RFFT matrix (freq x space)
+    fft_mat_fine = jnp.fft.rfft(jnp.eye(N1)).T   # shape: (N1//2+1, N1)
+
+    # Step 2: Coarse-grid IRFFT matrix (space x freq)
+    fft_mat_coarse = jnp.fft.irfft(jnp.eye(N2//2 + 1), n=N2).T  # shape: (N2, N2//2+1)
+
+    # Step 3: Spectral mask S (coarse freq size × fine freq size). Cutoff freq = N2//2
+    S = jnp.zeros((N2//2 + 1, N1//2 + 1))
+    S = S.at[:N2//2 + 1, :N2//2 + 1].set(jnp.eye(N2//2 + 1))
+
+    # Step 4: Compose restriction operator: R = F2^-1 @ S @ F1
+    res_op = (fft_mat_coarse @ S @ fft_mat_fine).real
+
+    # Step 5: Normalize rows to preserve mass
+    res_op /= res_op.sum(axis=1, keepdims=True)
+
+    return res_op
+
+'''
+
+def _create_spectral_filter_periodic(N1, N2, r):
+    """
+    Create a spectral restriction operator res_op ∈ ℝ^{N2×N1}
+    using SciPy's Fourier-method resampling (periodic BCs).
+
+    This internally does: FFT -> truncate high freqs -> IFFT -> length N2.
+
+    Parameters
+    ----------
+    N1 : int
+        Fine grid size.
+    N2 : int
+        Coarse grid size.
+    r  : int
+        Coarsening ratio (N1 / N2).
+
+    Returns
+    -------
+    res_op : (N2, N1) ndarray
+        Spectral restriction operator. Multiplying by a fine-grid vector
+        gives the coarse-grid result.
+    """
+    # Identity matrix on fine grid
+    I = np.eye(N1, dtype=float)  # shape: (N1, N1)
+
+    # Resample each fine-grid basis vector down to N2 via Fourier method
+    # axis=1 means we're changing the length of the signal dimension
+    filtered = resample(I, N2, axis=1)
+
+    # Transpose so shape is (N2, N1) rather than (N1, N2)
+    res_op = filtered.T
+
+    # Normalize each row so a constant field stays constant
+    res_op /= res_op.sum(axis=1, keepdims=True)
+
+    return res_op
 
 
 def _create_smooth_spectral_filter_nonperiodic(N1, N2, r):

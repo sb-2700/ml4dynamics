@@ -538,16 +538,13 @@ def eval_a_priori(
   all_preds = np.concatenate(all_preds, axis=0)
   all_targets = np.concatenate(all_targets, axis=0)
 
-  # === GLOBAL MSE and relative MSE ===
+  # === GLOBAL MSE and relative MSE (no std calculations) ===
   mse = jnp.mean((all_preds - all_targets) ** 2)
   norm_factor = np.mean(all_targets ** 2)
   rel_mse = mse / (norm_factor + 1e-12) 
 
-  #std across all samples for error bars
-  mse_std = np.std((all_preds - all_targets) ** 2)
-  rel_mse_std = np.std(((all_preds - all_targets) ** 2) / (norm_factor + 1e-12))
-
   print(f"train loss: {mse:.4e}")
+  print(f"relative MSE: {rel_mse:.4e}")
   
 # Save train_loss to results/train_losses.pkl
   os.makedirs("results", exist_ok=True)
@@ -573,14 +570,12 @@ def eval_a_priori(
   else:
     train_losses = {}
   
-  # Save this filter's train loss (mean, std, and batch count)
+  # Save this filter's train loss - no std values
   # Use compound key that includes filter type, boundary condition, and stencil size
   train_losses[filter_bc_s_key] = {
-    'mean': mse,
-    'std': mse_std,
-    'n_batches': count,
-    'rel_mse_mean': rel_mse,
-    'rel_mse_std': rel_mse_std
+    'mean': float(mse),
+    'rel_mse_mean': float(rel_mse),
+    'n_samples': len(all_preds)
   }
   with open(train_losses_path, "wb") as f:
     pickle.dump(train_losses, f)
