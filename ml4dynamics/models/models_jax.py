@@ -616,42 +616,35 @@ class Transformer1D(nn.Module):
 
 #A single transformer block. Has MultiHeadAttention and a FeedForward layer (MLP)
 
-#then do linear --> ReLU --> dropout --> linear --> add --> LayerNorm
+#Feedforward: linear --> ReLU --> linear --> add --> LayerNorm
 class EncoderBlock(nn.Module):
   input_dim: int  #input dimension equals output dimension because of residual connections
   num_heads: int
   dim_feedforward: int
-  dropout_prob: float
+  dropout_prob: float  # no longer used
 
   def setup(self):
     #Attention layer
-    #input --> attention --> dropout --> add (residual) --> LayerNorm
     self.self_attn = MultiHeadAttention(embed_dim=self.input_dim, num_heads=self.num_heads)
 
     #2 Layer MLP
-    self.linear = [
-      nn.Dense(self.dim_feedforward),
-      nn.Dropout(self.dropout_prob),
-      nn.relu,
-      nn.Dense(self.input_dim),
-    ]
+    self.linear1 = nn.Dense(self.dim_feedforward)
+    self.linear2 = nn.Dense(self.input_dim)
 
     #Layers to apply in between the main layers
     self.norm1 = nn.LayerNorm()
     self.norm2 = nn.LayerNorm()
-    self.dropout = nn.Dropout(self.dropout_prob)
 
   def __call__(self, x, mask=None, train=True):
     #Attention part
     attn_out, _ = self.self_attn(x, mask=mask)
-    x = x + self.dropout(attn_out, deterministic=not train)
+    x = x + attn_out
     x = self.norm1(x)
 
-    #MLP part
-    linear_out = x
-    for l in self.linear:
-      linear_out = l(linear_out) if not isinstance(l, nn.Dropout) else l(linear_out, deterministic=not train)
-    x = x + self.dropout(linear_out, deterministic=not train)
+    #Feedforward block
+    linear_out = nn.relu(self.linear1(x))
+    linear_out = self.linear2(linear_out)
+    x = x + linear_out
     x = self.norm2(x)
 
     return x
@@ -712,10 +705,8 @@ def scaled_dot_product(q, k, v, mask=None):
   attn_logits = jnp.matmul(q, jnp.swapaxes(k, -2, -1))
   attn_logits = attn_logits / jnp.sqrt(d_k)
   if mask is not None:
-    attn_logits = jnp.where(mask == 0, 0, attn_logits)
-  # Removed softmax for computational efficiency in regression tasks
-  # Using raw attention weights without normalization
-  attention = attn_logits
+    attn_logits = jnp.where(mask == 0, -1e9, attn_logits)
+  attention = nn.softmax(attn_logits, axis=-1)
   values = jnp.matmul(attention, v)
   return values, attention
 
