@@ -76,6 +76,12 @@ def load_data(
   if config.train.input != "global":
     _, model = create_fine_coarse_simulator(config_dict)
     inputs = np.array(augment_inputs(inputs, pde, config.train.input, model))
+  elif config.train.input == "global" and config.model.name == "transformer1d":
+    # Precompute sliding window ONCE during data loading - not every batch!
+    print("Applying sliding window preprocessing...")
+    window_size = 5
+    inputs = apply_sliding_window(inputs, window_size, config)
+    print(f"Sliding window applied: {inputs.shape}")
   # if mode == "torch":
   #   inputs = inputs.transpose(0, 3, 1, 2)
   #   outputs = outputs.transpose(0, 3, 1, 2)
@@ -459,7 +465,12 @@ def prepare_transformer_train_state(
         batch_size = config.train.batch_size_local
     if config.case == "ks":
         nx = config.sim.n // config.sim.rx
-        input_features = 1 if is_global else (inputs_labels if isinstance(inputs_labels, int) else len(inputs_labels))
+        if is_global and config.model.name == "transformer1d":
+            # When using sliding window for transformer, input features = window_size
+            window_size = 5  # Should match the window_size in apply_sliding_window
+            input_features = window_size
+        else:
+            input_features = 1 if is_global else (inputs_labels if isinstance(inputs_labels, int) else len(inputs_labels))
         output_features = 1
         seq_len = nx
     else:
@@ -1619,3 +1630,38 @@ def jax_memory_profiler(verbose: bool = False):
           print(jax.device_get(obj).nbytes)
   print(f"total_size of large array on gpu: {aux_size/1e9:.3f}GB")
   print(f"total_size: {total_size/1e9:.3f}GB")
+
+
+def apply_sliding_window(x, window_size, config):
+  """
+  Apply sliding window ONCE during data loading.
+  Uses NumPy operations for efficiency.
+  
+  Args:
+    x: Input array of shape [B, N, C] 
+    window_size: Size of the sliding window (e.g., 5)
+    config: Configuration containing BC information
+    
+  Returns:
+    Windowed array of shape [B, N, window_size * C] as NumPy array
+  """
+  B, N, C = x.shape
+  pad = window_size // 2
+  
+  # Handle boundary conditions using NumPy
+  if config.sim.BC == "periodic":
+    # Periodic: domain wraps around
+    x_padded = np.pad(x, ((0, 0), (pad, pad), (0, 0)), mode="wrap")
+  else:
+    # All other BCs: use zero padding
+    x_padded = np.pad(x, ((0, 0), (pad, pad), (0, 0)), mode="constant", constant_values=0)
+  
+  # Create sliding windows using NumPy
+  windows = []
+  for i in range(window_size):
+    windows.append(x_padded[:, i:i + N, :])
+  
+  x_windowed = np.concatenate(windows, axis=-1)
+  return x_windowed  # Return NumPy array directly
+          
+  
