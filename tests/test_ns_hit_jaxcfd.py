@@ -11,6 +11,8 @@ import jax_cfd.spectral as spectral
 
 import dataclasses
 
+from ml4dynamics.utils import viz_utils
+
 # physical parameters
 viscosity = 1e-3
 max_velocity = 7
@@ -41,7 +43,7 @@ v0 = cfd.initial_conditions.filtered_velocity_field(jax.random.PRNGKey(42), grid
 vorticity0 = cfd.finite_differences.curl_2d(v0).data
 vorticity_hat0 = jnp.fft.rfftn(vorticity0)
 
-_, trajectory = trajectory_fn(vorticity_hat0)
+_, trajectory_f = trajectory_fn(vorticity_hat0)
 
 spatial_coord = jnp.arange(grid_f.shape[0]) * 2 * jnp.pi / grid_f.shape[0] # same for x and y
 coords = {
@@ -50,12 +52,12 @@ coords = {
   'y': spatial_coord,
 }
 xarray.DataArray(
-    jnp.fft.irfftn(trajectory, axes=(1,2)), 
+    jnp.fft.irfftn(trajectory_f, axes=(1,2)), 
     dims=["time", "x", "y"], coords=coords
 ).plot.imshow(
   col='time', col_wrap=5, cmap=sns.cm.icefire, robust=True
 )
-plt.savefig('ns_hit_jaxcfd_fine.png')
+plt.savefig('results/fig/ns_hit_jaxcfd_fine.png')
 plt.close()
 
 grid_c = grids.Grid((n2, n2), domain=((0, 2 * jnp.pi), (0, 2 * jnp.pi)))
@@ -80,11 +82,10 @@ plt.subplot(121)
 plt.imshow(vorticity0, cmap=sns.cm.icefire)
 plt.subplot(122)
 plt.imshow(result, cmap=sns.cm.icefire)
-plt.savefig('ns_hit_jaxcfd_coarse_vorticity.png')
+plt.savefig('results/fig/ns_hit_jaxcfd_coarse_vorticity.png')
 plt.close()
-breakpoint()
 vorticity_hat0 = jnp.fft.rfftn(result)
-_, trajectory = trajectory_fn(vorticity_hat0)
+_, trajectory_c = trajectory_fn(vorticity_hat0)
 
 spatial_coord = jnp.arange(grid_c.shape[0]) * 2 * jnp.pi / grid_c.shape[0] # same for x and y
 coords = {
@@ -93,13 +94,25 @@ coords = {
   'y': spatial_coord,
 }
 xarray.DataArray(
-    jnp.fft.irfftn(trajectory, axes=(1,2)), 
+    jnp.fft.irfftn(trajectory_c, axes=(1,2)), 
     dims=["time", "x", "y"], coords=coords
 ).plot.imshow(
   col='time', col_wrap=5, cmap=sns.cm.icefire, robust=True
 )
-plt.savefig('ns_hit_jaxcfd_coarse.png')
+plt.savefig('results/fig/ns_hit_jaxcfd_coarse.png')
+plt.close()
+t_array = dt_c * jnp.arange(outer_steps) * inner_steps
+filtered_traj_f = jnp.zeros((10, n2, n2))
+tmp = jnp.fft.irfftn(trajectory_f, axes=(1,2))
+for i in range(10):
+  for k in range(r):
+    for j in range(r):
+      filtered_traj_f = filtered_traj_f.at[i].add(tmp[i, k::r, j::r] / (r**2))
 breakpoint()
+viz_utils.plot_temporal_corr(
+  [filtered_traj_f,
+  jnp.fft.irfftn(trajectory_c, axes=(1,2))], [''], t_array, "ns_hit"
+)
 
 # physical parameters
 viscosity = 1e-3
