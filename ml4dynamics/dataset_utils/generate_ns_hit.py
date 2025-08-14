@@ -54,7 +54,7 @@ def main():
     print('generating the {}-th trajectory...'.format(j))
 
     # fine and coarse-simulations
-    init_cond = "taylor_green" # gaussian_process, real_random, spec_random, taylor_green
+    init_cond = "spec_random"  # gaussian_process, real_random, spec_random, taylor_green
     model_fine.w_hat = utils.hit_init_cond(init_cond, model_fine, key)
     model_fine.set_x_hist(model_fine.w_hat, model_fine.CN)
     # model_coarse.w_hat = utils.hit_init_cond(init_cond, model_coarse, key)
@@ -72,6 +72,7 @@ def main():
       dwdx = np.fft.irfft2(1j * what_hist * model.kx[None], axes=(1, 2))
       dwdy = np.fft.irfft2(1j * what_hist * model.ky[None], axes=(1, 2))
       return dpsidy * dwdx - dpsidx * dwdy
+
     kernel_x = kernel_y = r
     kernel = jnp.ones((1, kernel_x, kernel_y, 1)) / kernel_x / kernel_y
     conv = partial(
@@ -199,9 +200,7 @@ def main():
   if case_num == 1:
 
     t_array = np.linspace(0, T, model_coarse.step_num)
-    viz_utils.plot_1D_spatial_corr(
-      [model_fine.x_hist], [''], "ns_hit"
-    )
+    viz_utils.plot_1D_spatial_corr([model_fine.x_hist], [''], "ns_hit")
     viz_utils.plot_temporal_corr(
       [w_coarse[..., 0], model_coarse.x_hist], [''], t_array, "ns_hit"
     )

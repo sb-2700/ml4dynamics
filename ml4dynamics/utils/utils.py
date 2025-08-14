@@ -76,7 +76,9 @@ def load_data(
 
   if config.train.input != "global":
     _, model = create_fine_coarse_simulator(config_dict)
-    inputs = np.array(augment_inputs(inputs, x_coords, pde, config.train.input, model))
+    inputs = np.array(
+      augment_inputs(inputs, x_coords, pde, config.train.input, model)
+    )
   # if mode == "torch":
   #   inputs = inputs.transpose(0, 3, 1, 2)
   #   outputs = outputs.transpose(0, 3, 1, 2)
@@ -118,7 +120,9 @@ def load_data(
   return inputs, outputs, train_dataloader, test_dataloader, dataset, x_coords
 
 
-def augment_inputs(inputs: jnp.ndarray, x_coords: jnp.ndarray, pde: str, input_labels, model):
+def augment_inputs(
+  inputs: jnp.ndarray, x_coords: jnp.ndarray, pde: str, input_labels, model
+):
   """This function is used both at loading the data and inference time"""
 
   if isinstance(input_labels, int):
@@ -150,7 +154,7 @@ def augment_inputs(inputs: jnp.ndarray, x_coords: jnp.ndarray, pde: str, input_l
         tmp.append(jnp.einsum("ij, ajk -> aik", model.L2, inputs))
       if "u_xxxx" in input_labels:
         tmp.append(jnp.einsum("ij, ajk -> aik", model.L4, inputs))
-      if "x" in input_labels: 
+      if "x" in input_labels:
         spatial_coords = x_coords[0:1]
         x_coords = jnp.tile(spatial_coords, (inputs.shape[0], 1, 1))
         tmp.append(x_coords)
@@ -640,7 +644,7 @@ def eval_a_posteriori(
 
   step_num = model.step_num
   t_array = np.linspace(0, model.T, model.step_num)
-  stats_test = True # see the comment below for the if-else statement
+  stats_test = True  # see the comment below for the if-else statement
   if not stats_test:
     """Test with the trajectory in the dataset
     Specifically, the ground truth trajectory is one of those in the

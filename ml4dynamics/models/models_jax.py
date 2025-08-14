@@ -584,4 +584,4 @@ class UNet(nn.Module):
       )(z1, z2, z3, z4, z5)
       # y = nn.softplus(y)
 
-    return y
+    return y - jnp.mean(y, axis=1, keepdims=True)

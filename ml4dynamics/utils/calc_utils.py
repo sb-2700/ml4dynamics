@@ -16,9 +16,7 @@ def calc_1D_spatial_corr(u):
   u = u - jnp.mean(u, axis=(0, ))[None]
   corr = jnp.zeros(u.shape[-1])
   for i in range(u.shape[-1]):
-    corr = corr.at[i].set(
-      jnp.mean(jnp.roll(u, i, axis=1) * u) / jnp.mean(u**2)
-    )
+    corr = corr.at[i].set(jnp.mean(jnp.roll(u, i, axis=1) * u) / jnp.mean(u**2))
   """NOTE: 2D correlation is too slow to evaluate"""
   # corr = np.zeros([*u.shape[1:]])
   # for i in range(n):

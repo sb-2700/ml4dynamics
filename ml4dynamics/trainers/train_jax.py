@@ -131,7 +131,11 @@ def main():
     else:
       fig_name = f"{pde}_{mode}_{arch}"
     augment_inputs_fn = partial(
-      utils.augment_inputs, x_coords=x_coords, pde=pde, input_labels=input_labels, model=sim_model
+      utils.augment_inputs,
+      x_coords=x_coords,
+      pde=pde,
+      input_labels=input_labels,
+      model=sim_model
     )
     if mode == "tr":
       # add tangent-space regularization
