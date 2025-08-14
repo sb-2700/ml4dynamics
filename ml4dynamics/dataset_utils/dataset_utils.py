@@ -46,9 +46,17 @@ def _create_box_filter(N1, N2, r, BC, s):
   half_stencil = s // 2
   
   if r == 2:
-    raise Exception("Deprecated...")
-    res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r].set(1)
-    res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 2].set(1)
+    # Box filter for r=2 with variable stencil size
+    if BC == "periodic":
+      for i in range(N2):
+        start = i * r
+        for j in range(s):
+          idx = (start + j) % N1  # wrap around domain
+          res_op = res_op.at[i, idx].set(1)
+      res_op /= s / r  
+    else:  # Dirichlet-Neumann - ignore for now
+      raise Exception("Dirichlet-Neumann not implemented for r=2")
+      
   elif r == 4:
     if BC == "periodic":
       for i in range(N2):
@@ -61,11 +69,18 @@ def _create_box_filter(N1, N2, r, BC, s):
       for i in range(N2):
         res_op = res_op.at[i, i * r:i * r + s].set(1)
       res_op /= s / 4
+      
   elif r == 8:
-    # stencil = 12
-    for i in range(N2):
-      res_op = res_op.at[i, i * r + 3:i * r + 12].set(1)
-    res_op = res_op.at[jnp.arange(N2), jnp.arange(N2) * r + 7].set(0)
+    # Box filter for r=8 with variable stencil size
+    if BC == "periodic":
+      for i in range(N2):
+        start = i * r
+        for j in range(s):
+          idx = (start + j) % N1  # wrap around domain
+          res_op = res_op.at[i, idx].set(1)
+      res_op /= s / r  
+    else:  # Dirichlet-Neumann - ignore for now
+      raise Exception("Dirichlet-Neumann not implemented for r=8")
   
   return res_op
 

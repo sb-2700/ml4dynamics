@@ -3,30 +3,44 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import os
+import argparse
 
-def compare_stencil_fields(stencil_sizes=[5, 7, 9, 11]):
+def get_stencil_sizes_for_coarsening_ratio(coarsening_ratio):
+    """Get the appropriate stencil sizes for a given coarsening ratio
+    
+    Args:
+        coarsening_ratio: Coarsening ratio (2, 4, or 8)
+    
+    Returns:
+        List of odd stencil sizes to test for this coarsening ratio
+    """
+    if coarsening_ratio == 2:
+        return [3, 5, 7, 9, 11]
+    elif coarsening_ratio == 4:
+        return [5, 7, 9, 11, 13]
+    elif coarsening_ratio == 8:
+        return [9, 11, 13, 15, 17, 19]
+    else:
+        raise ValueError(f"Unsupported coarsening ratio: {coarsening_ratio}. Use 2, 4, or 8.")
+
+def compare_stencil_fields(coarsening_ratio=4, stencil_sizes=None):
     """Compare filtered fields and correction stresses across different stencil sizes for box filter
     
     Args:
-        stencil_sizes: List of stencil sizes to compare
+        coarsening_ratio: Coarsening ratio (2, 4, or 8)
+        stencil_sizes: List of stencil sizes to compare. If None, uses default for coarsening ratio
     """
     
-    #     print("A Priori (Training Loss):")
-    for s in stencil_sizes:
-        key = find_stencil_key(s, train_losses)
-        if key:
-            loss_data = train_losses[key]
-            if isinstance(loss_data, dict):
-                mean_val = loss_data.get('rel_mse_mean', loss_data.get('mean', float('nan')))
-                print(f"  Stencil {s}: {mean_val:.6e}")
-            else:
-                print(f"  Stencil {s}: {loss_data:.6e}") paths for each stencil size (box filter only)
-    # Assuming naming convention: data/ks/pbc_nu1.0_c0.0_n10_box_s{stencil_size}.h5
+    if stencil_sizes is None:
+        stencil_sizes = get_stencil_sizes_for_coarsening_ratio(coarsening_ratio)
+    
+    # File paths for each stencil size (box filter only) with coarsening ratio
+    # Assuming naming convention: data/ks/pbc_nu1.0_c0.0_n10_r{r}_box_s{stencil_size}.h5
     stencil_files = {}
     for size in stencil_sizes:
-        stencil_files[size] = f"data/ks/pbc_nu1.0_c0.0_n10_box_s{size}.h5"
+        stencil_files[size] = f"data/ks/pbc_nu1.0_c0.0_n10_r{coarsening_ratio}_box_s{size}.h5"
     
-    print(f"Comparing box filter with stencil sizes: {stencil_sizes}")
+    print(f"Comparing box filter with stencil sizes: {stencil_sizes} at coarsening ratio: {coarsening_ratio}")
     
     # Load datasets dynamically
     data = {}
@@ -133,21 +147,25 @@ def compare_stencil_fields(stencil_sizes=[5, 7, 9, 11]):
     
     plt.tight_layout()
     stencil_str = "_".join([str(s) for s in stencil_sizes])
-    plt.savefig(f'stencil_comparison_box_{stencil_str}.png', dpi=300, bbox_inches='tight')
+    plt.savefig(f'stencil_comparison_box_r{coarsening_ratio}_{stencil_str}.png', dpi=300, bbox_inches='tight')
     plt.show()
     
     # Return the data for further analysis
     return {'data': data}
 
-def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
+def compare_stencil_errors(coarsening_ratio=4, stencil_sizes=None):
     """Compare a priori and a posteriori errors across different stencil sizes for box filter
     
     Args:
-        stencil_sizes: List of stencil sizes to compare
+        coarsening_ratio: Coarsening ratio (2, 4, or 8)
+        stencil_sizes: List of stencil sizes to compare. If None, uses default for coarsening ratio
     """
     
+    if stencil_sizes is None:
+        stencil_sizes = get_stencil_sizes_for_coarsening_ratio(coarsening_ratio)
+    
     print(f"\n=== LOADING ERROR METRICS FOR BOX FILTER ===")
-    print(f"Comparing stencil sizes: {stencil_sizes}")
+    print(f"Comparing stencil sizes: {stencil_sizes} at coarsening ratio: {coarsening_ratio}")
     
     # Load a priori errors from pickle file
     train_losses_path = "results/train_losses.pkl"
@@ -169,26 +187,17 @@ def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
         print(f"Warning: {aposteriori_path} not found")
         aposteriori_metrics = {}
     
-    # Helper function to find the correct key for a stencil size
-    def find_stencil_key(stencil_size, data_dict):
-        # Try different key formats (box filter only)
-        possible_keys = [
-            f"box_pbc_s{stencil_size}",       # New format with stencil and BC
-            f"box_s{stencil_size}_pbc",       # Alternative format
-            f"box_s{stencil_size}",           # Format with stencil
-            f"box_{stencil_size}_pbc",        # Alternative format
-            f"box_{stencil_size}",            # Alternative format
-            f"s{stencil_size}_box_pbc",       # Another format
-            f"s{stencil_size}_box",           # Another format
-        ]
+    # Helper function to find the correct key for a stencil size with coarsening ratio
+    def find_stencil_key(stencil_size, data_dict, coarsening_ratio):
+        # New format with coarsening ratio: box_pbc_r{r}_s{stencil_size}
+        key = f"box_pbc_r{coarsening_ratio}_s{stencil_size}"
+        if key in data_dict:
+            return key
         
-        for key in possible_keys:
-            if key in data_dict:
-                return key
-        
-        # Fallback: look for partial matches
+        # Fallback: look for partial matches that include the stencil size and coarsening ratio
         for key in data_dict.keys():
-            if str(stencil_size) in key and "box" in key:
+            if (str(stencil_size) in key and "box" in key and 
+                f"r{coarsening_ratio}" in key and "pbc" in key):
                 return key
         
         return None
@@ -197,8 +206,8 @@ def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
     available_stencils = []
     for s in stencil_sizes:
         # Check if we have either a priori or a posteriori data
-        train_key = find_stencil_key(s, train_losses)
-        apost_key = find_stencil_key(s, aposteriori_metrics)
+        train_key = find_stencil_key(s, train_losses, coarsening_ratio)
+        apost_key = find_stencil_key(s, aposteriori_metrics, coarsening_ratio)
         
         if train_key or apost_key:
             available_stencils.append(s)
@@ -221,7 +230,7 @@ def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
     available_train_stencils = []
     
     for s in stencil_sizes:
-        key = find_stencil_key(s, train_losses)
+        key = find_stencil_key(s, train_losses, coarsening_ratio)
         if key:
             loss_data = train_losses[key]
             if isinstance(loss_data, dict):
@@ -279,7 +288,7 @@ def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
         available_apost_stencils = []
         
         for s in stencil_sizes:
-            key = find_stencil_key(s, aposteriori_metrics)
+            key = find_stencil_key(s, aposteriori_metrics, coarsening_ratio)
             if key:
                 data = aposteriori_metrics[key]
                 
@@ -299,9 +308,11 @@ def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
                     available_apost_stencils.append(s)
         
         if available_apost_stencils:
-            # Use absolute values for all metrics to ensure positive values on log scale
+            # Use absolute values for all metrics
             baseline_vals_plot = [abs(x) for x in baseline_vals]
             ours_vals_plot = [abs(x) for x in ours_vals]
+            ylabel = f'|{title}|'
+            title_suffix = ", Absolute Values"
             
             # Create grouped bar chart
             x_pos = np.arange(len(available_apost_stencils))
@@ -316,12 +327,18 @@ def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
                           color='blue', edgecolor='darkblue', linewidth=1)
             
             ax.set_xlabel('Stencil Size')
-            ax.set_ylabel(f'|{title}|')  # Indicate absolute values for all metrics
-            ax.set_title(f'|{title}| vs Stencil Size\n(Box Filter, Absolute Values)')
+            ax.set_ylabel(ylabel)
+            ax.set_title(f'{title} vs Stencil Size\n(Box Filter{title_suffix})')
             ax.set_xticks(x_pos)
             ax.set_xticklabels(available_apost_stencils)
             ax.grid(True, alpha=0.3)
-            ax.set_yscale('log')
+            
+            # Set scale: log for 1st moment only, linear for L2 and 2nd moment
+            if metric == "first_moment":
+                ax.set_yscale('log')
+            else:
+                ax.set_yscale('linear')
+            
             ax.legend()
             
             # Add improvement percentages above the "With NN" bars
@@ -334,18 +351,18 @@ def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
                                xytext=(0, 3), textcoords="offset points", 
                                ha='center', va='bottom', fontsize=7, color='blue')
     
-    plt.suptitle('Box Filter: A Priori and A Posteriori Metrics vs Stencil Size', fontsize=14)
+    plt.suptitle(f'Box Filter: A Priori and A Posteriori Metrics vs Stencil Size (r={coarsening_ratio})', fontsize=14)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     
     stencil_str = "_".join([str(s) for s in stencil_sizes])
-    plt.savefig(f'stencil_error_comparison_box_{stencil_str}.png', dpi=300, bbox_inches='tight', facecolor='white')
+    plt.savefig(f'stencil_error_comparison_box_r{coarsening_ratio}_{stencil_str}.png', dpi=300, bbox_inches='tight', facecolor='white')
     plt.show()
     
     # Print numerical comparison
     print(f"\n=== NUMERICAL COMPARISON (BOX FILTER) ===")
     print("A Priori (Training Loss):")
     for s in available_train_stencils:
-        key = find_stencil_key(s, train_losses)
+        key = find_stencil_key(s, train_losses, coarsening_ratio)
         if key:
             loss_data = train_losses[key]
             if isinstance(loss_data, dict):
@@ -359,7 +376,7 @@ def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
     for metric in ["l2", "first_moment", "second_moment"]:
         print(f"\n{metric.upper()}:")
         for s in stencil_sizes:
-            key = find_stencil_key(s, aposteriori_metrics)
+            key = find_stencil_key(s, aposteriori_metrics, coarsening_ratio)
             if key:
                 data = aposteriori_metrics[key]
                 
@@ -377,19 +394,24 @@ def compare_stencil_errors(stencil_sizes=[5, 7, 9, 11]):
             else:
                 print(f"  Stencil {s}: No data found")
 
-def main(stencil_sizes=[5, 7, 9, 11]):
+def main(coarsening_ratio=4, stencil_sizes=None):
     """Run both stencil field comparison and error comparison for box filter
     
     Args:
-        stencil_sizes: List of stencil sizes to compare
+        coarsening_ratio: Coarsening ratio (2, 4, or 8)
+        stencil_sizes: List of stencil sizes to compare. If None, uses default for coarsening ratio
     """
-    print(f"=== BOX FILTER STENCIL SIZE COMPARISON ===")
+    
+    if stencil_sizes is None:
+        stencil_sizes = get_stencil_sizes_for_coarsening_ratio(coarsening_ratio)
+    
+    print(f"=== BOX FILTER STENCIL SIZE COMPARISON (r={coarsening_ratio}) ===")
     print(f"Stencil sizes: {stencil_sizes}")
     
     # Field and stress comparison
     print("\n=== FILTERED FIELD AND SGS STRESS COMPARISON ===")
     try:
-        field_results = compare_stencil_fields(stencil_sizes)
+        field_results = compare_stencil_fields(coarsening_ratio, stencil_sizes)
     except Exception as e:
         print(f"Error in field comparison: {e}")
         field_results = None
@@ -398,13 +420,54 @@ def main(stencil_sizes=[5, 7, 9, 11]):
     print("\n" + "="*60)
     print("=== ERROR METRICS COMPARISON ===")
     try:
-        compare_stencil_errors(stencil_sizes)
+        compare_stencil_errors(coarsening_ratio, stencil_sizes)
     except Exception as e:
         print(f"Error in metrics comparison: {e}")
     
     return field_results
 
+def test_all_coarsening_ratios():
+    """Test stencil sizes across all coarsening ratios with their respective stencil ranges"""
+    coarsening_ratios = [2, 4, 8]
+    
+    for r in coarsening_ratios:
+        print(f"\n{'='*100}")
+        print(f"TESTING COARSENING RATIO: {r}")
+        stencil_sizes = get_stencil_sizes_for_coarsening_ratio(r)
+        print(f"STENCIL SIZES: {stencil_sizes}")
+        print(f"{'='*100}")
+        
+        try:
+            main(r)
+        except Exception as e:
+            print(f"Error testing coarsening ratio {r}: {e}")
+            continue
+
 # Run the comparison for box filter
 if __name__ == "__main__":
-    # Box filter stencil comparison with available stencil sizes (5, 7, 9, 11)
-    results = main([5, 7, 9, 11])
+    parser = argparse.ArgumentParser(description='Compare stencil sizes for box filter at different coarsening ratios')
+    parser.add_argument('-r', '--coarsening_ratio', type=int, default=4, choices=[2, 4, 8],
+                        help='Coarsening ratio to test (2, 4, or 8). Default: 4')
+    parser.add_argument('--all', action='store_true', 
+                        help='Test all coarsening ratios (2, 4, 8)')
+    parser.add_argument('-s', '--stencil_sizes', type=int, nargs='+', 
+                        help='Custom stencil sizes to test (e.g., -s 5 7 9). If not provided, uses defaults for the coarsening ratio')
+    
+    args = parser.parse_args()
+    
+    if args.all:
+        # Test all coarsening ratios
+        print("Testing all coarsening ratios...")
+        test_all_coarsening_ratios()
+    else:
+        # Test specific coarsening ratio
+        coarsening_ratio = args.coarsening_ratio
+        stencil_sizes = args.stencil_sizes
+        
+        if stencil_sizes is None:
+            default_stencils = get_stencil_sizes_for_coarsening_ratio(coarsening_ratio)
+            print(f"Testing r={coarsening_ratio} with default stencil sizes {default_stencils}")
+        else:
+            print(f"Testing r={coarsening_ratio} with custom stencil sizes {stencil_sizes}")
+        
+        results = main(coarsening_ratio=coarsening_ratio, stencil_sizes=stencil_sizes)

@@ -22,11 +22,11 @@ sim:
   dt: .1
   L: 128
   n: 1024
-  rx: 4
+  rx: 2
   rt: 1
   init_scale: 1.
-  filter_type: spectral  # box, gaussian, spectral
-  stencil_size: 7  # stencil size for box filtering (must be odd)
+  filter_type: box  # box, gaussian, spectral
+  stencil_size: 3  # stencil size for box filtering (must be odd)
   BC: periodic
   #BC: Dirichlet-Neumann
   seed: 123

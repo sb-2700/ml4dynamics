@@ -65,12 +65,13 @@ def load_data(
       bc = "pbc" if config.sim.BC == "periodic" else "dnbc"
       nu = config.sim.nu
       c = config.sim.c
+      r = config.sim.rx  # coarsening ratio
       filter_type = config.sim.get('filter_type', 'box')  # default to box if not specified
       if filter_type == "box":
         stencil_size = config.sim.get('stencil_size', 7)  # default to 7 for backward compatibility
-        dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_{filter_type}_s{stencil_size}"
+        dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_r{r}_{filter_type}_s{stencil_size}"
       else:
-        dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_{filter_type}"
+        dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_r{r}_{filter_type}"
   h5_filename = f"data/{pde}/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
@@ -554,13 +555,14 @@ def eval_a_priori(
     config = yaml.safe_load(f)
   filter_type = config["sim"]["filter_type"]
   bc = "pbc" if config["sim"]["BC"] == "periodic" else "dnbc"
+  r = config["sim"]["rx"]  # coarsening ratio
   
-  # Create compound key that includes filter type, boundary condition, and stencil size (only for box filter)
+  # Create compound key that includes filter type, boundary condition, coarsening ratio, and stencil size (only for box filter)
   if filter_type == "box":
     stencil_size = config["sim"].get("stencil_size", 7)  # default to 7 for backward compatibility
-    filter_bc_s_key = f"{filter_type}_{bc}_s{stencil_size}"
+    filter_bc_r_s_key = f"{filter_type}_{bc}_r{r}_s{stencil_size}"
   else:
-    filter_bc_s_key = f"{filter_type}_{bc}"
+    filter_bc_r_s_key = f"{filter_type}_{bc}_r{r}"
   
   # Load existing train losses or create new dict
   train_losses_path = "results/train_losses.pkl"
@@ -571,8 +573,8 @@ def eval_a_priori(
     train_losses = {}
   
   # Save this filter's train loss - no std values
-  # Use compound key that includes filter type, boundary condition, and stencil size
-  train_losses[filter_bc_s_key] = {
+  # Use compound key that includes filter type, boundary condition, coarsening ratio, and stencil size
+  train_losses[filter_bc_r_s_key] = {
     'mean': float(mse),
     'rel_mse_mean': float(rel_mse),
     'n_samples': len(all_preds)
@@ -929,13 +931,14 @@ def eval_a_posteriori(
       config = yaml.safe_load(f)
     filter_type = config["sim"]["filter_type"]
     bc = "pbc" if config["sim"]["BC"] == "periodic" else "dnbc"
+    r = config["sim"]["rx"]  # coarsening ratio
     
-    # Create compound key that includes filter type, boundary condition, and stencil size (only for box filter)
+    # Create compound key that includes filter type, boundary condition, coarsening ratio, and stencil size (only for box filter)
     if filter_type == "box":
       stencil_size = config["sim"].get("stencil_size", 7)  # default to 7 for backward compatibility
-      filter_bc_s_key = f"{filter_type}_{bc}_s{stencil_size}"
+      filter_bc_r_s_key = f"{filter_type}_{bc}_r{r}_s{stencil_size}"
     else:
-      filter_bc_s_key = f"{filter_type}_{bc}"
+      filter_bc_r_s_key = f"{filter_type}_{bc}_r{r}"
     
     # Get final values from the metric lists (last sample)
     final_l2 = l2_list[-1] if len(l2_list) > 0 else [float('nan'), float('nan')]
@@ -956,8 +959,8 @@ def eval_a_posteriori(
       aposteriori_metrics = {}
     
     # Save this filter's a posteriori metrics (means and stds across all samples)
-    # Use compound key that includes filter type, boundary condition, and stencil size
-    aposteriori_metrics[filter_bc_s_key] = {
+    # Use compound key that includes filter type, boundary condition, coarsening ratio, and stencil size
+    aposteriori_metrics[filter_bc_r_s_key] = {
       "l2_baseline": float(l2_mean[0]),
       "l2_ours": float(l2_mean[1]),
       "l2_baseline_std": float(l2_std[0]),
