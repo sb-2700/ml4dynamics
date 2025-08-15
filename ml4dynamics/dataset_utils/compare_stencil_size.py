@@ -15,7 +15,7 @@ def get_stencil_sizes_for_coarsening_ratio(coarsening_ratio):
         List of odd stencil sizes to test for this coarsening ratio
     """
     if coarsening_ratio == 2:
-        return [3, 5, 7, 9, 11]
+        return [3, 5, 7, 9]
     elif coarsening_ratio == 4:
         return [5, 7, 9, 11, 13]
     elif coarsening_ratio == 8:
