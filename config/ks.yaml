@@ -17,7 +17,7 @@ case: ks
 
 sim:
   nu: 1
-  c: 1.7
+  c: 1.6
   T: 400
   dt: .1
   L: 128
@@ -40,11 +40,11 @@ plot:
 
 train:
   stratify: False
-  # sgs: filter
-  sgs: correction
+  sgs: filter
+  # sgs: correction
   kernel_size: 3
-  input: ["u", "u_x", "u_xx", "x"]
-  # input: 4
+  # input: ["u", "u_x", "u_xx"]
+  input: 3
   # input: global
   bins: 50
   subsample: 200
@@ -62,16 +62,16 @@ train:
   save: 100
   vae:
     latents: 128
-
+ 
 dagger:
   lr: 0.01
   epochs: 10
   inner_epochs: 10
   beta: 0.0
-
+ 
 tr:
   lambda_mols: 10
-
+ 
 test:
   model: alos
   solver: CN # CN, RK4
