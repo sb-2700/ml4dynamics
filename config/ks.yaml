@@ -45,7 +45,7 @@ train:
   is_global: False
   kernel_size: 3
   # NOTE: currently only support for local modeling
-  stencil_size: 3
+  stencil_size: 5
   input_features: ["u", "u_x", "u_xx"]
   bins: 50
   subsample: 200
@@ -57,10 +57,10 @@ train:
   epochs_global: 400
   decay_global: 100 # number of epochs to decay the learning rate
   batch_size_global: 200
-  epochs_local: 4
+  epochs_local: 800
   decay_local: 200
   batch_size_local: 10000
-  save: 1
+  save: 100
   vae:
     latents: 128
  
