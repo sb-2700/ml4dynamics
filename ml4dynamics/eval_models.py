@@ -18,7 +18,7 @@ from ml4dynamics.utils import utils
 def main(config_dict: ml_collections.ConfigDict):
   config = Box(config_dict)
   pde = config.case
-  _global = (config.train.input == "global")
+  _global = config.train.is_global
   _jacobian = False
   if _global:
     batch_size = config.train.batch_size_global
@@ -26,7 +26,7 @@ def main(config_dict: ml_collections.ConfigDict):
   else:
     batch_size = config.train.batch_size_local
     arch = "mlp"
-  input_labels = config.train.input
+  input_features = config.train.input_features
 
   if pde == "ns_channel":
     model = utils.create_ns_channel_simulator(config_dict)

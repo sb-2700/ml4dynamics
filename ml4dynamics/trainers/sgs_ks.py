@@ -52,7 +52,7 @@ def main():
   inputs = inputs[:, :-1]
   outputs = outputs[:, :-1]
 
-  if config.train.input == "global":
+  if config.train.is_global:
     # training global ROM
     input_dim = output_dim = N2
     inputs = inputs.reshape(-1, input_dim)
@@ -73,11 +73,11 @@ def main():
         4*(jnp.roll(inputs, 1, axis=1) + jnp.roll(inputs, -1, axis=1)) +\
         6 * inputs) / dx**4
     outputs = outputs.reshape(-1, output_dim)
-    if config.train.input == "ux":
+    if config.train.input_features == "ux":
       inputs = u_x.reshape(-1, input_dim)
-    elif config.train.input == "uxx":
+    elif config.train.input_features == "uxx":
       inputs = u_xx.reshape(-1, input_dim)
-    elif config.train.input == "uxxxx":
+    elif config.train.input_features == "uxxxx":
       inputs = u_xxxx.reshape(-1, input_dim)
     else:
       inputs = u.reshape(-1, input_dim)
@@ -166,7 +166,7 @@ def main():
   elif train_mode == "gaussian":
     # training a fully connected neural network to do the closure modeling
     # by gaussian process
-    if config.train.input == "global":
+    if config.train.is_global:
       raise Exception("Gaussian process only supports local modeling!")
 
     n_g = config.train.n_g
@@ -338,7 +338,7 @@ def main():
   print("validation loss: {:.4e}".format(valid_loss))
 
   # A priori analysis: visualize the error distribution
-  if config.train.input == "global":
+  if config.train.is_global:
     predicts = correction_nn.apply(params, inputs)
     fig, axs = plt.subplots(3, 1, figsize=(12, 6))
     fraction = 0.05
@@ -437,7 +437,7 @@ def main():
     plt.ylabel("density")
   plt.legend()
   plt.savefig(
-    f"results/fig/ks_c{c}T{T}n{case_num}_{train_mode}_{config.train.input}_scatter.png",
+    f"results/fig/ks_c{c}T{T}n{case_num}_{train_mode}_{config.train.input_features}_scatter.png",
     dpi=500
   )
   plt.close()
