@@ -74,10 +74,13 @@ def load_data(
       outputs = h5f["data"][f"outputs_{sgs}"][()]
     x_coords = h5f["data"]["x_coords"][()]
 
-  if config.train.input != "global":
+  if not config.train.is_global:
     _, model = create_fine_coarse_simulator(config_dict)
     inputs = np.array(
-      augment_inputs(inputs, x_coords, pde, config.train.input, model)
+      augment_inputs(
+        inputs, x_coords, pde, config.train.input_features,
+        config.train.stencil_size, model
+      )
     )
   # if mode == "torch":
   #   inputs = inputs.transpose(0, 3, 1, 2)
@@ -89,7 +92,7 @@ def load_data(
   #   inputs = torch.from_numpy(inputs).to(device)
   #   outputs = torch.from_numpy(outputs).to(device)
   if pde == "ks" and config.sim.BC == "Dirichlet-Neumann" and\
-    config.train.input == "global":
+    config.train.is_global:
     # NOTE: the zero-padding is only physically correct for the u and u_x
     inputs_padding = np.zeros((inputs.shape[0], 1, inputs.shape[-1]))
     outputs_padding = np.zeros((outputs.shape[0], 1, outputs.shape[-1]))
@@ -121,53 +124,53 @@ def load_data(
 
 
 def augment_inputs(
-  inputs: jnp.ndarray, x_coords: jnp.ndarray, pde: str, input_labels, model
+  inputs: jnp.ndarray, x_coords: jnp.ndarray,
+  pde: str, input_features: list, stencil_size: int, model
 ):
   """This function is used both at loading the data and inference time"""
 
-  if isinstance(input_labels, int):
-    """use stencils as input"""
+  """stach together all input features"""
+  tmp = []
+  if pde == "ks":
+    if "u" in input_features:
+      tmp.append(inputs)
+    else:
+      """NOTE: now for local model, the u must be included in the input for simulation
+      since we need the input of u for later a-posteriori test
+      """
+      raise Exception("u is not in input_features")
+    if "u_x" in input_features:
+      tmp.append(jnp.einsum("ij, ajk -> aik", model.L1, inputs))
+    if "u_xx" in input_features:
+      tmp.append(jnp.einsum("ij, ajk -> aik", model.L2, inputs))
+    if "u_xxxx" in input_features:
+      tmp.append(jnp.einsum("ij, ajk -> aik", model.L4, inputs))
+    if "x" in input_features:
+      spatial_coords = x_coords[0:1]
+      x_coords = jnp.tile(spatial_coords, (inputs.shape[0], 1, 1))
+      tmp.append(x_coords)
+  elif pde == "ns_hit":
+    if "u" in input_features:
+      tmp.append(inputs)
+    if "u_x" in input_features:
+      what = jnp.fft.rfft2(inputs, axes=(1, 2))
+      psi_hat = -what[..., 0] / model.laplacian_[None]
+      dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
+      dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
+      tmp.append(dpsidy)
+      tmp.append(-dpsidx)
+  inputs = jnp.concatenate(tmp, axis=-1)
 
-    tmp = [inputs]
-    if input_labels % 2 != 1:
-      raise Exception("Size of stencils must be odd")
-    for i in range(input_labels // 2):
-      """NOTE: currently only support 1D KS with DN BC"""
-      tmp.append(jnp.roll(inputs, i + 1, axis=1))
-      tmp[-1] = tmp[-1].at[:, :i + 1].set(0)
-      tmp.append(jnp.roll(inputs, -(i + 1), axis=1))
-      tmp[-1] = tmp[-1].at[:, -i - 1:].set(0)
-  else:
-    """use derivatives as input"""
-    tmp = []
-    if pde == "ks":
-      if "u" in input_labels:
-        tmp.append(inputs)
-      else:
-        """NOTE: now for local model, the u must be included in the input for simulation
-        since we need the input of u for later a-posteriori test
-        """
-        raise Exception("u is not in input_labels")
-      if "u_x" in input_labels:
-        tmp.append(jnp.einsum("ij, ajk -> aik", model.L1, inputs))
-      if "u_xx" in input_labels:
-        tmp.append(jnp.einsum("ij, ajk -> aik", model.L2, inputs))
-      if "u_xxxx" in input_labels:
-        tmp.append(jnp.einsum("ij, ajk -> aik", model.L4, inputs))
-      if "x" in input_labels:
-        spatial_coords = x_coords[0:1]
-        x_coords = jnp.tile(spatial_coords, (inputs.shape[0], 1, 1))
-        tmp.append(x_coords)
-    elif pde == "ns_hit":
-      if "u" in input_labels:
-        tmp.append(inputs)
-      if "u_x" in input_labels:
-        what = jnp.fft.rfft2(inputs, axes=(1, 2))
-        psi_hat = -what[..., 0] / model.laplacian_[None]
-        dpsidx = jnp.fft.irfft2(1j * psi_hat * model.kx[None], axes=(1, 2))
-        dpsidy = jnp.fft.irfft2(1j * psi_hat * model.ky[None], axes=(1, 2))
-        tmp.append(dpsidy)
-        tmp.append(-dpsidx)
+  """stack together all stencils"""
+  tmp = [inputs]
+  if stencil_size % 2 != 1:
+    raise Exception("Size of stencils must be odd")
+  for i in range(stencil_size // 2):
+    """NOTE: currently only support 1D KS with DN BC"""
+    tmp.append(jnp.roll(inputs, i + 1, axis=1))
+    tmp[-1] = tmp[-1].at[:, :i + 1].set(0)
+    tmp.append(jnp.roll(inputs, -(i + 1), axis=1))
+    tmp[-1] = tmp[-1].at[:, -i - 1:].set(0)
 
   return jnp.concatenate(tmp, axis=-1)
 
@@ -347,8 +350,7 @@ def prepare_unet_train_state(
   config = Box(config_dict)
   rng = random.PRNGKey(config.sim.seed)
   n_sample = int(config.sim.T / config.sim.dt * 0.8)
-  inputs_labels = config.train.input
-  if inputs_labels == "global":
+  if config.train.is_global:
     epochs = config.train.epochs_global
     decay = config.train.decay_global
     batch_size = config.train.batch_size_global
@@ -372,16 +374,14 @@ def prepare_unet_train_state(
       if is_global:
         input_features = 1
       else:
-        input_features = inputs_labels if isinstance(inputs_labels, int)\
-          else len(inputs_labels)
+        input_features = len(config.train.input_features) * config.train.stencil_size
       output_features = 1
       DIM = 2
     elif config.case == "ks":
       if is_global:
         input_features = 1
       else:
-        input_features = inputs_labels if isinstance(inputs_labels, int)\
-          else len(inputs_labels)
+        input_features = len(config.train.input_features) * config.train.stencil_size
       output_features = 1
       DIM = 1
   if load_dict:
@@ -1376,24 +1376,24 @@ def a_posteriori_analysis(
       u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
           dx**4
-      if config.train.input == "u":
-        return partial(correction_nn.apply,
-                       params)(input.reshape(-1, 1)).reshape(-1)
-      elif config.train.input == "ux":
-        return partial(correction_nn.apply, params)(u_x.reshape(-1,
-                                                                1)).reshape(-1)
-      elif config.train.input == "uxx":
-        return partial(correction_nn.apply,
-                       params)(u_xx.reshape(-1, 1)).reshape(-1)
-      elif config.train.input == "uxxxx":
-        return partial(correction_nn.apply,
-                       params)(u_xxxx.reshape(-1, 1)).reshape(-1)
-      elif config.train.input == "global":
+      if config.train.is_global:
         return partial(correction_nn.apply,
                        params)(input.reshape(1, -1)).reshape(-1)
       # global model: [N] to [N]
       # return partial(correction_nn.apply,
       #                params)(input.reshape(1, -1)).reshape(-1)
+      elif config.train.input_features == "u":
+        return partial(correction_nn.apply,
+                       params)(input.reshape(-1, 1)).reshape(-1)
+      elif config.train.input_features == "ux":
+        return partial(correction_nn.apply, params)(u_x.reshape(-1,
+                                                                1)).reshape(-1)
+      elif config.train.input_features == "uxx":
+        return partial(correction_nn.apply,
+                       params)(u_xx.reshape(-1, 1)).reshape(-1)
+      elif config.train.input_features == "uxxxx":
+        return partial(correction_nn.apply,
+                       params)(u_xxxx.reshape(-1, 1)).reshape(-1)
 
   elif train_mode == "generative":
     vae_bind = vae.bind({"params": params})
@@ -1414,13 +1414,13 @@ def a_posteriori_analysis(
       u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
           dx**4
-      if config.train.input == "u":
+      if config.train.input_features == "u":
         tmp = partial(correction_nn.apply, params)(input.reshape(-1, 1))
-      elif config.train.input == "ux":
+      elif config.train.input_features == "ux":
         tmp = partial(correction_nn.apply, params)(u_x.reshape(-1, 1))
-      elif config.train.input == "uxx":
+      elif config.train.input_features == "uxx":
         tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
-      elif config.train.input == "uxxxx":
+      elif config.train.input_features == "uxxxx":
         tmp = partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1))
       p = jax.nn.sigmoid(tmp[..., :n_g])
       index = jax.vmap(partial(jax.random.choice, key=key, a=n_g,
@@ -1437,13 +1437,13 @@ def a_posteriori_analysis(
       u_xxxx = ((jnp.roll(input, 2) + jnp.roll(input, -2)) -\
           4*(jnp.roll(input, 1) + jnp.roll(input, -1)) + 6 * input) /\
           dx**4
-      if config.train.input == "u":
+      if config.train.input_features == "u":
         tmp = partial(correction_nn.apply, params)(input.reshape(-1, 1))
-      elif config.train.input == "ux":
+      elif config.train.input_features == "ux":
         tmp = partial(correction_nn.apply, params)(u_x.reshape(-1, 1))
-      elif config.train.input == "uxx":
+      elif config.train.input_features == "uxx":
         tmp = partial(correction_nn.apply, params)(u_xx.reshape(-1, 1))
-      elif config.train.input == "uxxxx":
+      elif config.train.input_features == "uxxxx":
         tmp = partial(correction_nn.apply, params)(u_xxxx.reshape(-1, 1))
       p = jax.nn.sigmoid(tmp[..., :n_g])
       index = jax.vmap(partial(jax.random.choice, key=key, a=n_g,

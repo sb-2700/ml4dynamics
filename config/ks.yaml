@@ -40,12 +40,13 @@ plot:
 
 train:
   stratify: False
-  sgs: filter
-  # sgs: correction
+  # sgs: filter
+  sgs: correction
+  is_global: False
   kernel_size: 3
-  # input: ["u", "u_x", "u_xx"]
-  input: 3
-  # input: global
+  # NOTE: currently only support for local modeling
+  stencil_size: 3
+  input_features: ["u", "u_x", "u_xx"]
   bins: 50
   subsample: 200
   mode: regression # regression, gaussian, generative
@@ -56,10 +57,10 @@ train:
   epochs_global: 400
   decay_global: 100 # number of epochs to decay the learning rate
   batch_size_global: 200
-  epochs_local: 800
+  epochs_local: 4
   decay_local: 200
   batch_size_local: 10000
-  save: 100
+  save: 1
   vae:
     latents: 128
  

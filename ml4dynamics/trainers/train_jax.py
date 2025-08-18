@@ -134,7 +134,8 @@ def main():
       utils.augment_inputs,
       x_coords=x_coords,
       pde=pde,
-      input_labels=input_labels,
+      input_features=config.train.input_features,
+      stencil_size=config.train.stencil_size,
       model=sim_model
     )
     if mode == "tr":
@@ -349,8 +350,7 @@ def main():
   # load dataset
   config = Box(config_dict)
   pde = config.case
-  input_labels = config.train.input
-  _global = (input_labels == "global")
+  _global = config.train.is_global
   epochs = config.train.epochs_global if _global else config.train.epochs_local
   print("start loading data...")
   start = time()
