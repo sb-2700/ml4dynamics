@@ -1,16 +1,15 @@
-import argparse
 import os
 import pickle
 from functools import partial
 from time import time
 
+import hydra
+from omegaconf import DictConfig, OmegaConf
 import jax
 
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import numpy as np
-import yaml
-from box import Box
 from flax import traverse_util
 from matplotlib import pyplot as plt
 from tqdm import tqdm
@@ -18,7 +17,8 @@ from tqdm import tqdm
 from ml4dynamics.utils import utils
 
 
-def main():
+@hydra.main(version_base=None, config_path="../../config", config_name="ks")
+def main(cfg: DictConfig):
 
   def train(
     mode: str,
@@ -339,16 +339,11 @@ def main():
       _plot=True,
     )
 
-  parser = argparse.ArgumentParser()
-  parser.add_argument(
-    "-c", "--config", default=None, help="Set the configuration file path."
-  )
-  args = parser.parse_args()
-  with open(f"config/{args.config}.yaml", "r") as file:
-    config_dict = yaml.safe_load(file)
-
+  # Convert OmegaConf to dict for compatibility with existing code
+  config_dict = OmegaConf.to_container(cfg, resolve=True)
+  
   # load dataset
-  config = Box(config_dict)
+  config = cfg
   pde = config.case
   _global = config.train.is_global
   epochs = config.train.epochs_global if _global else config.train.epochs_local
