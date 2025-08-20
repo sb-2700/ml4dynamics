@@ -1,0 +1,10 @@
+# @package hydra.launcher
+_target_: hydra_plugins.hydra_joblib_launcher.joblib_launcher.JoblibLauncher
+n_jobs: 4  # Number of parallel jobs (should match number of GPUs)
+batch_size: auto
+pre_dispatch: 2*n_jobs
+backend: loky
+prefer: processes
+require: null
+verbose: 10
+timeout: null

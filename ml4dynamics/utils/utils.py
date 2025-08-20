@@ -64,7 +64,12 @@ def load_data(
       nu = config.sim.nu
       c = config.sim.c
       dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}"
-  h5_filename = f"data/{pde}/{dataset}.h5"
+  # Use work_dir if available (from Hydra config) to handle directory changes
+  import os
+  if 'work_dir' in config:
+    h5_filename = os.path.join(config['work_dir'], f"data/{pde}/{dataset}.h5")
+  else:
+    h5_filename = f"data/{pde}/{dataset}.h5"
 
   with h5py.File(h5_filename, "r") as h5f:
     inputs = h5f["data"]["inputs"][()]

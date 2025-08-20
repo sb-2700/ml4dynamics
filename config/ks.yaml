@@ -3,8 +3,8 @@
 # specify here default sim configuration
 defaults:
   - _self_
-
-  - mode: default.yaml
+  - override hydra/launcher: joblib
+  - override hydra/job_logging: file_only
 
 # path to original working directory
 # hydra hijacks working directory by changing it to the current log directory,
@@ -46,7 +46,7 @@ train:
   kernel_size: 3
   # NOTE: currently only support for local modeling
   stencil_size: 5
-  input_features: ["u", "u_x", "u_xx"]
+  input_features: ["u"]
   bins: 50
   subsample: 200
   mode: regression # regression, gaussian, generative

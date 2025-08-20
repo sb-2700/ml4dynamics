@@ -1,0 +1,19 @@
+# @package hydra.job_logging
+version: 1
+formatters:
+  detailed:
+    format: '[%(asctime)s][%(name)s][%(levelname)s] - %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+handlers:
+  file:
+    class: logging.FileHandler
+    formatter: detailed
+    # This will create a log file in each job's output directory
+    filename: ${hydra.runtime.output_dir}/${hydra.job.name}.log
+    mode: 'a'
+root:
+  level: INFO
+  handlers: [file]
+
+# Disable console logging
+disable_existing_loggers: false

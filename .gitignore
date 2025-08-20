@@ -3,6 +3,9 @@ results
 *__pycache__
 ckpts
 format.sh
-scripts
+
+sb-2007
+multirun
+jax-cfd
 
 *png

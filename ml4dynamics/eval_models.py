@@ -1,4 +1,5 @@
 import argparse
+import os
 from functools import partial
 
 import jax
@@ -19,6 +20,7 @@ def main(config_dict: ml_collections.ConfigDict):
   config = Box(config_dict)
   pde = config.case
   _global = config.train.is_global
+  seed = config.sim.seed
   _jacobian = False
   if _global:
     batch_size = config.train.batch_size_global
@@ -37,9 +39,9 @@ def main(config_dict: ml_collections.ConfigDict):
   one_traj_length = inputs.shape[0] // config.sim.case_num
   mode = "ols"
   if mode == "ae":
-    ckpt_path = f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl"
+    ckpt_path = f"ckpts/{pde}/{dataset}_{mode}_{arch}_seed{seed}.pkl"
   else:
-    ckpt_path = f"ckpts/{pde}/{dataset}_{config.train.sgs}_{mode}_{arch}.pkl"
+    ckpt_path = f"ckpts/{pde}/{dataset}_{config.train.sgs}_{mode}_{arch}_seed{seed}.pkl"
   dim = 2
   inputs_ = inputs
   outputs_ = outputs

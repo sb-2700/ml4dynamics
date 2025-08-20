@@ -1,0 +1,17 @@
+# @package hydra.launcher
+_target_: hydra_plugins.hydra_ray_launcher.ray_launcher.RayLauncher
+
+# Ray cluster configuration
+ray:
+  init:
+    address: null  # Use 'auto' for existing cluster, null for local
+  remote:
+    num_cpus: 1  # CPUs per job
+    num_gpus: 1  # GPUs per job - THIS IS KEY FOR GPU ALLOCATION
+
+# Resources per node
+max_concurrent: 4  # Maximum concurrent jobs (should match number of GPUs)
+
+# Sync configuration  
+sync_up: true
+sync_down: true

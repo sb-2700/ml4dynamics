@@ -1,5 +1,6 @@
 import os
 import pickle
+import logging
 from functools import partial
 from time import time
 
@@ -17,8 +18,10 @@ from tqdm import tqdm
 from ml4dynamics.utils import utils
 
 
-@hydra.main(version_base=None, config_path="../../config", config_name="ks")
+@hydra.main(version_base=None, config_path="../../config")
 def main(cfg: DictConfig):
+  # Get logger
+  log = logging.getLogger(__name__)
 
   def train(
     mode: str,
@@ -105,10 +108,24 @@ def main(cfg: DictConfig):
 
     if mode == "ae" and not _global:
       return
-    elif mode == "ae":
-      ckpt_path = f"ckpts/{pde}/{dataset}_{mode}_{arch}.pkl"
+    
+    # Include seed in checkpoint name for uniqueness
+    seed = config.sim.seed
+    
+    # Use work_dir for checkpoint path
+    import os
+    if 'work_dir' in config:
+      ckpt_dir = os.path.join(config['work_dir'], f"ckpts/{pde}")
     else:
-      ckpt_path = f"ckpts/{pde}/{dataset}_{config.train.sgs}_{mode}_{arch}.pkl"
+      ckpt_dir = f"ckpts/{pde}"
+    
+    # Create checkpoint directory if it doesn't exist
+    os.makedirs(ckpt_dir, exist_ok=True)
+    
+    if mode == "ae":
+      ckpt_path = os.path.join(ckpt_dir, f"{dataset}_{mode}_{arch}_seed{seed}.pkl")
+    else:
+      ckpt_path = os.path.join(ckpt_dir, f"{dataset}_{config.train.sgs}_{mode}_{arch}_seed{seed}.pkl")
     # load_dict = ckpt_path
     # if not os.path.exists(load_dict):
     #   """TODO: no architecture check for the models"""
@@ -142,7 +159,10 @@ def main(cfg: DictConfig):
       # add tangent-space regularization
       lambda_ = config.train.lambda_
       ae_train_state, _ = utils.prepare_unet_train_state(
-        config_dict, f"ckpts/{pde}/{dataset}_ae_unet.pkl", True, False
+        config_dict, 
+        os.path.join(ckpt_dir if 'ckpt_dir' in locals() else f"ckpts/{pde}", 
+                     f"{dataset}_ae_unet_seed{config.sim.seed}.pkl"), 
+        True, False
       )
       ae_fn = partial(
         ae_train_state.apply_fn_with_bn, {
@@ -347,7 +367,7 @@ def main(cfg: DictConfig):
   pde = config.case
   _global = config.train.is_global
   epochs = config.train.epochs_global if _global else config.train.epochs_local
-  print("start loading data...")
+  log.info("Start loading data...")
   start = time()
   if _global:
     batch_size = config.train.batch_size_global
@@ -358,15 +378,15 @@ def main(cfg: DictConfig):
   inputs, outputs, train_dataloader, test_dataloader, dataset, x_coords = utils.load_data(
     config_dict, batch_size
   )
-  print(f"finis loading data with {time() - start:.2f}s...")
-  print(f"Problem type: {pde}")
+  log.info(f"Finished loading data in {time() - start:.2f}s")
+  log.info(f"Problem type: {pde}")
   if pde != "ns_channel":
-    print(f"{config.train.sgs}")
+    log.info(f"SGS type: {config.train.sgs}")
   # modes_array = ["ae", "ols", "mols", "aols", "tr"]
   modes_array = ["ols"]
 
   for _ in modes_array:
-    print(f"Training {_}...")
+    log.info(f"Training {_}...")
     train(_, epochs, x_coords)
 
 
