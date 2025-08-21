@@ -9,3 +9,6 @@ multirun
 jax-cfd
 
 *png
+*.sh
+*.py
+*.md
