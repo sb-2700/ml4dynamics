@@ -17,7 +17,7 @@ def get_stencil_sizes_for_coarsening_ratio(coarsening_ratio):
     if coarsening_ratio == 2:
         return [3, 5, 7, 9]
     elif coarsening_ratio == 4:
-        return [5, 7, 9, 11, 13]
+        return [5, 7, 9, 11]
     elif coarsening_ratio == 8:
         return [9, 11, 13, 15, 17, 19]
     else:

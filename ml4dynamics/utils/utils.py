@@ -825,17 +825,31 @@ def eval_a_posteriori(
     l2_list = []
     first_moment_list = []
     second_moment_list = []
+    truth_second_moment_list = []
     corr1 = []
     corr2 = []
     avg_length = 1000
+
+    '''
     for _ in range(n_sample):
       print(f"{_}th sample")
       rng, key = random.split(rng)
       r0 = random.uniform(key) * 20 + 44
+    '''
+    
+    for ic_idx in range(n_sample):
+      print(f"{ic_idx}th sample")
+      # FOR TESTING ONLY: Use fixed seed based on IC index for reproducible ICs
+      # This ensures the same 10 initial conditions are used across all r and stencil combinations
+      # Normal operation should use: rng, key = random.split(rng)
+      fixed_key = random.PRNGKey(2000 + ic_idx)  # Fixed seed per IC index
+      r0 = random.uniform(fixed_key) * 20 + 44  
       if config.sim.BC == "periodic":
         # u0 = model_fine.attractor + model_fine.init_scale * random.normal(key) *\
         #   jnp.sin(10 * jnp.pi * jnp.linspace(0, L - L/N1, N1) / L)
-        r0 = random.uniform(key) * 20 + 44
+        
+        #r0 = random.uniform(key) * 20 + 44
+        r0 = random.uniform(fixed_key) * 20 + 44
         u0 = jnp.exp(-(jnp.linspace(0, L - L / N1, N1) - r0)**2 / r0**2 * 4)
       elif config.sim.BC == "Dirichlet-Neumann":
         x = jnp.linspace(dx, L - dx, N1 - 1)
@@ -867,6 +881,11 @@ def eval_a_posteriori(
       second_moment_list.append(
         np.array([baseline_second_moment, ours_second_moment])
       )
+
+      #### Test ####
+      truth_second_moment = np.mean((truth**2)[-avg_length:])
+      truth_second_moment_list.append(truth_second_moment)
+
       print("l2:", l2_list[-1])
       print("first moment:", first_moment_list[-1])
       print("second moment:", second_moment_list[-1])
@@ -876,14 +895,24 @@ def eval_a_posteriori(
 
     corr1 = np.array(corr1)
     corr2 = np.array(corr2)
+    
+    # Modify fig_name for KS simulations with box filter
+    if config.case == "ks" and config.sim.filter_type == "box":
+        r = config.sim.rx  # coarsening ratio
+        s = config.sim.stencil_size  # stencil size
+        fig_name_with_params = f"{fig_name}_r{r}_s{s}"
+    else:
+        fig_name_with_params = fig_name
+    
     plt.plot(t_array, np.mean(corr1, axis=0), label="baseline")
     plt.plot(t_array, np.mean(corr2, axis=0), label="ours")
     plt.legend()
-    plt.savefig(f"results/fig/{fig_name}_corr.png")
+    plt.savefig(f"results/fig/{fig_name_with_params}_corr.png")
     #breakpoint()
     l2_list = np.array(l2_list)
     first_moment_list = np.array(first_moment_list)
     second_moment_list = np.array(second_moment_list)
+    truth_second_moment_list = np.array(truth_second_moment_list)
     # print(np.mean(l2_list, axis=0), ", ", np.std(l2_list, axis=0))
     # print(
     #   np.mean(first_moment_list, axis=0), ", ",
@@ -978,11 +1007,42 @@ def eval_a_posteriori(
     with open(aposteriori_path, "wb") as f:
       pickle.dump(aposteriori_metrics, f)
   
+    ### TESTING HIGH VARIANCE ###  
+    # Load existing a posteriori metrics or create new dict
+    aposteriori_all_path = "results/aposteriori_all.pkl"
+    if os.path.exists(aposteriori_all_path):
+      with open(aposteriori_all_path, "rb") as f:
+        aposteriori_all_dict = pickle.load(f)
+    else:
+      aposteriori_all_dict = {}
+
+    # Save this filter's a posteriori metrics (means and stds across all samples)
+    # Use compound key that includes filter type, boundary condition, coarsening ratio, and stencil size
+    aposteriori_all_dict[filter_bc_r_s_key] = {
+      "l2_baseline_all": [float(x[0]) for x in l2_list],
+      "l2_ours_all": [float(x[1]) for x in l2_list],
+      
+      "first_moment_baseline_all": [float(x[0]) for x in first_moment_list],
+      "first_moment_ours_all": [float(x[1]) for x in first_moment_list],
+     
+      "second_moment_baseline_all": [float(x[0]) for x in second_moment_list],
+      "second_moment_ours_all": [float(x[1]) for x in second_moment_list],
+      
+      "second_moment_truth_all": [float(x) for x in truth_second_moment_list],
+
+      "n_sample": len(l2_list)
+    }
+    
+    with open(aposteriori_all_path, "wb") as f:
+      pickle.dump(aposteriori_all_dict, f)
+  
+#####################################################################
+
   viz_utils.plot_stats_aux(
     np.arange(inputs.shape[0]) * model.dt,
     [inputs[..., 0], model.x_hist, x_hist[..., 0]],
     ["truth", "baseline", "ours"],
-    f"results/fig/{fig_name}_stats.png",
+    f"results/fig/{fig_name_with_params}_stats.png",
   )
 
   breakpoint()
