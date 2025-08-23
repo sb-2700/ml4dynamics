@@ -1,4 +1,5 @@
 import os
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 import pickle
 import logging
 from functools import partial
@@ -18,8 +19,9 @@ from tqdm import tqdm
 from ml4dynamics.utils import utils
 
 
-@hydra.main(version_base=None, config_path="../../config")
+@hydra.main(version_base=None, config_path="../../config", config_name="ks")
 def main(cfg: DictConfig):
+
   # Get logger
   log = logging.getLogger(__name__)
 

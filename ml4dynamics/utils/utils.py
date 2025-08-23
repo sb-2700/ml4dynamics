@@ -836,6 +836,10 @@ def eval_a_posteriori(
     l2_list = []
     first_moment_list = []
     second_moment_list = []
+    third_moment_list = []
+    first_moment_traj_list = []
+    second_moment_traj_list = []
+    third_moment_traj_list = []
     corr1 = []
     corr2 = []
     avg_length = 1000
@@ -879,17 +883,51 @@ def eval_a_posteriori(
       baseline_l2 = jnp.mean(jnp.linalg.norm(truth - model.x_hist, axis=(1, )))
       ours_l2 = jnp.mean(jnp.linalg.norm(truth - x_hist[..., 0], axis=(1, )))
       baseline_first_moment = np.mean((truth - model.x_hist)[-avg_length:])
+      baseline_first_moment_traj = np.sum(
+        np.abs(np.mean(truth - model.x_hist, axis=1))
+      )
       ours_first_moment = np.mean((truth - x_hist[..., 0])[-avg_length:])
+      ours_first_moment_traj = np.sum(
+        np.abs(np.mean(truth - x_hist[..., 0], axis=1))
+      )
       baseline_second_moment = np.mean(
         (truth**2 - model.x_hist**2)[-avg_length:]
       )
+      baseline_second_moment_traj = np.sum(
+        np.abs(np.mean(truth**2 - model.x_hist**2, axis=1))
+      )
       ours_second_moment = np.mean((truth**2 - x_hist[..., 0]**2)[-avg_length:])
+      ours_second_moment_traj = np.sum(
+        np.abs(np.mean(truth**2 - x_hist[..., 0]**2, axis=1))
+      )
+      baseline_third_moment = np.mean(
+        (truth**3 - model.x_hist**3)[-avg_length:]
+      )
+      baseline_third_moment_traj = np.sum(
+        np.abs(np.mean(truth**3 - model.x_hist**3, axis=1))
+      )
+      ours_third_moment = np.mean((truth**3 - x_hist[..., 0]**3)[-avg_length:])
+      ours_third_moment_traj = np.sum(
+        np.abs(np.mean(truth**3 - x_hist[..., 0]**3, axis=1))
+      )
       l2_list.append(np.array([baseline_l2, ours_l2]))
       first_moment_list.append(
         np.array([baseline_first_moment, ours_first_moment])
       )
+      first_moment_traj_list.append(
+        np.array([baseline_first_moment_traj, ours_first_moment_traj])
+      )
+      second_moment_traj_list.append(
+        np.array([baseline_second_moment_traj, ours_second_moment_traj])
+      )
+      third_moment_traj_list.append(
+        np.array([baseline_third_moment_traj, ours_third_moment_traj])
+      )
       second_moment_list.append(
         np.array([baseline_second_moment, ours_second_moment])
+      )
+      third_moment_list.append(
+        np.array([baseline_third_moment, ours_third_moment])
       )
       print("l2:", l2_list[-1])
       print("first moment:", first_moment_list[-1])
@@ -913,10 +951,10 @@ def eval_a_posteriori(
     plt.plot(t_array, np.mean(corr2, axis=0), label="ours")
     plt.legend()
     plt.savefig(f"results/fig/{fig_name_with_params}_corr.png")
-    breakpoint()
     l2_list = np.array(l2_list)
     first_moment_list = np.array(first_moment_list)
     second_moment_list = np.array(second_moment_list)
+    third_moment_list = np.array(third_moment_list)
     # print(np.mean(l2_list, axis=0), ", ", np.std(l2_list, axis=0))
     # print(
     #   np.mean(first_moment_list, axis=0), ", ",
@@ -945,6 +983,12 @@ def eval_a_posteriori(
       np.std(
         second_moment_list[~np.isnan(second_moment_list).any(axis=1)], axis=0
       )
+    )
+    print(
+      np.mean(
+        third_moment_list[~np.isnan(third_moment_list).any(axis=1)], axis=0
+      ), ", ",
+      np.std(third_moment_list[~np.isnan(third_moment_list).any(axis=1)], axis=0)
     )
   
     # Remove NaN rows from the lists. This is necessary to avoid issues with np.std and np.mean
@@ -985,32 +1029,20 @@ def eval_a_posteriori(
 
     # Save this filter's a posteriori metrics (means and stds across all samples)
     aposteriori_metrics[key] = {
-      "l2_baseline": float(l2_mean[0]),
-      "l2_ours": float(l2_mean[1]),
-      "l2_baseline_std": float(l2_std[0]),
-      "l2_ours_std": float(l2_std[1]),
-      "first_moment_baseline": float(first_moment_mean[0]),
-      "first_moment_ours": float(first_moment_mean[1]),
-      "first_moment_baseline_std": float(first_moment_std[0]),
-      "first_moment_ours_std": float(first_moment_std[1]),
-      "second_moment_baseline": float(second_moment_mean[0]),
-      "second_moment_ours": float(second_moment_mean[1]),
-      "second_moment_baseline_std": float(second_moment_std[0]),
-      "second_moment_ours_std": float(second_moment_std[1]),
+      "l2_list": l2_list,
+      "first_moment_list": first_moment_list,
+      "second_moment_list": second_moment_list,
+      "third_moment_list": third_moment_list,
+      "first_moment_traj_list": first_moment_traj_list,
+      "second_moment_traj_list": second_moment_traj_list,
+      "third_moment_traj_list": third_moment_traj_list,
+      "corr1": corr1,
+      "corr2": corr2,
     }
 
     with open(aposteriori_path, "wb") as f:
       pickle.dump(aposteriori_metrics, f)
-
-  viz_utils.plot_stats_aux(
-    np.arange(inputs.shape[0]) * model.dt,
-    [inputs[..., 0], model.x_hist, x_hist[..., 0]],
-    ["truth", "baseline", "ours"],
-    f"results/fig/{fig_name_with_params}_stats.png",
-  )
-  breakpoint()
-  return x_hist
-
+      
 
 ###############################################################################
 #                   Numerical solver of the reaction-diffusion equation:
