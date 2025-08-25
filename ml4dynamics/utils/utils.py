@@ -67,7 +67,7 @@ def load_data(
       c = config.sim.c
       r = config.sim.rx
       s = config.sim.stencil_size
-      dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_r{r}_s{s}.h5"
+      dataset = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_r{r}_s{s}"
   # Use work_dir if available (from Hydra config) to handle directory changes
   import os
   if 'work_dir' in config:

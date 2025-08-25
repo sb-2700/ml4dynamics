@@ -4,7 +4,7 @@
 defaults:
 - _self_
 - override hydra/launcher: joblib
-- override hydra/job_logging: file_only
+- override hydra/job_logging: default #file_only
 
 # path to original working directory
 # hydra hijacks working directory by changing it to the current log directory,
