@@ -565,8 +565,8 @@ def eval_a_priori(
   with open("config/ks.yaml", "r") as f:
     config = yaml.safe_load(f)
   bc = "pbc" if config["sim"]["BC"] == "periodic" else "dnbc"
-  r = config["sim"]["r"]
-  s = config["sim"]["s"]
+  r = config["sim"]["rx"]
+  s = config["sim"]["stencil_size"]
   
   #Create compound key that includes BC, r and s
   key = f"{bc}_r{r}_s{s}"
