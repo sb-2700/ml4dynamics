@@ -149,7 +149,9 @@ def main(cfg: DictConfig):
       fig_name = f"{pde}_{config.train.sgs}_{mode}_{arch}"
     else:
       fig_name = f"{pde}_{mode}_{arch}"
-    augment_inputs_fn = partial(
+
+    if not _global:
+      augment_inputs_fn = partial(
       utils.augment_inputs,
       x_coords=x_coords,
       pde=pde,
@@ -157,6 +159,16 @@ def main(cfg: DictConfig):
       stencil_size=config.sim.stencil_size,
       model=sim_model
     )
+    else:
+      augment_inputs_fn = partial(
+      utils.augment_inputs,
+      x_coords=x_coords,
+      pde=pde,
+      input_features=None,  # or "u", or omit this argument if possible
+      stencil_size=config.sim.stencil_size,
+      model=sim_model
+    )
+
     if mode == "tr":
       # add tangent-space regularization
       lambda_ = config.train.lambda_

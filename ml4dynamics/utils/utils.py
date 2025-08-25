@@ -941,7 +941,7 @@ def eval_a_posteriori(
 
     # Modify fig_name for KS simulations to include r and s
     if config.case == "ks":
-      r = config.sim.r
+      r = config.sim.rx
       s = config.sim.stencil_size
       fig_name_with_params = f"{fig_name}_r{r}_s{s}"
     else:
