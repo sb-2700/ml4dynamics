@@ -100,6 +100,7 @@ def res_int_fn(config_dict: ml_collections.ConfigDict):
     
     # Create box filter using adaptive stencil size
     res_op = create_box_filter(N1, N2, r, BC, s)
+    res_op /= r
     int_op = jnp.linalg.pinv(res_op)
     assert jnp.allclose(res_op @ int_op, jnp.eye(N2))
     assert jnp.allclose(res_op.sum(axis=-1), jnp.ones(N2))
