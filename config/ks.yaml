@@ -26,8 +26,8 @@ sim:
   rt: 1
   init_scale: 1.
   stencil_size: 7
-  BC: Dirichlet-Neumann
-  # BC: periodic
+  # BC: Dirichlet-Neumann
+  BC: periodic
   seed: 123
   case_num: 10       # number of simulations to perform
   warm_up: 200      # warm up step for simulation
@@ -43,11 +43,10 @@ train:
   stratify: False
   # sgs: filter
   sgs: correction
-  is_global: False
   kernel_size: 3
-  # NOTE: currently only support for local modeling
-  stencil_size: 5
-  input_features: ["u"]
+  # input: ["u", "u_x", "u_xx", "x"]
+  # input: 4
+  input: global
   bins: 50
   subsample: 200
   mode: regression # regression, gaussian, generative
