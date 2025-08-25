@@ -88,7 +88,7 @@ def load_data(
     inputs = np.array(
       augment_inputs(
         inputs, x_coords, pde, config.train.input_features,
-        config.train.stencil_size, model
+        config.sim.stencil_size, model
       )
     )
   # if mode == "torch":
@@ -383,14 +383,14 @@ def prepare_unet_train_state(
       if is_global:
         input_features = 1
       else:
-        input_features = len(config.train.input_features) * config.train.stencil_size
+        input_features = len(config.train.input_features) * config.sim.stencil_size
       output_features = 1
       DIM = 2
     elif config.case == "ks":
       if is_global:
         input_features = 1
       else:
-        input_features = len(config.train.input_features) * config.train.stencil_size
+        input_features = len(config.train.input_features) * config.sim.stencil_size
       output_features = 1
       DIM = 1
   if load_dict:
@@ -1042,7 +1042,7 @@ def eval_a_posteriori(
 
     with open(aposteriori_path, "wb") as f:
       pickle.dump(aposteriori_metrics, f)
-      
+
 
 ###############################################################################
 #                   Numerical solver of the reaction-diffusion equation:

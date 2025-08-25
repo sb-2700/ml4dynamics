@@ -154,7 +154,7 @@ def main(cfg: DictConfig):
       x_coords=x_coords,
       pde=pde,
       input_features=config.train.input_features,
-      stencil_size=config.train.stencil_size,
+      stencil_size=config.sim.stencil_size,
       model=sim_model
     )
     if mode == "tr":
