@@ -17,6 +17,7 @@ from ml4dynamics.utils import utils, viz_utils
 import logging
 import hydra
 from omegaconf import DictConfig, OmegaConf
+import os
 
 @hydra.main(version_base=None, config_path="../../config", config_name="ks")
 def main(cfg: DictConfig):
