@@ -14,16 +14,25 @@ from matplotlib import pyplot as plt
 from ml4dynamics.dataset_utils.dataset_utils import res_int_fn
 from ml4dynamics.utils import utils, viz_utils
 
+import logging
+import hydra
+from omegaconf import DictConfig, OmegaConf
 
-def main():
+@hydra.main(version_base=None, config_path="../../config", config_name="ks")
+def main(cfg: DictConfig):
 
-  parser = argparse.ArgumentParser()
-  parser.add_argument("-c", "--c", default=None, help="constant velocity.")
-  args = parser.parse_args()
-  with open(f"config/ks.yaml", "r") as file:
-    config_dict = yaml.safe_load(file)
-  config_dict["sim"]["c"] = config_dict["sim"]["c"] if args.c is None\
-    else float(args.c)
+  # Get logger
+  log = logging.getLogger(__name__)
+
+ # parser = argparse.ArgumentParser()
+ # parser.add_argument("-c", "--c", default=None, help="constant velocity.")
+ # args = parser.parse_args()
+ # with open(f"config/ks.yaml", "r") as file:
+ #   config_dict = yaml.safe_load(file)
+ # config_dict["sim"]["c"] = config_dict["sim"]["c"] if args.c is None\
+ #   else float(args.c)
+
+  config_dict = OmegaConf.to_container(cfg, resolve=True)
   config = Box(config_dict)
   c = config.sim.c
   nu = config.sim.nu
@@ -153,8 +162,12 @@ def main():
 
   r = config.sim.rx
   s = config.sim.stencil_size
-  filename = f"data/ks/{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_r{r}_s{s}.h5"
-  with h5py.File(filename, "w") as f:
+  # Use Hydra's working directory for output
+  output_dir = os.path.join(cfg.work_dir, "data/ks")
+  os.makedirs(output_dir, exist_ok=True)
+  filename = f"{bc}_nu{nu:.1f}_c{c:.1f}_n{case_num}_r{r}_s{s}.h5"
+  filepath = os.path.join(output_dir, filename)
+  with h5py.File(filepath, "w") as f:
     metadata_group = f.create_group("metadata")
     for key, value in data["metadata"].items():
       metadata_group.create_dataset(key, data=value)
@@ -177,6 +190,8 @@ def main():
 
   plot_ = True
   if plot_ and case_num == 1:
+    fig_dir = os.path.join(cfg.work_dir, "results/fig")
+    os.makedirs(fig_dir, exist_ok=True)
     t_array = np.linspace(0, T, model_coarse.step_num)
     viz_utils.plot_temporal_corr(
       [inputs, model_coarse.x_hist], [''], t_array, "ks"
@@ -211,12 +226,12 @@ def main():
     utils.plot_with_horizontal_colorbar(
       list(im_array),
       title_array=[
-        "u", r"$\tau^f$", r"$\tau^c$", r"$[R, D_x]$", r"$[R, D_x^2]$",
+        "u", r"$\\tau^f$", r"$\\tau^c$", r"$[R, D_x]$", r"$[R, D_x^2]$",
         r"$[R, D_x^4]$"
       ],
       shape=(5, 1),
       fig_size=(20, 5),
-      file_path="results/fig/ks.png",
+      file_path=os.path.join(fig_dir, "ks.png"),
       dpi=100
     )
 
@@ -225,8 +240,8 @@ def main():
     index_array = [500, 1500, 2500, 3500]
     for i in range(len(index_array)):
       axs[i].set_title(f"t = {index_array[i] * config_dict['sim']['dt']:.2f}")
-      axs[i].plot(outputs_filter[index_array[i]], label=r"$\tau^f$")
-      axs[i].plot(outputs_correction[index_array[i]], label=r"$\tau^c$")
+      axs[i].plot(outputs_filter[index_array[i]], label=r"$\\tau^f$")
+      axs[i].plot(outputs_correction[index_array[i]], label=r"$\\tau^c$")
       axs[i].plot(delta1[index_array[i]], label=r"$[R, D_x]$")
       axs[i].plot(delta2[index_array[i]], label=r"$[R, D_x^2]$")
       axs[i].plot(delta4[index_array[i]], label=r"$[R, D_x^4]$")
@@ -234,7 +249,7 @@ def main():
       #   outputs_correction[index_array[i], :, 0] * ratio, label=r"$\tau^f - \tau^c$")
       axs[i].legend()
     c = config_dict["sim"]["c"]
-    plt.savefig(f"results/fig/cmp_{bc}_nu{nu:.1f}_c{c:.1f}.png", dpi=300)
+    plt.savefig(os.path.join(fig_dir, f"cmp_{bc}_nu{nu:.1f}_c{c:.1f}.png"), dpi=300)
     plt.close()
     """visualize the Fourier & POD modes"""
     input_hat = jnp.fft.fft(
@@ -249,7 +264,7 @@ def main():
       plt.plot(input_hat[:, i].real, label=f"Re(k = {i - 128})")
       plt.plot(input_hat[:, i].imag, label=f"Im(k = {i - 128})")
     plt.legend(loc="lower left")
-    plt.savefig("results/fig/ks_ode.png", dpi=300)
+    plt.savefig(os.path.join(fig_dir, "ks_ode.png"), dpi=300)
     plt.close()
 
     _, s, vt = svd(
@@ -262,7 +277,7 @@ def main():
     _ = plt.figure(figsize=(12, 12))
     transform_x = inputs @ vt.T
     plt.scatter(transform_x[:, 0], transform_x[:, 1], s=0.1)
-    plt.savefig(f"results/fig/pod_ks.png")
+    plt.savefig(os.path.join(fig_dir, "pod_ks.png"))
     breakpoint()
     plt.close()
 
